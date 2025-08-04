@@ -1,0 +1,12 @@
+/build
+# Android Studio
+.idea/
+.gradle/
+build/
+app/build/
+*.iml
+local.properties
+
+# 日志
+logs/
+EOF
