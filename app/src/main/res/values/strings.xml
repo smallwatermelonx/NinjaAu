@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">NinjaAu</string>
+    <string name="accessibility_service_desc">忍三自动化服务：用于自动识别游戏界面、模拟点击操作，实现自动化任务</string>
 </resources>

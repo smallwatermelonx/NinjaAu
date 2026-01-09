@@ -26,7 +26,8 @@ class AutoRestartService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        gameManager = GameManager() // 初始化游戏管理器（内部通过ADB控制）
+        // 核心修改：传入Service的applicationContext（避免内存泄漏）
+        gameManager = GameManager(applicationContext)
         createNotificationChannel()
     }
 
@@ -55,7 +56,7 @@ class AutoRestartService : Service() {
 
                 // 2. 如果游戏未运行，启动游戏
                 if (!isRunning) {
-                    LogUtil.d(TAG, "检测到游戏未运行，尝试通过ADB启动...")
+                    LogUtil.d(TAG, "检测到游戏未运行，尝试启动...")
                     val startSuccess = gameManager.launchGame()
                     if (startSuccess) {
                         updateNotification("游戏已启动")

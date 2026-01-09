@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeAllMask"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault|flagIncludeNotImportantViews|flagRequestTouchExplorationMode"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/accessibility_service_desc"
+    android:packageNames="com.pandadagames.ninja.global"
+    android:settingsActivity="com.example.ninjaau.MainActivity" />
+<!-- 
+    android:packageNames: 只监听忍三包名（减少性能消耗）
+    android:canPerformGestures: 允许模拟手势（点击/滑动）
+    android:canRetrieveWindowContent: 允许获取界面内容 
+-->
