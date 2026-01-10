@@ -1,34 +1,31 @@
-# Gradle files
-.gradle/
-build/
-
-# Local configuration file (sdk path, etc)
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
 local.properties
 
-# Log/OS Files
-*.log
+# 核心排除：排除所有名为 templates 的文件夹及其子内容
+**/templates/
+# 排除具体的模板路径（保险起见）
+app/src/main/assets/templates/
+# 排除所有 png 和 jpg 文件（如果你想 Git 只存代码）
+*.png
+*.jpg
+*.jpeg
+*.webp
 
-# Android Studio generated files and folders
-captures/
-.externalNativeBuild/
-.cxx/
-*.aab
-*.apk
-output-metadata.json
-
-# IntelliJ
-*.iml
+# Android Studio 临时文件
 .idea/
-misc.xml
-deploymentTargetDropDown.xml
-render.experimental.xml
-
-# Keystore files
-*.jks
-*.keystore
-
-# Google Services (e.g. APIs or Firebase)
-google-services.json
-
-# Android Profiling
-*.hprof
+*.iws
+*.iml
+*.ipr
