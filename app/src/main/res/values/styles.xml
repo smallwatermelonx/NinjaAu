@@ -1,0 +1,12 @@
+<resources>
+    <!-- 透明Activity主题（继承项目基础主题，避免找不到父类） -->
+    <style name="Theme.Transparent" parent="Theme.NinjaAu">
+        <item name="android:windowBackground">@android:color/transparent</item> <!-- 背景透明 -->
+        <item name="android:windowIsTranslucent">true</item> <!-- 窗口半透明 -->
+        <item name="android:windowNoTitle">true</item> <!-- 去掉标题栏 -->
+        <item name="android:windowContentOverlay">@null</item> <!-- 去掉内容覆盖层 -->
+        <item name="android:backgroundDimEnabled">false</item> <!-- 不暗化背景 -->
+        <item name="android:windowIsFloating">true</item> <!-- 窗口浮动（不占满屏幕） -->
+        <item name="android:windowAnimationStyle">@null</item> <!-- 禁用窗口动画（避免闪屏） -->
+    </style>
+</resources>

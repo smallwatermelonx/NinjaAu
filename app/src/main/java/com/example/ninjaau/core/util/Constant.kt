@@ -8,6 +8,10 @@ package com.example.ninjaau.core.util
  * 3. 命名规范：全大写+下划线分隔，模块前缀区分
  */
 object Constant {
+    // 隐藏悬浮窗
+    const val HIDE_FLOATING_WINDOW = "com.example.ninjaau.HIDE_FLOATING_WINDOW"
+    // 显示悬浮窗
+    const val SHOW_FLOATING_WINDOW = "com.example.ninjaau.SHOW_FLOATING_WINDOW"
 
     // ====================== 1. 应用核心常量（已用） ======================
     /** 忍三游戏包名（核心，后续识别/启动都依赖） */

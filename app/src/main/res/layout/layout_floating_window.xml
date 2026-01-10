@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="80dp">
+
+    <!-- 1. 功能菜单（放在底层，初始位移 0，宽度包含主球偏移） -->
+    <LinearLayout
+        android:id="@+id/ll_menu"
+        android:layout_width="wrap_content"
+        android:layout_height="80dp"
+        android:orientation="horizontal"
+        android:visibility="gone"
+        android:layout_gravity="center_vertical"
+        android:paddingStart="80dp"
+        android:paddingEnd="10dp"
+        android:background="@android:color/transparent">
+
+        <!-- 功能按钮1：启动 -->
+        <FrameLayout
+            android:id="@+id/btn_start"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:layout_margin="10dp"
+            android:background="@drawable/float_btn_bg"
+            android:clickable="true"
+            android:focusable="true">
+            <ImageView
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:layout_gravity="center"
+                android:src="@android:drawable/ic_media_play" />
+        </FrameLayout>
+
+        <!-- 功能按钮2：截模板 -->
+        <FrameLayout
+            android:id="@+id/btn_screenshot"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:layout_margin="10dp"
+            android:background="@drawable/float_btn_bg"
+            android:clickable="true"
+            android:focusable="true">
+            <ImageView
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:layout_gravity="center"
+                android:src="@android:drawable/ic_menu_camera" />
+        </FrameLayout>
+
+        <!-- 功能按钮3：说明 -->
+        <FrameLayout
+            android:id="@+id/btn_explain"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:layout_margin="10dp"
+            android:background="@drawable/float_btn_bg"
+            android:clickable="true"
+            android:focusable="true">
+            <ImageView
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:layout_gravity="center"
+                android:src="@android:drawable/ic_dialog_info" />
+        </FrameLayout>
+
+        <!-- 功能按钮4：退出 -->
+        <FrameLayout
+            android:id="@+id/iv_close"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:layout_margin="10dp"
+            android:background="@drawable/float_btn_bg"
+            android:clickable="true"
+            android:focusable="true">
+            <ImageView
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:layout_gravity="center"
+                android:src="@android:drawable/ic_lock_power_off" />
+        </FrameLayout>
+    </LinearLayout>
+
+    <!-- 2. 主悬浮球（放在上层，遮挡收回后的菜单） -->
+    <FrameLayout
+        android:id="@+id/fl_main_ball"
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:background="@drawable/float_ball_bg">
+        <ImageView
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_gravity="center"
+            android:src="@mipmap/ic_launcher" />
+    </FrameLayout>
+
+</FrameLayout>

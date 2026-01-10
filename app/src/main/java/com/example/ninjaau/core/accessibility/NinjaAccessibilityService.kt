@@ -9,9 +9,10 @@ import android.view.accessibility.AccessibilityNodeInfo
 import com.example.ninjaau.core.util.LogUtil
 
 /**
- * 忍三自动化核心无障碍服务
- * 功能：监听UI事件、查找界面元素、模拟点击/返回等手势操作
- * 注意：需在系统设置中开启无障碍权限才能生效
+ * 继承系统AccessibilityService，重写核心生命周期方法；
+ * 监听忍三的 UI 事件（界面跳转、元素点击等）；
+ * 提供单例实例，方便全局调用（比如GestureExecutor用它执行点击）；
+ * 预留扩展接口（比如遍历界面节点、处理忍三专属事件）。
  */
 class NinjaAccessibilityService : AccessibilityService() {
     private val TAG = "NinjaAccessibilityService"
@@ -19,16 +20,6 @@ class NinjaAccessibilityService : AccessibilityService() {
     // 单例实例（方便全局调用）
     companion object {
         private var instance: NinjaAccessibilityService? = null
-
-        // 获取服务实例（判断服务是否已启动）
-        fun getInstance(): NinjaAccessibilityService? {
-            return instance
-        }
-
-        // 判断服务是否可用（已启动+有权限）
-        fun isServiceEnabled(): Boolean {
-            return instance != null
-        }
     }
 
     /**
@@ -91,83 +82,6 @@ class NinjaAccessibilityService : AccessibilityService() {
         LogUtil.i(TAG, "无障碍服务已销毁")
     }
 
-    // ====================== 核心工具方法：元素查找 + 模拟操作 ======================
-    /**
-     * 按文本查找界面元素（支持模糊匹配）
-     */
-    fun findNodeByText(text: String, fuzzy: Boolean = true): AccessibilityNodeInfo? {
-        val rootNode = rootInActiveWindow ?: run {
-            LogUtil.e(TAG, "无法获取根节点（服务未就绪）")
-            return null
-        }
-
-        val nodeList = if (fuzzy) {
-            rootNode.findAccessibilityNodeInfosByText(text)
-        } else {
-            val list = mutableListOf<AccessibilityNodeInfo>()
-            traverseNode(rootNode) { node ->
-                if (node.text?.toString() == text) {
-                    list.add(node)
-                }
-            }
-            list
-        }
-
-        return if (nodeList.isNotEmpty()) {
-            nodeList[0]
-        } else {
-            null
-        }
-    }
-
-    /**
-     * 按资源ID查找界面元素
-     */
-    fun findNodeById(id: String): AccessibilityNodeInfo? {
-        val rootNode = rootInActiveWindow ?: return null
-        val nodeList = rootNode.findAccessibilityNodeInfosByViewId(id)
-        return if (nodeList.isNotEmpty()) nodeList[0] else null
-    }
-
-    /**
-     * 模拟点击元素
-     */
-    fun clickNode(node: AccessibilityNodeInfo?): Boolean {
-        node ?: return false
-        return try {
-            if (node.isClickable && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                true
-            } else {
-                val rect = android.graphics.Rect()
-                node.getBoundsInScreen(rect)
-                clickByCoordinate(rect.centerX(), rect.centerY())
-            }
-        } catch (e: Exception) {
-            false
-        } finally {
-            node.recycle()
-        }
-    }
-
-    /**
-     * 按坐标模拟点击
-     */
-    fun clickByCoordinate(x: Int, y: Int): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            val gestureBuilder = GestureDescription.Builder()
-            val path = android.graphics.Path().apply { moveTo(x.toFloat(), y.toFloat()) }
-            gestureBuilder.addStroke(GestureDescription.StrokeDescription(path, 0, 100))
-            return dispatchGesture(gestureBuilder.build(), null, null)
-        }
-        return false
-    }
-
-    /**
-     * 模拟返回键
-     */
-    fun pressBack(): Boolean {
-        return performGlobalAction(GLOBAL_ACTION_BACK)
-    }
 
     private fun traverseNode(node: AccessibilityNodeInfo?, action: (AccessibilityNodeInfo) -> Unit) {
         node ?: return
@@ -175,14 +89,5 @@ class NinjaAccessibilityService : AccessibilityService() {
         for (i in 0 until node.childCount) {
             traverseNode(node.getChild(i), action)
         }
-    }
-
-    /**
-     * 跳转到系统无障碍设置页面
-     */
-    fun openAccessibilitySetting() {
-        val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        startActivity(intent)
     }
 }

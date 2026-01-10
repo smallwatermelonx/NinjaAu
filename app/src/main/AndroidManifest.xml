@@ -2,12 +2,23 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- 权限放在application外面（正确） -->
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 悬浮窗权限 -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    
+    <!-- 存储权限 -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="replace"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+
+    <!-- 前台服务与截图权限 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
+        android:name=".core.NinjaApp"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -18,11 +29,16 @@
         android:theme="@style/Theme.NinjaAu"
         tools:targetApi="31">
 
-        <!-- Service必须放在application内部（核心修正！） -->
+        <service
+            android:name=".core.screenshot.ForegroundScreenshotService"
+            android:foregroundServiceType="mediaProjection"
+            android:exported="false" />
+
         <service
             android:name=".core.appcontrol.AppAutoRestartService"
             android:foregroundServiceType="dataSync"
             tools:ignore="ForegroundServicePermission" />
+
         <service
             android:name=".core.accessibility.NinjaAccessibilityService"
             android:exported="true"
@@ -34,6 +50,18 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
+
+        <service
+            android:name=".core.floating.FloatingWindowService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false" 
+            tools:ignore="ForegroundServicePermission" />
+
+        <activity
+            android:name=".core.screenshot.ScreenshotPermissionActivity"
+            android:theme="@style/Theme.Transparent"
+            android:exported="false" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -45,5 +73,4 @@
             </intent-filter>
         </activity>
     </application>
-
 </manifest>

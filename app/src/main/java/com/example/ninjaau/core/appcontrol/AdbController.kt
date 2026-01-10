@@ -1,9 +1,11 @@
 package com.example.ninjaau.core.appcontrol
 
+import android.Manifest
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import androidx.annotation.RequiresPermission
 import com.example.ninjaau.core.util.LogUtil
 
 /**
@@ -38,15 +40,13 @@ object AdbController {
      * 停止应用（原生ActivityManager方式）
      * 注意：Android 10+需要系统权限，若普通应用无法调用，可改用"启动应用+按返回键"模拟停止
      */
+    @RequiresPermission(Manifest.permission.KILL_BACKGROUND_PROCESSES)
     fun stopApp(context: Context, packageName: String): Boolean {
         return try {
-            val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                activityManager.forceStopPackage(packageName)
-            } else {
-                @Suppress("DEPRECATION")
-                activityManager.killBackgroundProcesses(packageName)
-            }
+            val activityManager =
+                context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            @Suppress("DEPRECATION")
+            activityManager.killBackgroundProcesses(packageName)
             LogUtil.i(TAG, "成功停止应用: $packageName")
             true
         } catch (e: SecurityException) {
@@ -63,7 +63,8 @@ object AdbController {
      */
     fun isAppRunning(context: Context, packageName: String): Boolean {
         return try {
-            val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            val activityManager =
+                context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
             val runningProcesses = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 activityManager.runningAppProcesses
             } else {
@@ -83,7 +84,8 @@ object AdbController {
      */
     fun isAppInForeground(context: Context, packageName: String): Boolean {
         return try {
-            val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            val activityManager =
+                context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
             val runningAppProcesses = activityManager.runningAppProcesses ?: return false
 
             runningAppProcesses.any {
@@ -95,31 +97,4 @@ object AdbController {
             false
         }
     }
-
-    /**
-     * 启动后台监控服务
-     */
-    fun startAppMonitorService(context: Context, packageName: String) {
-        val intent = Intent(context, AppAutoRestartService::class.java)
-        intent.putExtra("PACKAGE_NAME", packageName)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(intent)
-        } else {
-            context.startService(intent)
-        }
-        LogUtil.i(TAG, "启动监控服务: $packageName")
-    }
-
-    /**
-     * 停止后台监控服务
-     */
-    fun stopAppMonitorService(context: Context) {
-        val intent = Intent(context, AppAutoRestartService::class.java)
-        context.stopService(intent)
-        LogUtil.i(TAG, "停止监控服务")
-    }
-}
-
-private fun ActivityManager.forceStopPackage(packageName: String) {
-    TODO("Not yet implemented")
 }

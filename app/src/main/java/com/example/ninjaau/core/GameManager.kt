@@ -1,6 +1,8 @@
 package com.example.ninjaau.core
 
+import android.Manifest
 import android.content.Context
+import androidx.annotation.RequiresPermission
 import com.example.ninjaau.core.appcontrol.AdbController
 import com.example.ninjaau.core.util.LogUtil
 
@@ -17,6 +19,7 @@ class GameManager(private val context: Context) {
     }
 
     // 停止游戏（通过ADB命令）
+    @RequiresPermission(Manifest.permission.KILL_BACKGROUND_PROCESSES)
     fun stopGame(): Boolean {
         LogUtil.d(TAG, "通过ADB停止游戏: $GAME_PACKAGE_NAME")
         return AdbController.stopApp(context, GAME_PACKAGE_NAME)
