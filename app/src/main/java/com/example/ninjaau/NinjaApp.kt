@@ -1,4 +1,4 @@
-package com.example.ninjaau.core
+package com.example.ninjaau
 
 import android.app.Application
 import com.example.ninjaau.core.util.LogUtil
@@ -14,7 +14,7 @@ class NinjaApp : Application() {
         super.onCreate()
         // 1. 初始化日志工具
         LogUtil.init(this)
-        
+
         // 2. 初始化 OpenCV
         if (OpenCVLoader.initDebug()) {
             LogUtil.i("NinjaApp", "OpenCV 库加载成功")

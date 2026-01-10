@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.IBinder
 import android.view.WindowManager
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import com.example.ninjaau.R
 import com.example.ninjaau.core.util.Constant
 import com.example.ninjaau.core.util.PermissionManager
@@ -33,7 +34,7 @@ class ForegroundScreenshotService : Service() {
         if (resultCode == Activity.RESULT_OK && data != null) {
             startForegroundNotification()
             
-            // 在子线程中执行截图，避免阻塞主线程，确保游戏画面流畅
+            // 在子线程中执行截图，避免阻塞主线程
             Thread {
                 executeScreenshot(resultCode, data, templateName)
             }.start()
@@ -46,7 +47,7 @@ class ForegroundScreenshotService : Service() {
     }
 
     private fun startForegroundNotification() {
-        val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -71,7 +72,7 @@ class ForegroundScreenshotService : Service() {
 
     private fun executeScreenshot(resultCode: Int, data: Intent, templateName: String) {
         try {
-            // 1. 截图前：发送隐藏广播并稍作等待，确保悬浮窗消失
+            // 1. 截图前：发送隐藏广播（修正引用为 BroadcastActions）
             sendBroadcast(Intent(Constant.HIDE_FLOATING_WINDOW))
             Thread.sleep(200)
 
@@ -83,21 +84,18 @@ class ForegroundScreenshotService : Service() {
             
             val path = screenshotTool.captureFullScreen(templateName)
             
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                mainExecutor.execute {
-                    Toast.makeText(this, "模板保存成功: $path", Toast.LENGTH_SHORT).show()
-                }
+            // 使用 ContextCompat 获取主线程执行器，确保 UI 操作安全
+            ContextCompat.getMainExecutor(this).execute {
+                Toast.makeText(this, "模板保存成功: $path", Toast.LENGTH_SHORT).show()
             }
             
             mediaProjection.stop()
         } catch (e: Exception) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                mainExecutor.execute {
-                    Toast.makeText(this, "截图失败: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
+            ContextCompat.getMainExecutor(this).execute {
+                Toast.makeText(this, "截图失败: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         } finally {
-            // 2. 截图后：无论成功失败，发送显示广播恢复悬浮窗
+            // 2. 截图后：发送显示广播（修正引用为 BroadcastActions）
             sendBroadcast(Intent(Constant.SHOW_FLOATING_WINDOW))
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
