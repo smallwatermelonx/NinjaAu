@@ -2,18 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- 悬浮窗权限 -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-    
-    <!-- 存储权限 -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="replace"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-
-    <!-- 前台服务与截图权限 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
-    
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
@@ -51,11 +45,11 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
+        <!-- 核心修复：给悬浮窗服务也增加 mediaProjection 类型，让它具备初始化权限 -->
         <service
             android:name=".core.floating.FloatingWindowService"
-            android:foregroundServiceType="specialUse"
-            android:exported="false" 
-            tools:ignore="ForegroundServicePermission" />
+            android:foregroundServiceType="mediaProjection"
+            android:exported="false" />
 
         <activity
             android:name=".core.screenshot.ScreenshotPermissionActivity"

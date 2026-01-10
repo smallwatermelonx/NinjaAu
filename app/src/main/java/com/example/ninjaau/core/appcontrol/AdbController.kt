@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.annotation.RequiresPermission
+import com.example.ninjaau.core.GameManager
 import com.example.ninjaau.core.util.LogUtil
 
 /**
@@ -25,6 +26,7 @@ object AdbController {
                 launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(launchIntent)
                 LogUtil.i(TAG, "成功启动应用: $packageName")
+                GameManager.startScript(context);
                 true
             } else {
                 LogUtil.e(TAG, "未找到应用的启动入口（包名错误）: $packageName")

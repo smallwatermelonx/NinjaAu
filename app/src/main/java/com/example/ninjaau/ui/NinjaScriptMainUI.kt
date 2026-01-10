@@ -1,6 +1,8 @@
 package com.example.ninjaau.ui
 
 import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -18,7 +20,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ninjaau.core.AutoRestartService
-import com.example.ninjaau.core.GameManager
 import com.example.ninjaau.core.appcontrol.AdbController
 import com.example.ninjaau.core.floating.FloatingWindowService
 import com.example.ninjaau.core.screenshot.ScreenshotPermissionActivity
@@ -37,40 +38,56 @@ fun NinjaScriptMainUI() {
         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
     }
 
+    // 辅助方法：检查悬浮窗权限
+    fun checkOverlayPermission(): Boolean {
+        return Settings.canDrawOverlays(context)
+    }
+
+    // 核心业务逻辑：点击 Link Start
     val onLinkStart: () -> Unit = {
         if (!PermissionManager.isAccessibilityServiceEnabled(context)) {
             showToast("请先开启无障碍服务")
-            context.startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+            context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             })
+        } else if (!checkOverlayPermission()) {
+            showToast("请开启悬浮窗权限")
+            val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
+            context.startActivity(intent.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
         } else if (!PermissionManager.hasProjectionPermission()) {
             showToast("请授权截图权限")
             context.startActivity(Intent(context, ScreenshotPermissionActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             })
         } else {
-            // 启动悬浮窗
-            context.startService(Intent(context, FloatingWindowService::class.java))
-            // 启动监控
+            // 启动悬浮窗服务
+            val floatingIntent = Intent(context, FloatingWindowService::class.java)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                context.startForegroundService(floatingIntent)
+            } else {
+                context.startService(floatingIntent)
+            }
+
+            // 启动监控服务
             val monitorIntent = Intent(context, AutoRestartService::class.java).apply {
                 putExtra("PACKAGE_NAME", Constant.NINJA_GAME_PACKAGE)
             }
-            context.startService(monitorIntent)
-            
-            // 核心修改：启动业务总管开始自动运行
-            GameManager.startScript(context)
-            
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                context.startForegroundService(monitorIntent)
+            } else {
+                context.startService(monitorIntent)
+            }
+
             // 启动游戏
             AdbController.launchApp(context, Constant.NINJA_GAME_PACKAGE)
-            showToast("Link Start! 自动化已开始...")
+            showToast("Link Start! 自动化已就绪")
         }
     }
 
     val onDisconnect: () -> Unit = {
-        GameManager.stopScript()
         context.stopService(Intent(context, FloatingWindowService::class.java))
         context.stopService(Intent(context, AutoRestartService::class.java))
-        showToast("已停止所有服务")
+        showToast("已停止服务")
     }
 
     MaterialTheme(

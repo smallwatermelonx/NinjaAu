@@ -2,45 +2,50 @@ package com.example.ninjaau.core.util
 
 import android.graphics.Bitmap
 import org.opencv.android.OpenCVLoader
+import org.opencv.android.Utils
 import org.opencv.core.Mat
 import org.opencv.imgproc.Imgproc
 
 /**
- * 优化版OpenCV工具：复用Mat对象，避免高频创建/销毁
+ * OpenCV核心工具类：实现图像格式转换与初始化
  */
 object OpenCVUtil {
-    // 预创建Mat对象（复用，减少GC）
-    private val screenMat = Mat()
-    private val templateMat = Mat()
-    private val resultMat = Mat()
-    private val tmpMat = Mat()
+    private const val TAG = "OpenCVUtil"
 
-    // 初始化（App启动时调用一次）
     fun initOpenCV(): Boolean {
         return OpenCVLoader.initDebug()
     }
 
     /**
-     * Bitmap转Mat（复用预创建的Mat，避免高频new）
+     * Bitmap 转 OpenCV Mat (RGBA -> BGR)
      */
-    fun bitmapToMat(bitmap: Bitmap, targetMat: Mat = screenMat): Mat {
-        synchronized(this) { // 线程安全（高频检测可能多线程）
-            org.opencv.android.Utils.bitmapToMat(bitmap, tmpMat)
-            Imgproc.cvtColor(tmpMat, targetMat, Imgproc.COLOR_RGBA2BGR)
-            tmpMat.setTo(org.opencv.core.Scalar.all(0.0)) // 清空临时Mat
-            return targetMat
-        }
+    fun bitmapToMat(bitmap: Bitmap): Mat {
+        val mat = Mat()
+        // 1. 将 Bitmap 数据拷贝到 Mat (默认 RGBA)
+        Utils.bitmapToMat(bitmap, mat)
+        // 2. 转换为 OpenCV 算法首选的 BGR 格式
+        val bgrMat = Mat()
+        Imgproc.cvtColor(mat, bgrMat, Imgproc.COLOR_RGBA2BGR)
+        mat.release()
+        return bgrMat
     }
 
     /**
-     * 释放所有复用的Mat（退出时调用）
+     * Mat 转 Bitmap (BGR -> RGBA) 用于调试显示
      */
-    fun releaseAllMat() {
-        synchronized(this) {
-            screenMat.release()
-            templateMat.release()
-            resultMat.release()
-            tmpMat.release()
-        }
+    fun matToBitmap(mat: Mat): Bitmap {
+        val rgbaMat = Mat()
+        Imgproc.cvtColor(mat, rgbaMat, Imgproc.COLOR_BGR2RGBA)
+        val bitmap = Bitmap.createBitmap(rgbaMat.cols(), rgbaMat.rows(), Bitmap.Config.ARGB_8888)
+        Utils.matToBitmap(rgbaMat, bitmap)
+        rgbaMat.release()
+        return bitmap
+    }
+
+    /**
+     * 安全释放多个 Mat 对象
+     */
+    fun releaseMats(vararg mats: Mat?) {
+        mats.forEach { it?.release() }
     }
 }

@@ -11,15 +11,20 @@ import android.view.animation.TranslateAnimation
 import android.widget.*
 import androidx.core.content.ContextCompat
 import com.example.ninjaau.R
+import com.example.ninjaau.core.GameManager
+import com.example.ninjaau.core.ScriptState
 import com.example.ninjaau.core.screenshot.ForegroundScreenshotService
 import com.example.ninjaau.core.screenshot.ScreenshotPermissionActivity
 import com.example.ninjaau.core.util.Constant
+import com.example.ninjaau.core.util.LogUtil
 import com.example.ninjaau.core.util.PermissionManager
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.collectLatest
 import kotlin.math.abs
 
 /**
  * 高级智能悬浮窗Service
- * 修复：精准点击、自然收回、Service弹窗兼容
+ * 核心修复：作为具备 mediaProjection 属性的前台服务，承担初始化 MediaProjection 的职责
  */
 class FloatingWindowService : Service() {
     companion object {
@@ -34,12 +39,15 @@ class FloatingWindowService : Service() {
     private lateinit var layoutParams: WindowManager.LayoutParams
     private lateinit var flMainBall: View
     private lateinit var llMenu: LinearLayout
+    private lateinit var ivControlIcon: ImageView
 
     private var isExpanded = false
     private var isSideHidden = false
     private var screenWidth = 0
     private val handler = Handler(Looper.getMainLooper())
     private val sideHideRunnable = Runnable { sideHide() }
+    
+    private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -54,7 +62,19 @@ class FloatingWindowService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        
+        // 1. 立即启动前台服务通知
         startFloatingForeground()
+
+        // 2. 核心修复：在这个前台服务内完成 MediaProjection 的初始化
+        // 这样就满足了系统 "require a foreground service" 的安全要求
+        val success = PermissionManager.initMediaProjection(this)
+        if (success) {
+            LogUtil.i("FloatingWindowService", "MediaProjection 在服务中初始化成功")
+        } else {
+            LogUtil.e("FloatingWindowService", "MediaProjection 在服务中初始化失败，可能未获得授权")
+        }
+
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         
         val filter = IntentFilter().apply {
@@ -64,6 +84,7 @@ class FloatingWindowService : Service() {
         ContextCompat.registerReceiver(this, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         
         initFloatingView()
+        observeScriptState()
     }
 
     private fun startFloatingForeground() {
@@ -79,10 +100,26 @@ class FloatingWindowService : Service() {
         startForeground(NOTIFICATION_ID, notification)
     }
 
+    private fun observeScriptState() {
+        serviceScope.launch {
+            GameManager.state.collectLatest { state ->
+                when (state) {
+                    ScriptState.IDLE -> {
+                        ivControlIcon.setImageResource(android.R.drawable.ic_media_play)
+                    }
+                    else -> {
+                        ivControlIcon.setImageResource(android.R.drawable.ic_media_pause)
+                    }
+                }
+            }
+        }
+    }
+
     private fun initFloatingView() {
         floatingView = View.inflate(this, R.layout.layout_floating_window, null)
         flMainBall = floatingView.findViewById(R.id.fl_main_ball)
         llMenu = floatingView.findViewById(R.id.ll_menu)
+        ivControlIcon = floatingView.findViewById(R.id.iv_control_icon)
 
         val metrics = DisplayMetrics()
         windowManager.defaultDisplay.getRealMetrics(metrics)
@@ -153,10 +190,9 @@ class FloatingWindowService : Service() {
     }
 
     private fun setupMenuClicks() {
-        // 核心修复：手动显式绑定所有功能按钮，防止事件透传
         floatingView.findViewById<View>(R.id.btn_start).setOnClickListener {
             resetHideTimer()
-            Toast.makeText(this, "脚本逻辑已准备", Toast.LENGTH_SHORT).show()
+            GameManager.toggleScript(this)
         }
 
         floatingView.findViewById<View>(R.id.btn_screenshot).setOnClickListener {
@@ -164,12 +200,8 @@ class FloatingWindowService : Service() {
             showScreenshotDialog()
         }
 
-        floatingView.findViewById<View>(R.id.btn_explain).setOnClickListener {
-            resetHideTimer()
-            Toast.makeText(this, "智能贴边+点击弹窗交互", Toast.LENGTH_SHORT).show()
-        }
-
         floatingView.findViewById<View>(R.id.iv_close).setOnClickListener {
+            GameManager.stopScript()
             stopSelf()
         }
     }
@@ -178,14 +210,12 @@ class FloatingWindowService : Service() {
         isExpanded = !isExpanded
         if (isExpanded) {
             llMenu.visibility = View.VISIBLE
-            // 修正动画：相对于自身宽度位移，实现从球后滑出
             val anim = TranslateAnimation(-200f, 0f, 0f, 0f).apply {
                 duration = ANIM_DURATION
                 fillAfter = true
             }
             llMenu.startAnimation(anim)
         } else {
-            // 修正动画：滑入球后消失，而不是划过全屏
             val anim = TranslateAnimation(0f, -200f, 0f, 0f).apply {
                 duration = ANIM_DURATION
                 fillAfter = false 
@@ -236,7 +266,6 @@ class FloatingWindowService : Service() {
         }
         
         val input = EditText(this).apply { hint = "模板名称" }
-        // 核心修复：Service 弹窗必须使用特定的系统窗口类型
         val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Light_Dialog_Alert)
             .setTitle("采集模板").setView(input)
             .setPositiveButton("截图") { _, _ ->
@@ -265,6 +294,7 @@ class FloatingWindowService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        serviceScope.cancel() 
         handler.removeCallbacks(sideHideRunnable)
         unregisterReceiver(receiver)
         removeFloatingView()
