@@ -8,8 +8,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,9 +22,14 @@ import com.example.ninjaau.core.appcontrol.AdbController
 import com.example.ninjaau.core.floating.FloatingWindowService
 import com.example.ninjaau.core.screenshot.ScreenshotPermissionActivity
 import com.example.ninjaau.core.util.Constant
+import com.example.ninjaau.core.util.LogUtil
 import com.example.ninjaau.core.util.PermissionManager
 import com.example.ninjaau.ui.settings.RewardGrabSettingsUI
 
+/**
+ * 主界面容器
+ * 修复：确保所有逻辑仅在点击事件中触发，防止启动即运行。
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NinjaScriptMainUI() {
@@ -34,62 +37,91 @@ fun NinjaScriptMainUI() {
     val tabTitles = listOf("启动", "功能设置")
     val context = LocalContext.current
 
-    fun showToast(msg: String) {
-        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-    }
-
-    // 辅助方法：检查悬浮窗权限
-    fun checkOverlayPermission(): Boolean {
-        return Settings.canDrawOverlays(context)
-    }
-
-    // 核心业务逻辑：点击 Link Start
-    val onLinkStart: () -> Unit = {
-        if (!PermissionManager.isAccessibilityServiceEnabled(context)) {
-            showToast("请先开启无障碍服务")
-            context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            })
-        } else if (!checkOverlayPermission()) {
-            showToast("请开启悬浮窗权限")
-            val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
-            context.startActivity(intent.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
-        } else if (!PermissionManager.hasProjectionPermission()) {
-            showToast("请授权截图权限")
-            context.startActivity(Intent(context, ScreenshotPermissionActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            })
-        } else {
-            // 启动悬浮窗服务
-            val floatingIntent = Intent(context, FloatingWindowService::class.java)
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                context.startForegroundService(floatingIntent)
-            } else {
-                context.startService(floatingIntent)
-            }
-
-            // 启动监控服务
-            val monitorIntent = Intent(context, AutoRestartService::class.java).apply {
-                putExtra("PACKAGE_NAME", Constant.NINJA_GAME_PACKAGE)
-            }
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                context.startForegroundService(monitorIntent)
-            } else {
-                context.startService(monitorIntent)
-            }
-
-            // 启动游戏
-            AdbController.launchApp(context, Constant.NINJA_GAME_PACKAGE)
-            showToast("Link Start! 自动化已就绪")
+    // 修复1：用 remember 固定 Toast 方法，避免重组重复创建
+    val showToast = remember {
+        { msg: String ->
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
         }
     }
 
-    val onDisconnect: () -> Unit = {
-        context.stopService(Intent(context, FloatingWindowService::class.java))
-        context.stopService(Intent(context, AutoRestartService::class.java))
-        showToast("已停止服务")
+    // 修复2：用 remember 固定权限检查方法，避免重组重复执行
+    val checkOverlayPermission = remember {
+        {
+            Settings.canDrawOverlays(context)
+        }
     }
 
+    val onLinkStart = remember {
+        {
+            LogUtil.i("MainUI", "===== 点击Link Start，执行主流程 =====")
+            // A. 权限检查流（只检查，不初始化）
+            if (!PermissionManager.isAccessibilityServiceEnabled(context)) {
+                showToast("请先开启无障碍服务")
+                context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+            } else if (!checkOverlayPermission()) {
+                showToast("请开启悬浮窗权限")
+                val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
+                context.startActivity(intent.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+            } else if (!PermissionManager.hasProjectionPermission()) {
+                showToast("请授权截图权限")
+                context.startActivity(Intent(context, ScreenshotPermissionActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+            } else {
+                val floatingIntent = Intent(context, FloatingWindowService::class.java)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    context.startForegroundService(floatingIntent)
+                } else {
+                    context.startService(floatingIntent)
+                }
+
+                val monitorIntent = Intent(context, AutoRestartService::class.java).apply {
+                    putExtra("PACKAGE_NAME", Constant.NINJA_GAME_PACKAGE)
+                }
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    context.startForegroundService(monitorIntent)
+                } else {
+                    context.startService(monitorIntent)
+                }
+
+                AdbController.launchApp(context, Constant.NINJA_GAME_PACKAGE)
+                showToast("Link Start! 自动化已就绪")
+            }
+        }
+    }
+
+
+    // 修复4：用 remember 固定 onDisconnect 闭包
+    val onDisconnect = remember {
+        {
+            LogUtil.i("MainUI", "===== 点击断开链接 =====")
+            context.stopService(Intent(context, FloatingWindowService::class.java))
+            context.stopService(Intent(context, AutoRestartService::class.java))
+            showToast("已停止所有服务")
+        }
+    }
+
+    // 优化：进APP主动检查权限（引导用户开启，但不执行主流程）
+    LaunchedEffect(Unit) { // 仅在Compose首次启动时执行一次
+        LogUtil.i("MainUI", "===== APP启动，检查权限 =====")
+        val permissionTips = mutableListOf<String>()
+        if (!PermissionManager.isAccessibilityServiceEnabled(context)) {
+            permissionTips.add("无障碍服务")
+        }
+        if (!checkOverlayPermission()) {
+            permissionTips.add("悬浮窗权限")
+        }
+        if (!PermissionManager.hasProjectionPermission()) {
+            permissionTips.add("截图权限")
+        }
+        if (permissionTips.isNotEmpty()) {
+            showToast("请先开启以下权限：${permissionTips.joinToString("、")}")
+        }
+    }
+
+    // UI渲染（无修改，确保Button的onClick是onLinkStart（引用），不是onLinkStart()（执行））
     MaterialTheme(
         colorScheme = darkColorScheme(
             primary = Color(0xFF6C63FF),
@@ -108,7 +140,11 @@ fun NinjaScriptMainUI() {
             Column(modifier = Modifier.padding(innerPadding).fillMaxSize().background(Color(0xFF121212))) {
                 TabRow(selectedTabIndex = selectedTab, containerColor = Color(0xFF2C2C2C)) {
                     tabTitles.forEachIndexed { index, title ->
-                        Tab(selected = selectedTab == index, onClick = { selectedTab = index }, text = { Text(title) })
+                        Tab(
+                            selected = selectedTab == index,
+                            onClick = { selectedTab = index },
+                            text = { Text(title) }
+                        )
                     }
                 }
                 when (selectedTab) {
@@ -120,14 +156,28 @@ fun NinjaScriptMainUI() {
     }
 }
 
+// LaunchTab无修改，确保Button的onClick是传入的闭包引用
 @Composable
 private fun LaunchTab(onLinkStart: () -> Unit, onDisconnect: () -> Unit) {
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Button(onClick = onLinkStart, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp)) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Button(
+            onClick = onLinkStart, // 正确：传入闭包引用，点击才执行
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(8.dp)
+        ) {
             Text("Link Start!", fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(modifier = Modifier.height(12.dp))
-        OutlinedButton(onClick = onDisconnect, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, Color(0xFFFF5252))) {
+        OutlinedButton(
+            onClick = onDisconnect,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(8.dp),
+            border = BorderStroke(1.dp, Color(0xFFFF5252))
+        ) {
             Text("断开链接", color = Color(0xFFFF5252), fontSize = 16.sp)
         }
     }

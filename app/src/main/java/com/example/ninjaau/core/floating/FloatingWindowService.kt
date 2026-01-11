@@ -24,7 +24,7 @@ import kotlin.math.abs
 
 /**
  * 高级智能悬浮窗Service
- * 核心修复：作为具备 mediaProjection 属性的前台服务，承担初始化 MediaProjection 的职责
+ * 核心修复：适配 Android 12+ 前台服务行为
  */
 class FloatingWindowService : Service() {
     companion object {
@@ -44,6 +44,7 @@ class FloatingWindowService : Service() {
     private var isExpanded = false
     private var isSideHidden = false
     private var screenWidth = 0
+    private var ballWidth = 0
     private val handler = Handler(Looper.getMainLooper())
     private val sideHideRunnable = Runnable { sideHide() }
     
@@ -60,63 +61,70 @@ class FloatingWindowService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    // FloatingWindowService.kt 中修改 onCreate 方法
     override fun onCreate() {
         super.onCreate()
-        
-        // 1. 立即启动前台服务通知
+
+        // 1. 立即启动前台通知（Android 12+ 强制要求）
         startFloatingForeground()
 
-        // 2. 核心修复：在这个前台服务内完成 MediaProjection 的初始化
-        // 这样就满足了系统 "require a foreground service" 的安全要求
-        val success = PermissionManager.initMediaProjection(this)
-        if (success) {
-            LogUtil.i("FloatingWindowService", "MediaProjection 在服务中初始化成功")
-        } else {
-            LogUtil.e("FloatingWindowService", "MediaProjection 在服务中初始化失败，可能未获得授权")
+
+        // 2. 在前台服务环境中完成截图权限初始化（处理结果）
+        val initSuccess = PermissionManager.initMediaProjection(this)
+        if (!initSuccess) {
+            LogUtil.e("FloatingWindowService", "MediaProjection初始化失败，终止悬浮窗服务")
+            // 提示用户重新授权
+            Toast.makeText(this, "截图权限初始化失败，请重新点击Link Start授权", Toast.LENGTH_LONG).show()
+            stopSelf() // 初始化失败，终止服务
+            return // 不再执行后续逻辑
         }
 
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        
+
         val filter = IntentFilter().apply {
             addAction(Constant.HIDE_FLOATING_WINDOW)
             addAction(Constant.SHOW_FLOATING_WINDOW)
         }
         ContextCompat.registerReceiver(this, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
-        
+
         initFloatingView()
         observeScriptState()
     }
 
     private fun startFloatingForeground() {
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(CHANNEL_ID, "悬浮窗服务", NotificationManager.IMPORTANCE_LOW)
-            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            nm.createNotificationChannel(channel)
+            notificationManager.createNotificationChannel(channel)
         }
-        val notification = Notification.Builder(this, CHANNEL_ID)
+
+        val builder = Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("NinjaAu 悬浮窗活跃中")
-            .build()
-        startForeground(NOTIFICATION_ID, notification)
+            .setPriority(Notification.PRIORITY_MIN)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // Android 12+：确保通知立即显示，减少启动延迟感知
+            builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
+        }
+
+        startForeground(NOTIFICATION_ID, builder.build())
     }
 
     private fun observeScriptState() {
         serviceScope.launch {
             GameManager.state.collectLatest { state ->
                 when (state) {
-                    ScriptState.IDLE -> {
-                        ivControlIcon.setImageResource(android.R.drawable.ic_media_play)
-                    }
-                    else -> {
-                        ivControlIcon.setImageResource(android.R.drawable.ic_media_pause)
-                    }
+                    ScriptState.IDLE -> ivControlIcon.setImageResource(android.R.drawable.ic_media_play)
+                    else -> ivControlIcon.setImageResource(android.R.drawable.ic_media_pause)
                 }
             }
         }
     }
 
     private fun initFloatingView() {
-        floatingView = View.inflate(this, R.layout.layout_floating_window, null)
+        floatingView = LayoutInflater.from(this).inflate(R.layout.layout_floating_window, null)
         flMainBall = floatingView.findViewById(R.id.fl_main_ball)
         llMenu = floatingView.findViewById(R.id.ll_menu)
         ivControlIcon = floatingView.findViewById(R.id.iv_control_icon)
@@ -137,6 +145,15 @@ class FloatingWindowService : Service() {
             x = 0
             y = 500
         }
+
+        floatingView.viewTreeObserver.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener {
+            override fun onGlobalLayout() {
+                ballWidth = flMainBall.width
+                if (ballWidth > 0) {
+                    floatingView.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                }
+            }
+        })
 
         addFloatingView()
         setupTouchInteraction()
@@ -233,14 +250,18 @@ class FloatingWindowService : Service() {
     }
 
     private fun snapToEdge() {
-        layoutParams.x = if (layoutParams.x + floatingView.width / 2 < screenWidth / 2) 0 else screenWidth - flMainBall.width
+        if (ballWidth == 0) ballWidth = flMainBall.width
+        layoutParams.x = if (layoutParams.x + floatingView.width / 2 < screenWidth / 2) 0 else screenWidth - ballWidth
         windowManager.updateViewLayout(floatingView, layoutParams)
     }
 
     private fun sideHide() {
         if (isExpanded || isSideHidden) return
-        val hideOffset = (flMainBall.width * 0.8).toInt()
-        layoutParams.x = if (layoutParams.x <= 0) -hideOffset else screenWidth - (flMainBall.width - hideOffset)
+        if (ballWidth == 0) ballWidth = flMainBall.width
+        if (ballWidth == 0) return
+
+        val hideOffset = (ballWidth * 0.8).toInt()
+        layoutParams.x = if (layoutParams.x <= 0) -hideOffset else screenWidth - (ballWidth - hideOffset)
         isSideHidden = true
         flMainBall.alpha = 0.5f
         windowManager.updateViewLayout(floatingView, layoutParams)
@@ -248,7 +269,8 @@ class FloatingWindowService : Service() {
 
     private fun restoreFromSide() {
         if (!isSideHidden) return
-        layoutParams.x = if (layoutParams.x < 0) 0 else screenWidth - flMainBall.width
+        if (ballWidth == 0) ballWidth = flMainBall.width
+        layoutParams.x = if (layoutParams.x < 0) 0 else screenWidth - ballWidth
         isSideHidden = false
         flMainBall.alpha = 1.0f
         windowManager.updateViewLayout(floatingView, layoutParams)
@@ -282,13 +304,21 @@ class FloatingWindowService : Service() {
 
     private fun addFloatingView() {
         if (::floatingView.isInitialized && floatingView.parent == null) {
-            windowManager.addView(floatingView, layoutParams)
+            try {
+                windowManager.addView(floatingView, layoutParams)
+            } catch (e: Exception) {
+                LogUtil.e("FloatingWindowService", "添加悬浮窗失败: ${e.message}")
+            }
         }
     }
 
     private fun removeFloatingView() {
         if (::floatingView.isInitialized && floatingView.parent != null) {
-            windowManager.removeView(floatingView)
+            try {
+                windowManager.removeView(floatingView)
+            } catch (e: Exception) {
+                LogUtil.e("FloatingWindowService", "移除悬浮窗失败: ${e.message}")
+            }
         }
     }
 

@@ -1,6 +1,7 @@
 package com.example.ninjaau.core
 
 import android.content.Context
+import android.widget.Toast
 import com.example.ninjaau.core.accessibility.NinjaAccessibilityService
 import com.example.ninjaau.core.recognition.LoginPageRecognizer
 import com.example.ninjaau.core.util.LogUtil
@@ -47,23 +48,24 @@ object GameManager {
     /**
      * 启动脚本
      */
+    // GameManager.kt 中修改 startScript 方法
     fun startScript(context: Context) {
         if (_state.value != ScriptState.IDLE) return
 
-        // 1. 核心改进：在启动循环前，先初始化全局唯一的 MediaProjection
-        val initSuccess = PermissionManager.initMediaProjection(context)
-        if (!initSuccess) {
-            LogUtil.e(TAG, "MediaProjection 初始化失败，请确保已点击 Link Start 授权")
+        // 1. 核心改进：不再主动初始化，只检查已有实例
+        if (PermissionManager.mediaProjection == null) {
+            LogUtil.e(TAG, "MediaProjection 未初始化，请先启动悬浮窗服务（点击Link Start）")
+            Toast.makeText(context, "请先点击Link Start启动服务", Toast.LENGTH_SHORT).show()
             return
         }
 
         _state.value = ScriptState.LOGIN_CHECK
         val appContext = context.applicationContext
-        
+
         job = scope.launch {
             LogUtil.i(TAG, "自动化主流程已启动")
             try {
-                // 第一步：登录页检测（循环复用全局 MediaProjection，不再崩溃）
+                // 第一步：登录页检测（复用已有 MediaProjection 实例）
                 loginCheckLoop(appContext)
                 // 第二步：进入大厅循环
                 hallLoop(appContext)

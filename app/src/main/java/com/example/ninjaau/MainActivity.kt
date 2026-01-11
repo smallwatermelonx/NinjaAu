@@ -8,7 +8,6 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import com.example.ninjaau.core.floating.FloatingWindowService
 import com.example.ninjaau.core.util.PermissionManager
 import com.example.ninjaau.ui.NinjaScriptMainUI
 import com.example.ninjaau.ui.theme.NinjaAuTheme
