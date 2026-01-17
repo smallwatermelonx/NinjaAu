@@ -329,4 +329,5 @@ class FloatingWindowService : Service() {
         unregisterReceiver(receiver)
         removeFloatingView()
     }
+
 }

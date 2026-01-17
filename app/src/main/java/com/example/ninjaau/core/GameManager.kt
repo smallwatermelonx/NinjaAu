@@ -3,7 +3,10 @@ package com.example.ninjaau.core
 import android.content.Context
 import android.widget.Toast
 import com.example.ninjaau.core.accessibility.NinjaAccessibilityService
+import com.example.ninjaau.core.appcontrol.AdbController
+import com.example.ninjaau.core.recognition.BountyRecognizer
 import com.example.ninjaau.core.recognition.LoginPageRecognizer
+import com.example.ninjaau.core.util.Constant
 import com.example.ninjaau.core.util.LogUtil
 import com.example.ninjaau.core.util.PermissionManager
 import kotlinx.coroutines.*
@@ -11,16 +14,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * 自动化业务状态枚举
+ * 自动化业务状态枚举（新增PAUSED状态，仅标记大厅流程暂停）
  */
 enum class ScriptState {
     IDLE,       // 空闲
-    LOGIN_CHECK,// 登录页检测中
-    HALL_LOOP   // 大厅循环中
+    LOGIN_CHECK,// 登录页检测中（不可暂停）
+    HALL_LOOP,  // 大厅循环中（可暂停）
+    PAUSED      // 大厅流程暂停中
 }
 
 /**
- * 全局业务总管：负责自动化主循环、状态管理与业务分发
+ * 全局业务总管：仅负责状态管理、协程生命周期、流程分发
  */
 object GameManager {
     private const val TAG = "GameManager"
@@ -28,31 +32,31 @@ object GameManager {
     private val _state = MutableStateFlow(ScriptState.IDLE)
     val state: StateFlow<ScriptState> = _state
 
-    private var job: Job? = null
+    private var mainJob: Job? = null       // 整个自动化流程的主协程（登录+大厅）
+    private var hallJob: Job? = null       // 仅大厅循环的协程（单独控制暂停/恢复）
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
-    private const val LOGIN_CHECK_INTERVAL = 5000L 
-    private const val HALL_CHECK_INTERVAL = 1000L  
+    private const val LOGIN_CHECK_INTERVAL = 5000L
+    private const val HALL_CHECK_INTERVAL = 1000L
 
     /**
      * 切换脚本运行状态（供悬浮窗一键调用）
      */
     fun toggleScript(context: Context) {
-        if (_state.value == ScriptState.IDLE) {
-            startScript(context)
-        } else {
-            stopScript()
+        when (_state.value) {
+            ScriptState.IDLE -> startScript(context)
+            ScriptState.LOGIN_CHECK -> Toast.makeText(context, "登录检测中，暂不支持暂停", Toast.LENGTH_SHORT).show()
+            ScriptState.HALL_LOOP -> pauseHallLoop()
+            ScriptState.PAUSED -> resumeHallLoop(context)
         }
     }
 
     /**
-     * 启动脚本
+     * 启动全流程（登录检测 → 大厅循环）
      */
-    // GameManager.kt 中修改 startScript 方法
     fun startScript(context: Context) {
         if (_state.value != ScriptState.IDLE) return
 
-        // 1. 核心改进：不再主动初始化，只检查已有实例
         if (PermissionManager.mediaProjection == null) {
             LogUtil.e(TAG, "MediaProjection 未初始化，请先启动悬浮窗服务（点击Link Start）")
             Toast.makeText(context, "请先点击Link Start启动服务", Toast.LENGTH_SHORT).show()
@@ -62,63 +66,121 @@ object GameManager {
         _state.value = ScriptState.LOGIN_CHECK
         val appContext = context.applicationContext
 
-        job = scope.launch {
-            LogUtil.i(TAG, "自动化主流程已启动")
+        // 主协程：登录检测 + 启动大厅循环
+        mainJob = scope.launch {
+            LogUtil.i(TAG, "自动化主流程已启动，开始登录检测")
             try {
-                // 第一步：登录页检测（复用已有 MediaProjection 实例）
-                loginCheckLoop(appContext)
-                // 第二步：进入大厅循环
-                hallLoop(appContext)
+                // 第一步：登录页检测（一次性流程，不可暂停）
+//                loginCheckLoop(appContext)
+                // 第二步：登录完成后，启动大厅循环
+                startHallLoop(appContext)
             } catch (e: CancellationException) {
-                LogUtil.i(TAG, "自动化任务已取消")
-            } finally {
+                LogUtil.i(TAG, "自动化主流程已取消")
+            } catch (e: Exception) {
+                LogUtil.e(TAG, "自动化主流程执行异常", e)
                 _state.value = ScriptState.IDLE
             }
         }
     }
 
+    /**
+     * 仅启动大厅循环（供恢复时调用）
+     */
+    private fun startHallLoop(context: Context) {
+        if (_state.value == ScriptState.PAUSED || _state.value == ScriptState.LOGIN_CHECK) {
+            _state.value = ScriptState.HALL_LOOP
+        }
+        // 单独控制大厅循环的协程，方便暂停/恢复
+        hallJob = scope.launch {
+            LogUtil.i(TAG, "大厅循环已启动（可暂停）")
+            hallLoop(context)
+        }
+    }
+
+    /**
+     * 暂停大厅循环（仅停业务流程，不释放资源）
+     */
+    private fun pauseHallLoop() {
+        hallJob?.cancel(CancellationException("大厅流程暂停"))
+        hallJob = null
+        _state.value = ScriptState.PAUSED
+        PermissionManager.pauseMediaProjection()
+        LogUtil.i(TAG, "大厅流程已暂停，登录检测不受影响")
+    }
+
+    /**
+     * 恢复大厅循环
+     */
+    private fun resumeHallLoop(context: Context) {
+        if (PermissionManager.resumeMediaProjection(context)) {
+            startHallLoop(context)
+            LogUtil.i(TAG, "大厅流程已恢复")
+        } else {
+            Toast.makeText(context, "截图权限失效，请重新启动悬浮窗", Toast.LENGTH_SHORT).show()
+            _state.value = ScriptState.IDLE
+        }
+    }
+
+    /**
+     * 大厅循环入口（仅调用BountyRecognizer的业务流程，无具体逻辑）
+     */
+    private suspend fun CoroutineScope.hallLoop(context: Context) {
+        val bountyRecognizer = BountyRecognizer(context)
+        val hallCheckInterval = HALL_CHECK_INTERVAL
+
+        while (isActive && _state.value == ScriptState.HALL_LOOP) {
+            // 直接调用BountyRecognizer的悬赏流程，GameManager不处理具体步骤
+            val isAllStepsSuccess = bountyRecognizer.executeBountyProcess()
+
+            if (isAllStepsSuccess) {
+                LogUtil.i(TAG, "✅ 本轮悬赏流程执行完成，等待下一轮检测...")
+            } else {
+                LogUtil.w(TAG, "❌ 本轮悬赏流程执行失败，等待下一轮检测...")
+                delay(1000)
+            }
+            delay(hallCheckInterval)
+        }
+    }
+
+    /**
+     * 登录页检测循环（一次性流程，不可暂停）
+     */
     private suspend fun CoroutineScope.loginCheckLoop(context: Context) {
         val loginRecognizer = LoginPageRecognizer(context)
         while (isActive && _state.value == ScriptState.LOGIN_CHECK) {
-            // 这里调用 checkLoginPage()，它会复用 PermissionManager 里的实例
             val (isLoginPage, clickCoord) = loginRecognizer.checkLoginPage()
             if (isLoginPage && clickCoord != null) {
                 NinjaAccessibilityService.getInstance()?.clickAt(clickCoord.first, clickCoord.second)
-                LogUtil.i(TAG, "识别到登录页并点击，准备切换到大厅状态")
-                delay(2000) // 等待画面过渡
-                _state.value = ScriptState.HALL_LOOP
+                LogUtil.i(TAG, "识别到登录页并点击，准备进入大厅循环")
+                delay(2000)
                 return
             }
             delay(LOGIN_CHECK_INTERVAL)
         }
     }
 
-    private suspend fun CoroutineScope.hallLoop(context: Context) {
-        LogUtil.i(TAG, "已进入大厅状态桩，开启高频巡检")
-        while (isActive && _state.value == ScriptState.HALL_LOOP) {
-            // TODO: 后续在这里添加具体业务（如检测悬赏）
-            delay(HALL_CHECK_INTERVAL)
-        }
+    /**
+     * 彻底停止所有流程（释放资源）
+     */
+    fun stopScript() {
+        LogUtil.i(TAG, "手动停止所有流程，正在清理资源...")
+        mainJob?.cancel()
+        hallJob?.cancel()
+        mainJob = null
+        hallJob = null
+
+        PermissionManager.releaseMediaProjection()
+        _state.value = ScriptState.IDLE
+        LogUtil.i(TAG, "所有流程已停止，资源已释放")
     }
 
     /**
-     * 彻底停止脚本并释放所有资源
+     * 检查游戏是否运行
      */
-    fun stopScript() {
-        LogUtil.i(TAG, "手动停止流程，正在清理资源...")
-        job?.cancel()
-        job = null
-        
-        // 2. 核心改进：只有在脚本停止时，才释放截图通行证
-        PermissionManager.releaseMediaProjection()
-        
-        _state.value = ScriptState.IDLE
-    }
-
     fun isGameRunning(context: Context): Boolean {
-        return com.example.ninjaau.core.appcontrol.AdbController.isAppRunning(
+        return AdbController.isAppRunning(
             context,
-            com.example.ninjaau.core.util.Constant.NINJA_GAME_PACKAGE
+            Constant.NINJA_GAME_PACKAGE
         )
     }
 }

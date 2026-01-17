@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ninjaau.core.AutoRestartService
+import com.example.ninjaau.core.GameManager
 import com.example.ninjaau.core.appcontrol.AdbController
 import com.example.ninjaau.core.floating.FloatingWindowService
 import com.example.ninjaau.core.screenshot.ScreenshotPermissionActivity
@@ -87,7 +88,8 @@ fun NinjaScriptMainUI() {
                 }
 
                 AdbController.launchApp(context, Constant.NINJA_GAME_PACKAGE)
-                showToast("Link Start! 自动化已就绪")
+                GameManager.startScript(context)
+                showToast("Link Start! 自动化服务启动")
             }
         }
     }

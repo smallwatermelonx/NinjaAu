@@ -21,16 +21,40 @@ import com.example.ninjaau.core.accessibility.NinjaAccessibilityService
  * 5. 上下文安全（仅用ApplicationContext）
  */
 object PermissionManager {
+    // 线程同步锁：解决多线程同时初始化/释放MediaProjection的问题
+    private val lock = Any()
+
     // 授权原始数据（仅保存，不直接用于初始化，需校验）
     var mResultCode: Int = -1
     var mProjectionIntent: Intent? = null
 
     // 缓存全局唯一的 MediaProjection 实例
     private var _mediaProjection: MediaProjection? = null
+    private var isReleased = false // 标记是否彻底释放
     val mediaProjection: MediaProjection? get() = _mediaProjection
 
-    // 线程同步锁：解决多线程同时初始化/释放MediaProjection的问题
-    private val lock = Any()
+
+    // 暂停时调用：仅置空但不释放（保留权限）
+    fun pauseMediaProjection() {
+        synchronized(lock) {
+            _mediaProjection = null
+            LogUtil.i("PermissionManager", "MediaProjection暂停（未释放权限）")
+        }
+    }
+
+    // 恢复时重新初始化（复用权限）
+    fun resumeMediaProjection(context: Context): Boolean {
+        synchronized(lock) {
+            if (isReleased) {
+                // 彻底释放后需要重新授权
+                return false
+            }
+            // 复用已有权限重新初始化
+            return initMediaProjection(context)
+        }
+    }
+
+
 
     /**
      * 增强版：判断是否有有效的截图授权数据
