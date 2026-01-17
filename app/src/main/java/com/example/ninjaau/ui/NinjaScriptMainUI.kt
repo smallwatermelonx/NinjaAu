@@ -180,7 +180,7 @@ private fun LaunchTab(onLinkStart: () -> Unit, onDisconnect: () -> Unit) {
             shape = RoundedCornerShape(8.dp),
             border = BorderStroke(1.dp, Color(0xFFFF5252))
         ) {
-            Text("断开链接", color = Color(0xFFFF5252), fontSize = 16.sp)
+            Text("Disconnect", color = Color(0xFFFF5252), fontSize = 16.sp)
         }
     }
 }

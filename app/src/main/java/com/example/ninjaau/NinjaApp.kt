@@ -1,6 +1,7 @@
 package com.example.ninjaau
 
 import android.app.Application
+import android.util.Log
 import com.example.ninjaau.core.util.LogUtil
 import org.opencv.android.OpenCVLoader
 
@@ -12,10 +13,10 @@ class NinjaApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        // 1. 初始化日志工具
+        // 1. 先初始化日志工具
         LogUtil.init(this)
 
-        // 2. 初始化 OpenCV
+        // 2. 最后初始化OpenCV
         if (OpenCVLoader.initDebug()) {
             LogUtil.i("NinjaApp", "OpenCV 库加载成功")
         } else {

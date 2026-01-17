@@ -2,7 +2,6 @@ package com.example.ninjaau.core.recognition
 
 import android.graphics.Bitmap
 import android.graphics.RectF
-import com.example.ninjaau.core.util.FileUtil
 import com.example.ninjaau.core.util.LogUtil
 import com.example.ninjaau.core.util.OpenCVUtil
 import org.opencv.core.Core
@@ -71,23 +70,6 @@ object OpenCVTemplateMatcher {
             // 8. 必须释放所有 Mat
             OpenCVUtil.releaseMats(screenMat, templateMat, resultMat)
         }
-    }
-
-    /**
-     * 重载方法：支持路径加载
-     */
-    fun matchTemplate(
-        screenBitmap: Bitmap,
-        templatePath: String,
-        threshold: Float
-    ): MatchResult {
-        val templateBitmap = FileUtil.bitmapFromPath(templatePath) ?: run {
-            LogUtil.e(TAG, "模板文件读取失败：$templatePath")
-            return MatchResult(false, 0f, 0f, 0f, 0f, 0f)
-        }
-        val result = matchTemplate(screenBitmap, templateBitmap, threshold)
-        templateBitmap.recycle()
-        return result
     }
 
     /**
