@@ -58,27 +58,38 @@ object PermissionManager {
 
     /**
      * 增强版：判断是否有有效的截图授权数据
-     * 不仅检查resultCode和Intent非空，还校验Intent的核心数据（避免空壳Intent）
+     * 核心优化：区分「首次启动未授权」（警告）和「授权后数据无效」（错误）
      */
     fun hasProjectionPermission(): Boolean {
         // 1. 校验resultCode是否为成功状态
         val isCodeValid = mResultCode == Activity.RESULT_OK
         // 2. 校验Intent非空且包含核心数据（系统授权的Intent必须有extras）
         val isIntentValid = mProjectionIntent != null
-        // 3. 组合判断
-        val isValid = isCodeValid && isIntentValid
 
-        // 调试日志：方便定位授权数据无效的原因
-        if (!isValid) {
+        // 3. 核心区分逻辑：
+        val isFirstLaunch = (mResultCode == -1) && (mProjectionIntent == null) // 首次启动未授权
+        val isAuthDataInvalid = !isFirstLaunch && !isCodeValid // 授权过但数据无效（真错误）
+
+        // 4. 分场景打日志
+        if (isFirstLaunch) {
+            // ✅ 首次启动未授权：警告级别，友好提示
+            LogUtil.w("PermissionManager", "首次启动：尚未申请截图授权（正常状态，点击Link Start后会引导授权）")
+            return false
+        } else if (isAuthDataInvalid) {
+            // ❌ 授权后数据无效：错误级别（真问题）
             val errorMsg = buildString {
-                append("截图授权数据无效：")
+                append("截图授权数据异常（已授权但数据无效）：")
                 append("resultCode=$mResultCode（预期=${Activity.RESULT_OK}），")
                 append("Intent是否为空=${mProjectionIntent == null}，")
                 append("Intent是否有数据=${mProjectionIntent?.extras != null}")
             }
             LogUtil.e("PermissionManager", errorMsg)
+            return false
+        } else {
+            // ✅ 授权有效
+            LogUtil.i("PermissionManager", "截图授权数据有效")
+            return true
         }
-        return isValid
     }
 
     /**
@@ -127,6 +138,17 @@ object PermissionManager {
 
                 // 关键修复：删掉克隆，直接传原mProjectionIntent
                 _mediaProjection = mpm.getMediaProjection(mResultCode, mProjectionIntent!!)
+
+                // ✅ 核心修复1：注册MediaProjection回调（Android 10+强制要求）
+                _mediaProjection?.registerCallback(object : MediaProjection.Callback() {
+                    override fun onStop() {
+                        // MediaProjection被系统停止（比如用户手动关闭权限），及时释放资源
+                        LogUtil.w("PermissionManager", "MediaProjection被系统停止，释放资源")
+                        releaseMediaProjection()
+                        clearProjectionPermission() // 清空授权数据，下次重新申请
+                        isReleased = true // 标记为已释放
+                    }
+                }, null) // 第二个参数是Handler，传null用主线程
 
                 // 6. 校验创建结果（只释放实例，不清空数据！）
                 val createSuccess = _mediaProjection != null
@@ -180,7 +202,7 @@ object PermissionManager {
 
         val isEnabled = enabledServices.contains(serviceName)
         if (!isEnabled) {
-            LogUtil.e("PermissionManager", "无障碍服务未开启：\n预期服务名=$serviceName\n已开启服务=$enabledServices")
+            LogUtil.w("PermissionManager", "无障碍服务未开启：\n预期服务名=$serviceName\n已开启服务=$enabledServices")
         } else {
             LogUtil.i("PermissionManager", "无障碍服务已开启")
         }

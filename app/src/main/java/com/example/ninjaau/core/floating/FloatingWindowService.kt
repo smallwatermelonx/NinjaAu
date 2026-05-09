@@ -13,19 +13,15 @@ import androidx.core.content.ContextCompat
 import com.example.ninjaau.R
 import com.example.ninjaau.core.GameManager
 import com.example.ninjaau.core.ScriptState
-import com.example.ninjaau.core.screenshot.ForegroundScreenshotService
-import com.example.ninjaau.core.screenshot.ScreenshotPermissionActivity
+import com.example.ninjaau.core.capture.CapturePermissionActivity
 import com.example.ninjaau.core.util.Constant
 import com.example.ninjaau.core.util.LogUtil
 import com.example.ninjaau.core.util.PermissionManager
+import com.example.ninjaau.core.util.ToastUtil
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
 import kotlin.math.abs
 
-/**
- * 高级智能悬浮窗Service
- * 核心修复：适配 Android 12+ 前台服务行为
- */
 class FloatingWindowService : Service() {
     companion object {
         private const val CHANNEL_ID = "FloatingWindowServiceChannel"
@@ -47,7 +43,7 @@ class FloatingWindowService : Service() {
     private var ballWidth = 0
     private val handler = Handler(Looper.getMainLooper())
     private val sideHideRunnable = Runnable { sideHide() }
-    
+
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
 
     private val receiver = object : BroadcastReceiver() {
@@ -61,22 +57,16 @@ class FloatingWindowService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    // FloatingWindowService.kt 中修改 onCreate 方法
     override fun onCreate() {
         super.onCreate()
-
-        // 1. 立即启动前台通知（Android 12+ 强制要求）
         startFloatingForeground()
 
-
-        // 2. 在前台服务环境中完成截图权限初始化（处理结果）
         val initSuccess = PermissionManager.initMediaProjection(this)
         if (!initSuccess) {
-            LogUtil.e("FloatingWindowService", "MediaProjection初始化失败，终止悬浮窗服务")
-            // 提示用户重新授权
+            LogUtil.e("FloatingWindowService", "MediaProjection初始化失败")
             Toast.makeText(this, "截图权限初始化失败，请重新点击Link Start授权", Toast.LENGTH_LONG).show()
-            stopSelf() // 初始化失败，终止服务
-            return // 不再执行后续逻辑
+            stopSelf()
+            return
         }
 
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -93,22 +83,17 @@ class FloatingWindowService : Service() {
 
     private fun startFloatingForeground() {
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(CHANNEL_ID, "悬浮窗服务", NotificationManager.IMPORTANCE_LOW)
             notificationManager.createNotificationChannel(channel)
         }
-
         val builder = Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("NinjaAu 悬浮窗活跃中")
             .setPriority(Notification.PRIORITY_MIN)
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            // Android 12+：确保通知立即显示，减少启动延迟感知
             builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
         }
-
         startForeground(NOTIFICATION_ID, builder.build())
     }
 
@@ -136,8 +121,8 @@ class FloatingWindowService : Service() {
         layoutParams = WindowManager.LayoutParams().apply {
             type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             format = PixelFormat.RGBA_8888
-            flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or 
+            flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
             gravity = Gravity.TOP or Gravity.START
             width = WindowManager.LayoutParams.WRAP_CONTENT
@@ -212,15 +197,32 @@ class FloatingWindowService : Service() {
             GameManager.toggleScript(this)
         }
 
-        floatingView.findViewById<View>(R.id.btn_screenshot).setOnClickListener {
+        floatingView.findViewById<View>(R.id.btn_bounty).setOnClickListener {
             resetHideTimer()
-            showScreenshotDialog()
+            showBountySelectionDialog()
         }
 
         floatingView.findViewById<View>(R.id.iv_close).setOnClickListener {
             GameManager.stopScript()
             stopSelf()
         }
+    }
+
+    private fun showBountySelectionDialog() {
+        // 日常悬赏选择弹窗（后续替换为 Compose 勾选面板）
+        val items = arrayOf("SS+ 悬赏", "S+ 悬赏", "S 悬赏", "A 悬赏", "B 悬赏", "C 悬赏", "D 悬赏")
+        val checked = BooleanArray(items.size)
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Light_Dialog_Alert)
+            .setTitle("选择悬赏类型")
+            .setMultiChoiceItems(items, checked) { _, _, _ -> }
+            .setPositiveButton("确定") { _, _ ->
+                ToastUtil.show(this, "悬赏选择已更新（后续版本完善）")
+            }
+            .setNegativeButton("取消", null)
+            .create().apply {
+                window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+                show()
+            }
     }
 
     private fun toggleMenu() {
@@ -235,7 +237,7 @@ class FloatingWindowService : Service() {
         } else {
             val anim = TranslateAnimation(0f, -200f, 0f, 0f).apply {
                 duration = ANIM_DURATION
-                fillAfter = false 
+                fillAfter = false
                 setAnimationListener(object : Animation.AnimationListener {
                     override fun onAnimationEnd(animation: Animation?) {
                         llMenu.visibility = View.GONE
@@ -259,7 +261,6 @@ class FloatingWindowService : Service() {
         if (isExpanded || isSideHidden) return
         if (ballWidth == 0) ballWidth = flMainBall.width
         if (ballWidth == 0) return
-
         val hideOffset = (ballWidth * 0.8).toInt()
         layoutParams.x = if (layoutParams.x <= 0) -hideOffset else screenWidth - (ballWidth - hideOffset)
         isSideHidden = true
@@ -279,27 +280,6 @@ class FloatingWindowService : Service() {
     private fun resetHideTimer() {
         handler.removeCallbacks(sideHideRunnable)
         if (!isExpanded) handler.postDelayed(sideHideRunnable, AUTO_HIDE_MS)
-    }
-
-    private fun showScreenshotDialog() {
-        if (!PermissionManager.hasProjectionPermission()) {
-            startActivity(Intent(this, ScreenshotPermissionActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            return
-        }
-        
-        val input = EditText(this).apply { hint = "模板名称" }
-        val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Light_Dialog_Alert)
-            .setTitle("采集模板").setView(input)
-            .setPositiveButton("截图") { _, _ ->
-                val name = input.text.toString().ifEmpty { "temp_${System.currentTimeMillis()}" }
-                val intent = Intent(this, ForegroundScreenshotService::class.java).apply {
-                    putExtra(ForegroundScreenshotService.EXTRA_TEMPLATE_NAME, name)
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent) else startService(intent)
-            }.create()
-            
-        dialog.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
-        dialog.show()
     }
 
     private fun addFloatingView() {
@@ -324,10 +304,9 @@ class FloatingWindowService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        serviceScope.cancel() 
+        serviceScope.cancel()
         handler.removeCallbacks(sideHideRunnable)
         unregisterReceiver(receiver)
         removeFloatingView()
     }
-
 }

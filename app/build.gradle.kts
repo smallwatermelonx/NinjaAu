@@ -52,9 +52,6 @@ dependencies {
     // OpenCV 核心库 (带 SO 库版本，无需手动配置 JNI)
     implementation("com.quickbirdstudios:opencv:4.5.3.0")
 
-    // Google ML Kit OCR (用于识别游戏内文字)
-    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.0")
-
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

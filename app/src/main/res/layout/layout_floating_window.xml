@@ -3,7 +3,6 @@
     android:layout_width="wrap_content"
     android:layout_height="80dp">
 
-    <!-- 1. 功能菜单（放在下层） -->
     <LinearLayout
         android:id="@+id/ll_menu"
         android:layout_width="wrap_content"
@@ -15,7 +14,6 @@
         android:paddingEnd="10dp"
         android:background="@android:color/transparent">
 
-        <!-- 功能按钮1：启动/暂停 -->
         <FrameLayout
             android:id="@+id/btn_start"
             android:layout_width="60dp"
@@ -30,9 +28,8 @@
                 android:src="@android:drawable/ic_media_play" />
         </FrameLayout>
 
-        <!-- 其他按钮不变... -->
         <FrameLayout
-            android:id="@+id/btn_screenshot"
+            android:id="@+id/btn_bounty"
             android:layout_width="60dp"
             android:layout_height="60dp"
             android:layout_margin="10dp"
@@ -41,7 +38,7 @@
                 android:layout_width="30dp"
                 android:layout_height="30dp"
                 android:layout_gravity="center"
-                android:src="@android:drawable/ic_menu_camera" />
+                android:src="@android:drawable/ic_menu_agenda" />
         </FrameLayout>
 
         <FrameLayout
@@ -58,7 +55,6 @@
         </FrameLayout>
     </LinearLayout>
 
-    <!-- 2. 主悬浮球 -->
     <FrameLayout
         android:id="@+id/fl_main_ball"
         android:layout_width="80dp"
