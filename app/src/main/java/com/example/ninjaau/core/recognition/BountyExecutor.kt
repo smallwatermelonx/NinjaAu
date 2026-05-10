@@ -8,98 +8,107 @@ import com.example.ninjaau.model.ActionResult
 import com.example.ninjaau.model.ScreenState
 import kotlinx.coroutines.delay
 
-class BountyExecutor(private val context: Context) {
+class BountyExecutor(context: Context) {
     private val TAG = "BountyExecutor"
-    private val detector = ScreenDetector(context)
     private val capture = ScreenCapture.getInstance(context)
+    private val detector = ScreenDetector(context)
 
     private val accessibility get() = NinjaAccessibilityService.getInstance()
 
-    suspend fun execute(state: ScreenState): ActionResult<ScreenState> {
+    /**
+     * @param detection  ScriptEngine 传入的检测结果（含坐标），避免重复截图匹配
+     */
+    suspend fun execute(detection: ScreenDetector.DetectionResult): ActionResult<ScreenState> {
+        val state = detection.state
+        val coord = detection.coord
+
         return when (state) {
-            ScreenState.HALL_CHAT -> clickAndProceed(state, ScreenState.RECRUIT_TAB, 2000)
-            ScreenState.RECRUIT_TAB -> clickAndProceed(state, ScreenState.JOIN_TEAM, 1000)
-            ScreenState.JOIN_TEAM -> executeJoinTeam()
-            ScreenState.READY_BTN -> clickAndProceed(state, ScreenState.SLIDE_BUTTON, 1000)
+            ScreenState.HALL_CHAT -> clickCoord(coord, ScreenState.RECRUIT_TAB, 2000)
+            ScreenState.RECRUIT_TAB -> clickCoord(coord, ScreenState.JOIN_TEAM, 1000)
+            ScreenState.JOIN_TEAM -> executeJoinTeam(coord)
+            ScreenState.READY_BTN -> clickCoord(coord, ScreenState.SLIDE_BUTTON, 1000)
             ScreenState.SLIDE_BUTTON -> executeSlide()
-            ScreenState.BATTLE_WARNING -> executeBattle()
+            ScreenState.BATTLE_WARNING,
             ScreenState.BATTLE_TARGET -> executeBattle()
             ScreenState.REWARD_POPUP -> executeCloseReward()
-            ScreenState.CONFIRM_BTN -> executeConfirm()
-            ScreenState.BACK_BUTTON -> executeBack()
+            ScreenState.CONFIRM_BTN -> clickCoord(coord, ScreenState.HALL_CHAT, 500, "确定完成")
+            ScreenState.BACK_BUTTON -> executeBack(coord)
             ScreenState.UNKNOWN -> ActionResult(false, ScreenState.UNKNOWN, "无法识别当前界面")
         }
     }
 
-    private suspend fun clickAndProceed(
-        current: ScreenState,
-        next: ScreenState,
-        waitMs: Long
+    /** 简单点击 + 等待，直接使用传入的坐标 */
+    private suspend fun clickCoord(
+        coord: Pair<Float, Float>?,
+        nextState: ScreenState,
+        waitMs: Long,
+        msg: String? = null
     ): ActionResult<ScreenState> {
-        val screen = capture.capture() ?: return ActionResult(false, current, "截图失败")
-        return try {
-            val coord = detector.matchScreen(screen, current)
-            if (coord != null) {
-                accessibility?.clickAt(coord.first, coord.second)
-                delay(waitMs)
-                ActionResult(true, next)
-            } else {
-                ActionResult(false, next, "未检测到${current.description}")
-            }
-        } finally {
-            screen.recycle()
-        }
+        if (coord == null) return ActionResult(false, nextState, "坐标为空")
+        accessibility?.clickAt(coord.first, coord.second)
+        delay(waitMs)
+        return ActionResult(true, nextState, msg)
     }
 
-    private suspend fun executeJoinTeam(): ActionResult<ScreenState> {
-        repeat(24) { attempt ->
+    /** 加入队伍：需要循环检测 + 重试验证 */
+    private suspend fun executeJoinTeam(joinCoord: Pair<Float, Float>?): ActionResult<ScreenState> {
+        // 先点一次加入按钮
+        if (joinCoord != null) {
+            accessibility?.clickAt(joinCoord.first, joinCoord.second)
+            delay(200)
+        }
+
+        repeat(24) {
             val screen = capture.capture() ?: return ActionResult(false, ScreenState.JOIN_TEAM, "截图失败")
             try {
-                val joinCoord = detector.matchScreen(screen, ScreenState.JOIN_TEAM)
-                if (joinCoord != null) {
-                    accessibility?.clickAt(joinCoord.first, joinCoord.second)
+                val joinFound = detector.matchScreen(screen, ScreenState.JOIN_TEAM)
+                if (joinFound != null) {
+                    accessibility?.clickAt(joinFound.first, joinFound.second)
                     delay(200)
-                    val readyCoord = detector.matchScreen(screen, ScreenState.READY_BTN)
-                    if (readyCoord != null) {
-                        return ActionResult(true, ScreenState.READY_BTN)
+                    // 再检查是否进入了准备页
+                    val verifyScreen = capture.capture()
+                    if (verifyScreen != null) {
+                        try {
+                            if (detector.matchScreen(verifyScreen, ScreenState.READY_BTN) != null) {
+                                return ActionResult(true, ScreenState.READY_BTN)
+                            }
+                        } finally {
+                            verifyScreen.recycle()
+                        }
                     }
                 } else {
-                    // 未检测到加入按钮，说明已在组队页
                     return ActionResult(true, ScreenState.READY_BTN)
                 }
             } finally {
                 screen.recycle()
             }
+            delay(800)
         }
         return ActionResult(false, ScreenState.JOIN_TEAM, "加入队伍重试耗尽")
     }
 
+    /** 下滑：持续检测 + 点击 5 秒 */
     private suspend fun executeSlide(): ActionResult<ScreenState> {
-        // 检测下滑按钮（最多30次）
-        var coord: Pair<Float, Float>? = null
         repeat(30) {
             val screen = capture.capture()
             if (screen != null) {
                 try {
-                    coord = detector.matchScreen(screen, ScreenState.SLIDE_BUTTON)
+                    if (detector.matchScreen(screen, ScreenState.SLIDE_BUTTON) != null) return@repeat
                 } finally {
                     screen.recycle()
                 }
             }
-            if (coord != null) return@repeat
             delay(1000)
         }
-        if (coord == null) return ActionResult(false, ScreenState.SLIDE_BUTTON, "未检测到下滑按钮")
 
-        // 持续点击5秒
         val startTime = System.currentTimeMillis()
         while (System.currentTimeMillis() - startTime < 5000) {
             val screen = capture.capture()
             if (screen != null) {
                 try {
-                    val currentCoord = detector.matchScreen(screen, ScreenState.SLIDE_BUTTON)
-                    if (currentCoord != null) {
-                        accessibility?.clickAt(currentCoord.first, currentCoord.second)
+                    val coord = detector.matchScreen(screen, ScreenState.SLIDE_BUTTON)
+                    if (coord != null) {
+                        accessibility?.clickAt(coord.first, coord.second)
                     }
                 } finally {
                     screen.recycle()
@@ -110,16 +119,15 @@ class BountyExecutor(private val context: Context) {
         return ActionResult(true, ScreenState.BATTLE_WARNING)
     }
 
+    /** 战斗：检测 WARNING → 等待 3 秒 → 点击目标 24 次 */
     private suspend fun executeBattle(): ActionResult<ScreenState> {
-        // 检测WARNING画面
         var warningFound = false
         repeat(24) {
             val screen = capture.capture()
             if (screen != null) {
                 try {
                     if (detector.matchScreen(screen, ScreenState.BATTLE_WARNING) != null) {
-                        warningFound = true
-                        return@repeat
+                        warningFound = true; return@repeat
                     }
                 } finally {
                     screen.recycle()
@@ -128,18 +136,14 @@ class BountyExecutor(private val context: Context) {
             delay(100)
         }
         if (!warningFound) return ActionResult(false, ScreenState.BATTLE_WARNING, "未检测到战斗WARNING")
-
         delay(3000)
 
-        // 检测并点击目标图标24次
         repeat(24) { i ->
             val screen = capture.capture()
             if (screen != null) {
                 try {
                     val coord = detector.matchScreen(screen, ScreenState.BATTLE_TARGET)
-                    if (coord != null) {
-                        accessibility?.clickAt(coord.first, coord.second)
-                    }
+                    if (coord != null) accessibility?.clickAt(coord.first, coord.second)
                 } finally {
                     screen.recycle()
                 }
@@ -149,6 +153,7 @@ class BountyExecutor(private val context: Context) {
         return ActionResult(true, ScreenState.REWARD_POPUP)
     }
 
+    /** 关闭奖励弹窗 */
     private suspend fun executeCloseReward(): ActionResult<ScreenState> {
         repeat(24) {
             val screen = capture.capture()
@@ -158,15 +163,13 @@ class BountyExecutor(private val context: Context) {
                     if (coord != null) {
                         accessibility?.clickAt(coord.first, coord.second)
                         delay(500)
-                        // 验证弹窗是否关闭
-                        val verifyScreen = capture.capture()
-                        if (verifyScreen != null) {
+                        val verify = capture.capture()
+                        if (verify != null) {
                             try {
-                                if (detector.matchScreen(verifyScreen, ScreenState.REWARD_POPUP) == null) {
+                                if (detector.matchScreen(verify, ScreenState.REWARD_POPUP) == null)
                                     return ActionResult(true, ScreenState.CONFIRM_BTN)
-                                }
                             } finally {
-                                verifyScreen.recycle()
+                                verify.recycle()
                             }
                         }
                         delay(800)
@@ -181,38 +184,12 @@ class BountyExecutor(private val context: Context) {
         return ActionResult(false, ScreenState.REWARD_POPUP, "关闭奖励弹窗重试耗尽")
     }
 
-    private suspend fun executeConfirm(): ActionResult<ScreenState> {
-        var coord: Pair<Float, Float>? = null
-        repeat(10) {
-            val screen = capture.capture()
-            if (screen != null) {
-                try {
-                    coord = detector.matchScreen(screen, ScreenState.CONFIRM_BTN)
-                } finally {
-                    screen.recycle()
-                }
-            }
-            if (coord != null) {
-                accessibility?.clickAt(coord!!.first, coord!!.second)
-                delay(500)
-                return ActionResult(true, ScreenState.HALL_CHAT, "确认完成")
-            }
-            delay(1000)
+    /** 返回按钮：点击后重新检测 */
+    private suspend fun executeBack(coord: Pair<Float, Float>?): ActionResult<ScreenState> {
+        if (coord != null) {
+            accessibility?.clickAt(coord.first, coord.second)
+            delay(2000)
         }
-        return ActionResult(false, ScreenState.CONFIRM_BTN, "未检测到确定按钮")
-    }
-
-    private suspend fun executeBack(): ActionResult<ScreenState> {
-        val screen = capture.capture() ?: return ActionResult(false, ScreenState.BACK_BUTTON, "截图失败")
-        return try {
-            val coord = detector.matchScreen(screen, ScreenState.BACK_BUTTON)
-            if (coord != null) {
-                accessibility?.clickAt(coord.first, coord.second)
-                delay(2000)
-            }
-            ActionResult(true, ScreenState.HALL_CHAT)
-        } finally {
-            screen.recycle()
-        }
+        return ActionResult(true, ScreenState.HALL_CHAT)
     }
 }

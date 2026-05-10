@@ -20,7 +20,6 @@ class ScreenCapture private constructor(context: Context) {
 
     private var imageReader: ImageReader? = null
     private var virtualDisplay: VirtualDisplay? = null
-    private val mediaProjection: MediaProjection? = PermissionManager.mediaProjection
 
     @Volatile
     private var isInitialized = false
@@ -33,7 +32,7 @@ class ScreenCapture private constructor(context: Context) {
         screenWidth = metrics.widthPixels
         screenHeight = metrics.heightPixels
         densityDpi = metrics.densityDpi
-        initResources()
+        tryInit()
     }
 
     companion object {
@@ -48,20 +47,26 @@ class ScreenCapture private constructor(context: Context) {
 
         fun release() {
             synchronized(this) {
-                INSTANCE?.virtualDisplay?.release()
-                INSTANCE?.imageReader?.close()
+                INSTANCE?.releaseResources()
                 INSTANCE = null
                 LogUtil.i("ScreenCapture", "截图资源已释放")
             }
         }
     }
 
-    private fun initResources() {
+    /** 每次调用 capture 前自动尝试初始化，解决一次性失败的问题 */
+    private fun tryInit() {
         synchronized(initLock) {
-            if (isInitialized || mediaProjection == null) return
+            if (isInitialized) return
+
+            val mp = PermissionManager.mediaProjection
+            if (mp == null) {
+                LogUtil.w("ScreenCapture", "MediaProjection 未就绪，等待下次重试")
+                return
+            }
             try {
                 imageReader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 2)
-                virtualDisplay = mediaProjection.createVirtualDisplay(
+                virtualDisplay = mp.createVirtualDisplay(
                     "ScreenCapture", screenWidth, screenHeight, densityDpi,
                     DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                     imageReader!!.surface, null, null
@@ -69,7 +74,7 @@ class ScreenCapture private constructor(context: Context) {
                 isInitialized = true
                 LogUtil.i("ScreenCapture", "截图资源初始化成功")
             } catch (e: Exception) {
-                LogUtil.e("ScreenCapture", "初始化截图资源失败", e)
+                LogUtil.e("ScreenCapture", "初始化截图资源失败: ${e.message}", e)
                 releaseResources()
             }
         }
@@ -86,8 +91,9 @@ class ScreenCapture private constructor(context: Context) {
     }
 
     fun capture(): Bitmap? {
+        tryInit() // 每次截图前自动重试初始化，解决首次失败后永不恢复的问题
         if (!isInitialized || imageReader == null) {
-            LogUtil.w("ScreenCapture", "截图资源未初始化")
+            LogUtil.w("ScreenCapture", "截图资源未初始化，跳过本次截图")
             return null
         }
         return try {
@@ -96,7 +102,7 @@ class ScreenCapture private constructor(context: Context) {
             image.close()
             bitmap
         } catch (e: Exception) {
-            LogUtil.e("ScreenCapture", "截图失败", e)
+            LogUtil.e("ScreenCapture", "截图失败: ${e.message}", e)
             null
         }
     }

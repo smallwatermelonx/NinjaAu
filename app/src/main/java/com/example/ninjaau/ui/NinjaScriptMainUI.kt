@@ -17,7 +17,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ninjaau.core.GameManager
 import com.example.ninjaau.core.floating.FloatingWindowService
 import com.example.ninjaau.core.capture.CapturePermissionActivity
 import com.example.ninjaau.core.util.LogUtil
@@ -57,8 +56,7 @@ fun NinjaScriptMainUI() {
                 } else {
                     context.startService(floatingIntent)
                 }
-                GameManager.startScript(context)
-                showToast("Link Start! 自动化服务启动")
+                showToast("Link Start! 点击悬浮窗播放按钮启动脚本")
             }
         }
     }
