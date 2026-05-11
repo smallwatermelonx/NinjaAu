@@ -6,8 +6,7 @@ import android.graphics.PixelFormat
 import android.os.*
 import android.util.DisplayMetrics
 import android.view.*
-import android.view.animation.Animation
-import android.view.animation.TranslateAnimation
+import android.view.animation.*
 import android.widget.*
 import androidx.core.content.ContextCompat
 import com.example.ninjaau.R
@@ -18,6 +17,8 @@ import com.example.ninjaau.core.util.Constant
 import com.example.ninjaau.core.util.LogUtil
 import com.example.ninjaau.core.util.PermissionManager
 import com.example.ninjaau.core.util.ToastUtil
+import com.example.ninjaau.model.BountyConfig
+import com.example.ninjaau.model.BountyGrade
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
 import kotlin.math.abs
@@ -61,6 +62,9 @@ class FloatingWindowService : Service() {
         super.onCreate()
         startFloatingForeground()
 
+        // 尝试从本地恢复上次的授权数据（进程重启后无需重新授权）
+        PermissionManager.restoreProjectionPermission(this)
+
         val initSuccess = PermissionManager.initMediaProjection(this)
         if (!initSuccess) {
             LogUtil.e("FloatingWindowService", "MediaProjection初始化失败")
@@ -101,8 +105,8 @@ class FloatingWindowService : Service() {
         serviceScope.launch {
             GameManager.state.collectLatest { state ->
                 when (state) {
-                    ScriptState.IDLE -> ivControlIcon.setImageResource(android.R.drawable.ic_media_play)
-                    else -> ivControlIcon.setImageResource(android.R.drawable.ic_media_pause)
+                    ScriptState.RUNNING -> ivControlIcon.setImageResource(android.R.drawable.ic_media_pause)
+                    else -> ivControlIcon.setImageResource(android.R.drawable.ic_media_play)
                 }
             }
         }
@@ -209,14 +213,25 @@ class FloatingWindowService : Service() {
     }
 
     private fun showBountySelectionDialog() {
-        // 日常悬赏选择弹窗（后续替换为 Compose 勾选面板）
-        val items = arrayOf("SS+ 悬赏", "S+ 悬赏", "S 悬赏", "A 悬赏", "B 悬赏", "C 悬赏", "D 悬赏")
-        val checked = BooleanArray(items.size)
-        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Light_Dialog_Alert)
-            .setTitle("选择悬赏类型")
-            .setMultiChoiceItems(items, checked) { _, _, _ -> }
+        val grades = BountyGrade.sorted()
+        val items = grades.map { "${it.displayName}  (${it.defaultRuns}次)" }.toTypedArray()
+        val checked = BooleanArray(grades.size) { i ->
+            GameManager.getSelectedGrades().contains(grades[i])
+        }
+
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("选择悬赏等级")
+            .setMultiChoiceItems(items, checked) { _, which, isChecked ->
+                checked[which] = isChecked
+            }
             .setPositiveButton("确定") { _, _ ->
-                ToastUtil.show(this, "悬赏选择已更新（后续版本完善）")
+                val configs = grades.map { grade ->
+                    BountyConfig(grade = grade, enabled = checked[grades.indexOf(grade)])
+                }
+                GameManager.updateBountyConfigs(configs)
+                val enabledNames = grades.filterIndexed { i, _ -> checked[i] }
+                    .joinToString(", ") { it.displayName }
+                ToastUtil.show(this, "已选择: $enabledNames")
             }
             .setNegativeButton("取消", null)
             .create().apply {
@@ -229,13 +244,27 @@ class FloatingWindowService : Service() {
         isExpanded = !isExpanded
         if (isExpanded) {
             llMenu.visibility = View.VISIBLE
-            val anim = TranslateAnimation(-200f, 0f, 0f, 0f).apply {
+            val animSet = AnimationSet(true).apply {
+                addAnimation(TranslateAnimation(-250f, 0f, 0f, 0f).apply {
+                    duration = ANIM_DURATION
+                    interpolator = OvershootInterpolator(1.2f)
+                })
+                addAnimation(AlphaAnimation(0f, 1f).apply {
+                    duration = ANIM_DURATION
+                })
                 duration = ANIM_DURATION
                 fillAfter = true
             }
-            llMenu.startAnimation(anim)
+            llMenu.startAnimation(animSet)
         } else {
-            val anim = TranslateAnimation(0f, -200f, 0f, 0f).apply {
+            val animSet = AnimationSet(true).apply {
+                addAnimation(TranslateAnimation(0f, -250f, 0f, 0f).apply {
+                    duration = ANIM_DURATION
+                    interpolator = AccelerateInterpolator()
+                })
+                addAnimation(AlphaAnimation(1f, 0f).apply {
+                    duration = (ANIM_DURATION * 0.7).toLong()
+                })
                 duration = ANIM_DURATION
                 fillAfter = false
                 setAnimationListener(object : Animation.AnimationListener {
@@ -247,7 +276,7 @@ class FloatingWindowService : Service() {
                     override fun onAnimationRepeat(animation: Animation?) {}
                 })
             }
-            llMenu.startAnimation(anim)
+            llMenu.startAnimation(animSet)
         }
     }
 

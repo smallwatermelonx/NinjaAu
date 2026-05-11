@@ -1,7 +1,7 @@
-# NinjaAu 架构设计文档
+# NinjaAu 架构设计文档 — v3.1
 
-> 忍三自动化脚本 — 通过图像识别自动执行悬赏任务流程
-> 版本 v2.0.0 · 2026-05
+> 忍三自动化脚本 · 悬赏全流程自动识别与执行
+> 设计版本 v3.1 · 2026-05
 
 ---
 
@@ -9,429 +9,787 @@
 
 1. [项目概述](#1-项目概述)
 2. [总体架构](#2-总体架构)
-3. [模块目录](#3-模块目录)
-4. [数据流](#4-数据流)
-5. [状态机](#5-状态机)
-6. [界面检测流程](#6-界面检测流程)
-7. [当前缺陷清单](#7-当前缺陷清单)
-8. [代码质量评估](#8-代码质量评估)
-9. [建议重构路线图](#9-建议重构路线图)
+3. [模块目录与职责](#3-模块目录与职责)
+4. [数据模型层](#4-数据模型层)
+5. [状态管理](#5-状态管理)
+6. [核心流程引擎](#6-核心流程引擎)
+7. [场景识别系统](#7-场景识别系统)
+8. [模板资产清单](#8-模板资产清单)
+9. [权限系统](#9-权限系统)
+10. [UI 层](#10-ui-层)
+11. [数据流](#11-数据流)
+12. [异常处理策略](#12-异常处理策略)
+13. [已知问题与待办](#13-已知问题与待办)
+14. [附录：Phase 状态变迁图](#14-附录phase-状态变迁图)
 
 ---
 
 ## 1. 项目概述
 
-### 1.1 业务目标
+### 1.1 目标
 
-Android 辅助工具，通过无障碍服务 + MediaProjection 截图 + OpenCV 模板匹配，自动完成游戏"忍者必须死3"中的悬赏任务流程。
+自动完成《忍者必须死3》日常悬赏任务：从大厅 → 进入招募列表 → 扫描匹配等级 → 加入队伍 → 准备 → 战斗(自动技能) → 结算领奖 → 循环。
 
-### 1.2 用户使用路径
-
-```
-安装 → 开启无障碍服务 → 授权悬浮窗 → 授权截图权限 → 悬浮窗出现
-    → 勾选悬赏等级 → 点击播放 → 脚本自动识别和执行 → 完成
-```
-
-### 1.3 技术栈
+### 1.2 技术栈
 
 | 层 | 技术 |
 |--|--|
-| 语言 | Kotlin |
 | UI | Jetpack Compose + Material3 |
 | 截图 | MediaProjection + VirtualDisplay + ImageReader |
-| 触控 | AccessibilityService (GestureDescription) |
-| 图像识别 | OpenCV (Imgproc.matchTemplate, TM_CCOEFF_NORMED) |
-| 异步 | Kotlin Coroutines + StateFlow |
-| 构建 | Gradle KTS + AGP |
-| 最低支持 | Android 9 (API 28) |
+| 图像识别 | OpenCV 4.5.3 (`Imgproc.matchTemplate`, `TM_CCOEFF_NORMED`) |
+| 动作 | AccessibilityService (`GestureDescription`) |
+| 异步 | Kotlin Coroutines (`StateFlow`, `SharedFlow`, `SupervisorJob`) |
+| 构建 | Gradle KTS + AGP 8.13 |
+| 最低API | Android 8.0 (API 26) |
+
+### 1.3 工作流总览
+
+```
+大厅 ─→ 点聊天按钮 ─→ 点招募tab ─→ 扫描招募列表 ─→ 匹配等级 → 加入队伍
+  ↑                                                          │
+  │                                              ┌───────────┴───────────┐
+  │                                              ▼                       ▼
+  │                                          已完成?                  等级校验
+  │                                          → 退出队伍               → 仅警告
+  │                                              │                       │
+  │                                              └───────────┬───────────┘
+  │                                                          ▼
+  │                                                      点击准备
+  │                                                          │
+  │                                              ┌───────────┴───────────┐
+  │                                              ▼                       ▼
+  │                                          超时退出               等待倒计时
+  │                                              │                       │
+  │                                              └───────────┬───────────┘
+  │                                                          ▼
+  │                                                      战斗中
+  │                                              (自动释放技能)
+  │                                                          │
+  │                                                     结算弹窗
+  │                                                          │
+  │                                                     领奖回大厅 ────────┘
+```
 
 ---
 
 ## 2. 总体架构
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        NinjaApp                            │
-│                    (OpenCV + Log 初始化)                      │
-└─────────────────────────────────────────────────────────────┘
-                             │
-                    ┌────────┴────────┐
-                    │  MainActivity   │
-                    │ (Compose 宿主)   │
-                    └────────┬────────┘
-                             │
-              ┌──────────────┴──────────────┐
-              │     NinjaScriptMainUI       │
-              │  启动Tab  |  关于Tab        │
-              └──────────────┬──────────────┘
-                             │
-                    ┌────────┴────────┐
-                    │  GameManager    │  ← 全局单例状态机
-                    │  IDLE → RUNNING │
-                    │       → PAUSED  │
-                    └────────┬────────┘
-                             │ 启动
-                    ┌────────┴────────┐
-                    │   ScriptEngine  │  ← 主循环引擎
-                    │  ┌────────────┐ │
-                    │  │ 截图→检测→执行│ │  循环
-                    │  └────────────┘ │
-                    └────────┬────────┘
-                             │
-          ┌──────────────────┼──────────────────┐
-          ▼                  ▼                  ▼
-   ┌─────────────┐  ┌──────────────┐  ┌──────────────┐
-   │ ScreenCapture│  │ ScreenDetector│  │BountyExecutor│
-   │ (MediaProj.) │  │ (OpenCV匹配)  │  │ (点击/等待)  │
-   └─────────────┘  └──────────────┘  └──────────────┘
-          │                 │                  │
-          ▼                 ▼                  ▼
-   ┌─────────────┐  ┌──────────────┐  ┌──────────────────┐
-   │PermissionMgr│  │TemplateMatcher│  │NinjaAccessibility│
-   │             │  │ (OpenCV封装)  │  │  Service (手势)  │
-   └─────────────┘  └──────────────┘  └──────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                          UI 层 (Compose + Material3)                  │
+│  ┌──────────────────────────┐  ┌──────────────────────────────────┐  │
+│  │  NinjaScriptMainUI       │  │  FloatingWindowService           │  │
+│  │  · 权限状态栏            │  │  · 悬浮球拖拽/边缘吸附          │  │
+│  │  · LINK START/暂停/停止  │  │  · 播放/暂停/停止按钮           │  │
+│  │  · 悬赏勾选(日常/活动分栏)│  │  · 悬赏快捷勾选弹窗             │  │
+│  │  · 运行日志面板          │  │  · 自动隐藏/展开                │  │
+│  └──────────┬───────────────┘  └──────────────────┬───────────────┘  │
+└─────────────┼─────────────────────────────────────┼──────────────────┘
+              │                                     │
+┌─────────────▼─────────────────────────────────────▼──────────────────┐
+│                      状态管理层                                       │
+│                                                                       │
+│  GameManager (ScriptState: IDLE / RUNNING / PAUSED)                   │
+│  · 脚本生命周期管理 (start/pause/resume/stop)                          │
+│  · 日志事件流 (SharedFlow → UI)                                       │
+│  · 悬赏配置同步 (updateBountyConfigs)                                  │
+│  · MediaProjection 等待/恢复                                           │
+└─────────────────────────────┬─────────────────────────────────────────┘
+                              │
+┌─────────────────────────────▼─────────────────────────────────────────┐
+│                      核心引擎层                                        │
+│                                                                       │
+│  WorkflowEngine (GamePhase 状态机)                                     │
+│  ┌──────────────────────────────────────────────────────────────────┐ │
+│  │  Phase 流转:                                                      │ │
+│  │  IDLE → SCANNING ─→ JOINING ─→ VALIDATING ─→ WAITING ─→ BATTLE  │ │
+│  │     ↑                    ↑            │              │           │ │
+│  │     └────(重新扫描)──────┘            │              │           │ │
+│  │                              (已完成/退出)    (结算弹窗)          │ │
+│  │                                        └────→ SETTLEMENT ─→ IDLE │ │
+│  └──────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────┬─────────────────────────────────────────┘
+                              │
+          ┌───────────────────┼───────────────────┐
+          ▼                   ▼                    ▼
+┌─────────────────┐  ┌─────────────────┐  ┌──────────────────────┐
+│  ScreenCapture   │  │  SceneDetector   │  │  NinjaAccessibility  │
+│  (截图)          │  │  (场景识别)      │  │  Service             │
+│                  │  │                  │  │  (手势点击)          │
+│  ImageReader     │  │  TemplateMatcher │  │                      │
+│  VirtualDisplay  │  │  (OpenCV)        │  │  GestureDescription  │
+└─────────────────┘  └─────────────────┘  └──────────────────────┘
+                              │
+                    ┌─────────▼─────────┐
+                    │   PermissionManager│
+                    │   (权限生命周期)   │
+                    │   · MediaProjection│
+                    │   · SharedPref持久 │
+                    └───────────────────┘
 ```
 
-### 2.1 服务层架构
+### 2.1 服务层
 
 ```
-┌─────────────────────────────────────────────────┐
-│              FloatingWindowService              │
-│  ┌──────────┐  ┌──────────┐  ┌───────────────┐ │
-│  │ 悬浮球拖拽│  │菜单展开/隐藏│  │悬赏选择弹窗   │ │
-│  │ 边缘吸附  │  │播放/暂停  │  │(待完善)      │ │
-│  └──────────┘  └──────────┘  └───────────────┘ │
-│  前台服务 · foregroundServiceType=mediaProjection │
-└─────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────┐
-│           CapturePermissionActivity             │
-│    透明Activity · 请求 MediaProjection 授权      │
-│    授权成功后自动启动 FloatingWindowService       │
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  FloatingWindowService (前台服务)                              │
+│  foregroundServiceType=mediaProjection (Android 12+)          │
+│                                                              │
+│  · 悬浮球拖拽 + 边缘吸附 + 半隐藏                              │
+│  · 菜单展开/收起动画(Alpha + Translate + Overshoot)            │
+│  · 脚本控制按钮(play/pause/stop)                               │
+│  · 悬赏快捷勾选弹窗(AlertDialog)                                │
+│  · 自动隐藏(5s无操作 → 侧边半隐藏)                             │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 3. 模块目录
+## 3. 模块目录与职责
 
-### 3.1 `model/` — 数据模型层
+### 3.1 `model/` — 数据模型
 
-| 文件 | 职责 | 问题 |
+| 文件 | 职责 |
+|--|--|
+| `BountyGrade.kt` | 悬赏等级枚举(12级)：key/displayName/defaultRuns/level/priority/isEvent |
+| `BountyConfig.kt` | 用户对某等级的配置：enabled/targetRuns/completedRuns |
+| `ScreenState.kt` | 游戏界面枚举(19种状态)：与模板配置解耦 |
+| `GameContext.kt` | 运行期上下文：currentPhase/activeGrades/runCounts/currentBounty |
+| `ActionResult.kt` | 通用操作结果包装 |
+
+### 3.2 `core/` — 核心逻辑
+
+| 文件 | 职责 |
+|--|--|
+| `GameManager.kt` | 脚本状态机(ScriptState)，日志事件流，协程管理 |
+| `WorkflowEngine.kt` | 流水线引擎，6阶段状态机循环编排 |
+
+### 3.3 `core/recognition/` — 场景识别
+
+| 文件 | 职责 |
+|--|--|
+| `SceneDetector.kt` | 通用场景检测器：Bitmap → ScreenState + 坐标 |
+| `TemplateMatcher.kt` | OpenCV 模板匹配核心（单例） |
+
+### 3.4 `core/capture/` — 截图
+
+| 文件 | 职责 |
+|--|--|
+| `ScreenCapture.kt` | MediaProjection 截图（VirtualDisplay + ImageReader） |
+| `CapturePermissionActivity.kt` | 截图授权引导 Activity |
+
+### 3.5 `core/accessibility/` — 无障碍
+
+| 文件 | 职责 |
+|--|--|
+| `NinjaAccessibilityService.kt` | 手势点击核心（GestureDescription） |
+
+### 3.6 `core/floating/` — 悬浮窗
+
+| 文件 | 职责 |
+|--|--|
+| `FloatingWindowService.kt` | 前台服务 + 悬浮球 UI + 菜单 + 快捷勾选 |
+
+### 3.7 `core/util/` — 工具
+
+| 文件 | 职责 |
+|--|--|
+| `PermissionManager.kt` | MediaProjection 权限生命周期 + SharedPreferences 持久化 |
+| `OpenCVUtil.kt` | OpenCV 初始化 + Bitmap/Mat 互转 |
+| `AssetUtil.kt` | assets 目录图片读取 |
+| `LogUtil.kt` | 日志工具 |
+| `Constant.kt` | 广播 action 常量 |
+| `ToastUtil.kt` | Toast 工具 |
+| `AppControl.kt` | 应用/脚本控制辅助 |
+
+### 3.8 `ui/` — UI
+
+| 文件 | 职责 |
+|--|--|
+| `NinjaScriptMainUI.kt` | 主界面：权限状态/LINK START/悬赏勾选(分栏)/运行日志 |
+| `floating/BountyCheckList.kt` | 悬浮窗内悬赏勾选列表 |
+
+---
+
+## 4. 数据模型层
+
+### 4.1 BountyGrade（悬赏等级枚举）
+
+```kotlin
+enum class BountyGrade(
+    val key: String,         // 唯一键
+    val displayName: String, // 显示名：SS+ / S+ / A ...
+    val defaultRuns: Int,    // 默认完成次数
+    val templateName: String,// 模板文件名
+    val priority: Int,       // 排序优先级（数值越小越优先）
+    val level: Int           // 游戏内建议等级
+)
+```
+
+**等级一览：**
+
+| 枚举 | 显示名 | 优先级 | 建议等级 | 类型 | 默认次数 |
+|--|--|--|--|--|--|
+| SS_PLUS | SS+ | 0 | 125 | 日常 | 1 |
+| SS | SS | 1 | 100 | 日常 | 1 |
+| S_PLUS | S+ | 2 | 90 | 日常 | 5 |
+| S | S | 3 | 90 | 日常 | 5 |
+| A_PLUS | A+ | 4 | 80 | 日常 | 3 |
+| A | A | 5 | 80 | 日常 | 3 |
+| B | B | 6 | 60 | 日常 | 4 |
+| C | C | 7 | 40 | 日常 | 5 |
+| D | D | 8 | 30 | 日常 | 5 |
+| NSS_PLUS | NSS+ | 12 | 125 | 活动 | 1 |
+| NS | NS | 13 | 125 | 活动 | 5 |
+| NA | NA | 14 | 125 | 活动 | 2 |
+
+**关键方法：**
+- `gradeIconPath()` → `templates/bounty/chatbox/{displayName}.png`（招募列表等级图标）
+- `levelIconPath()` → `templates/bounty/preparation/lv{level}.png`（队伍房间建议等级图标）
+- `isEvent` → NSS+/NS/NA 为活动悬赏
+
+### 4.2 BountyConfig（用户配置）
+
+```kotlin
+data class BountyConfig(
+    val grade: BountyGrade,
+    val enabled: Boolean = false,      // 用户是否勾选
+    val targetRuns: Int = grade.defaultRuns,
+    val completedRuns: Int = 0
+)
+```
+
+默认：日常悬赏(priority 0-8)启用，活动悬赏(priority 12-14)禁用。
+
+### 4.3 ScreenState（界面状态枚举）
+
+19种界面状态，覆盖完整工作流：
+
+| 分类 | 状态 | 说明 |
 |--|--|--|
-| `ActionResult<T>` | 统一操作结果 | 通用但泛型在状态流转中类型信息丢失 |
-| `BountyConfig` | 悬赏等级配置 + 预设列表 | `gradeIcon` 路径 schema 未明确，与 ScreenState 的 templateConfig 无关联 |
-| `ScreenState` | 界面状态枚举 + 模板配置 | **严重问题**: enum 内嵌了 `TemplateConfig`，与 `UIMap` 重复定义了两套同样的配置 |
+| 大厅 | LOBBY, CHAT_ICON | 大厅及聊天入口 |
+| 招募 | RECRUIT_TAB, RECRUIT_LIST | 组队招募 |
+| 入队 | JOIN_BUTTON, TEAM_ROOM, TEAM_COMPLETED, TEAM_FULL, READY_BUTTON, WAITING_SCREEN, EXIT_CONFIRM | 加入队伍到准备 |
+| 战斗 | BATTLE_WARNING, BATTLE_ACTIVE, BOSS_HP_BAR, COUNTDOWN, ULTIMATE_SKILL, WEAPON_SKILL | 战斗中 |
+| 结算 | SETTLEMENT_POPUP, CONFIRM_BUTTON | 奖励结算 |
+| 通用 | BACK_BUTTON, UNKNOWN | 返回按钮/未知 |
 
-### 3.2 `core/` — 核心引擎
+### 4.4 GameContext（运行期上下文）
 
-| 文件 | 职责 | 依赖 |
-|--|--|--|
-| `GameManager` | 状态机 (IDLE/RUNNING/PAUSED) + 协程生命周期 | PermissionManager, ScriptEngine |
-| `ScriptEngine` | 主循环: 截图→检测→执行→循环 | ScreenCapture, ScreenDetector, BountyExecutor |
-
-### 3.3 `core/capture/` — 截图模块
-
-| 文件 | 职责 |
-|--|--|
-| `ScreenCapture` | 单例，管理 VirtualDisplay + ImageReader，输出 Bitmap |
-| `CapturePermissionActivity` | 透明 Activity 申请 MediaProjection 授权 |
-
-### 3.4 `core/recognition/` — 识别与执行
-
-| 文件 | 职责 |
-|--|--|
-| `TemplateMatcher` | OpenCV 单次模板匹配封装 (TM_CCOEFF_NORMED) |
-| `ScreenDetector` | 一次截图 → 检测 9 种界面状态（逆序优先） |
-| `BountyExecutor` | 根据检测结果执行点击/等待/验证等动作序列 |
-
-### 3.5 `core/floating/` — 悬浮窗
-
-| 文件 | 职责 |
-|--|--|
-| `FloatingWindowService` | 前台服务: 悬浮球拖拽/吸附/菜单/播放控制 |
-
-### 3.6 `core/accessibility/` — 无障碍服务
-
-| 文件 | 职责 |
-|--|--|
-| `NinjaAccessibilityService` | 单例，通过 `dispatchGesture` 执行坐标点击 |
-
-### 3.7 `core/util/` — 工具层
-
-| 文件 | 职责 | 使用状态 |
-|--|--|--|
-| `PermissionManager` | MediaProjection 生命周期 + 权限检查 | ✅ 活跃 |
-| `AppControl` | 启动脚本 + 检查游戏进程 | ❌ **零引用** |
-| `AssetUtil` | 从 assets 加载 Bitmap | ✅ 活跃 |
-| `Constant` | 全局常量 | ✅ 活跃 |
-| `LogUtil` | 日志封装 | ✅ 活跃 |
-| `OpenCVUtil` | Bitmap↔Mat 转换 | ✅ 活跃 |
-| `ToastUtil` | Toast 封装 | ⚠️ 仅在 FloatingWindowService 中引用 |
-
-### 3.8 `ui/` — 界面层
-
-| 文件 | 职责 |
-|--|--|
-| `NinjaScriptMainUI` | 主 Compose 界面: 权限引导 + 启动/断开 |
-| `floating/BountyCheckList` | 悬赏勾选列表 Compose 组件 |
-
-### 3.9 `core/uimap/` — 模板配置 (待移除)
-
-| 文件 | 职责 |
-|--|--|
-| `UIMap` | TemplateConfig 集合，嵌套 UI 屏幕分组 |
-
-> 注意: `UIMap` 中定义的配置与 `model/ScreenState.kt` 中嵌入的配置完全重复。这是一个待消除的冗余。
-
----
-
-## 4. 数据流
-
-### 4.1 权限启动流
-
-```
-用户点 [Link Start]
-    │
-    ├─→ 无障碍服务未开启? → 跳转系统设置
-    ├─→ 悬浮窗权限未开启? → 跳转设置
-    ├─→ 截图权限未授权? → CapturePermissionActivity
-    │       └─→ 授权成功 → 保存数据 → 启动 FloatingWindowService
-    │                       → 用户再次点 Link Start → 进入 else
-    └─→ 全部已授权 → 启动 FloatingWindowService
-```
-
-### 4.2 脚本循环流
-
-```
-用户点悬浮窗 [播放]
-    │
-    ▼
-GameManager.startScript()
-    │
-    ▼  (协程)
-ScriptEngine.runLoop()
-    │
-    ┌──────────────────────────────────────────┐
-    │  while(isActive && state == RUNNING) {   │
-    │    1. ScreenCapture.capture() → Bitmap   │
-    │    2. ScreenDetector.detect(Bitmap)      │
-    │       → DetectionResult(state, coord)    │
-    │    3. BountyExecutor.execute(detection)  │
-    │       → ActionResult(nextState)          │
-    │    4. delay(1000)                        │
-    │  }                                       │
-    └──────────────────────────────────────────┘
-```
-
-### 4.3 界面检测流
-
-```
-ScreenDetector.detect(bitmap)
-    │
-    ├─→ matchScreen(BACK_BUTTON)  → 命中? → 返回
-    ├─→ matchScreen(CONFIRM_BTN)  → 命中? → 返回
-    ├─→ matchScreen(REWARD_POPUP) → 命中? → 返回
-    ├─→ matchScreen(BATTLE_WARNING)→ 命中? → 返回
-    ├─→ matchScreen(SLIDE_BUTTON) → 命中? → 返回
-    ├─→ matchScreen(READY_BTN)    → 命中? → 返回
-    ├─→ matchScreen(JOIN_TEAM)    → 命中? → 返回
-    ├─→ matchScreen(RECRUIT_TAB)  → 命中? → 返回
-    ├─→ matchScreen(HALL_CHAT)    → 命中? → 返回
-    └─→ UNKNOWN
-
-matchScreen 内部:
-    loadBitmapFromAssets(template) → TemplateMatcher.match(screen, template, threshold)
-    → MatchResult(isMatched, centerX, centerY)
-```
-
-### 4.4 动作执行流
-
-```
-BountyExecutor.execute(detection)
-    │
-    ├─ HALL_CHAT     → clickCoord → wait 2s → RECRUIT_TAB
-    ├─ RECRUIT_TAB   → clickCoord → wait 1s → JOIN_TEAM
-    ├─ JOIN_TEAM     → 循环检测: 点击加入 → 检查准备按钮 → READY_BTN
-    ├─ READY_BTN     → clickCoord → wait 1s → SLIDE_BUTTON
-    ├─ SLIDE_BUTTON  → 检测30s → 持续点击5s → BATTLE_WARNING
-    ├─ BATTLE_WARNING → 检测WARNING → wait 3s → 点击目标24次 → REWARD_POPUP
-    ├─ REWARD_POPUP  → 循环点击关闭 → 验证关闭 → CONFIRM_BTN
-    ├─ CONFIRM_BTN   → clickCoord → HALL_CHAT (完成)
-    ├─ BACK_BUTTON   → clickCoord → wait 2s → HALL_CHAT
-    └─ UNKNOWN       → 返回失败
+```kotlin
+data class GameContext(
+    var currentPhase: GamePhase,             // 当前阶段
+    var activeGrades: List<BountyGrade>,      // 待完成等级
+    val runCounts: MutableMap<BountyGrade, Int>, // 各等级已完成次数
+    var currentBounty: BountyGrade?,          // 当前处理的悬赏
+    var totalCycles: Int                      // 总轮次
+)
 ```
 
 ---
 
-## 5. 状态机
+## 5. 状态管理
+
+### 5.1 GameManager（脚本状态机）
 
 ```
-                  ┌─────────────────────────────┐
-                  │                             │
-    toggleScript  ▼   startScript               │
-  ┌─────────┐ ─────→ ┌──────────┐              │
-  │  IDLE   │         │ RUNNING  │ ───→ pause   │
-  └─────────┘         └──────────┘              │
-       ▲                  │    ▲                │
-       │    stopScript    │    │                │
-       │                  ▼    │   resume       │
-       │              ┌──────────┐              │
-       │              │  PAUSED  │ ──────────────┘
-       │              └──────────┘
-       │                  
-       └─────────────────┘
-         (异常/完成时自动回到 IDLE)
+ScriptState: IDLE ↔ RUNNING ↔ PAUSED
 ```
 
-状态边界:
-- **IDLE**: 无协程运行，MediaProjection 已释放
-- **RUNNING**: 主协程运行中，ScriptEngine 循环执行
-- **PAUSED**: 主协程已取消，MediaProjection 暂停（保留授权数据）
+| 方法 | 功能 |
+|--|--|
+| `startScript(context)` | IDLE → RUNNING，等待 MediaProjection，启动 WorkflowEngine |
+| `pauseScript()` | RUNNING → PAUSED，取消协程，暂停 MediaProjection |
+| `resumeScript(context)` | PAUSED → RUNNING，恢复 MediaProjection，重启协程 |
+| `stopScript()` | 任何状态 → IDLE，取消协程，释放 MediaProjection |
+
+**关键特性：**
+- `logEvents: SharedFlow<String>` — 日志事件流，UI 侧 collect 展示
+- `postLog(msg)` — 同时输出到 Logcat 和 UI 面板
+- `selectedBounties` — 同步 UI 勾选状态
+- 自动重试 MediaProjection 初始化（等待 10s）
+
+### 5.2 GamePhase（流水线阶段）
+
+```
+IDLE → SCANNING → JOINING → VALIDATING → WAITING → BATTLE → SETTLEMENT → IDLE(循环)
+                        ↑         |                   |
+                        +—失败——→ IDLE         超时→ IDLE
+                        退出队伍                   退出队伍
+```
 
 ---
 
-## 6. 界面检测流程
+## 6. 核心流程引擎
 
-### 6.1 检测顺序（逆序）
+### 6.1 WorkflowEngine
 
-检测采用逆序策略：从流程末尾向开头检测，避免前序节点误匹配。
+流水线编排器，通过 `GamePhase` 状态机循环调度。
 
-原因：游戏后期界面（如奖励弹窗）的 UI 元素更独特、更稳定；大厅 Chat 图标等早期节点容易和其他界面混淆。
+**构造参数：**
+- `context: Context`
+- `postLog: ((String) -> Unit)?` — 日志回调（传入 GameManager.postLog）
 
-### 6.2 匹配参数
+**入口：**
+```kotlin
+suspend fun runLoop(configs: List<BountyConfig>): Boolean
+```
 
-| 界面 | 模板路径 | 阈值 | 备注 |
+### 6.2 Phase 详解
+
+#### Phase 1: SCANNING — 导航 + 扫描
+
+```
+ensureRecruitView()
+├─ detectWithCoord() → 判断当前界面
+├─ CHAT_ICON → 点击打开聊天面板
+├─ RECRUIT_TAB → 点击进入招募列表 → return true
+├─ RECRUIT_LIST / JOIN_BUTTON → return true
+├─ BACK_BUTTON → 点击返回
+└─ UNKNOWN → 延迟重试
+
+phaseNavigateAndScan()
+├─ ensureRecruitView() 成功后
+├─ matchAnyGrade() 扫描列表（按优先级匹配）
+├─ 匹配到等级 → 点击 → JOINING
+├─ 离开招募界面 → 重新导航
+└─ 20次重试耗尽 → IDLE
+```
+
+#### Phase 2: JOINING — 加入队伍
+
+```
+├─ detect() 检查是否已在队伍房间
+├─ matchTemplate(JOIN_BUTTON) → 点击加入
+├─ 检测到 READY_BUTTON / TEAM_ROOM → VALIDATING
+├─ TEAM_FULL → 跳过此队
+└─ 未找到 JOIN 按钮 → SCANNING
+```
+
+#### Phase 3: VALIDATING — 校验 + 准备
+
+```
+├─ TEAM_COMPLETED → 退出队伍 → IDLE
+├─ TEAM_FULL → 退出队伍 → IDLE
+├─ 等级校验(levelIconPath) → 仅警告，不阻断
+├─ READY_BUTTON → 点击准备 → WAITING
+├─ TEAM_ROOM → 等待
+├─ WAITING_SCREEN → WAITING
+└─ 不在队伍房间 → SCANNING
+```
+
+**注意：** 等级校验从 v3.1 改为宽松模式：不匹配仅记日志，不再退出队伍。
+
+#### Phase 4: WAITING — 等待战斗
+
+```
+├─ BATTLE_WARNING / BATTLE_ACTIVE → BATTLE
+├─ WAITING_SCREEN → 继续等待
+├─ 回到大厅 → IDLE（不计完成）
+├─ 超时 35s → exitTeam() → IDLE
+└─ UNKNOWN → 继续等待
+```
+
+#### Phase 5: BATTLE — 战斗
+
+```
+├─ SETTLEMENT_POPUP → SETTLEMENT
+├─ CONFIRM_BUTTON → SETTLEMENT
+├─ 回到大厅 → IDLE（异常）
+├─ ULTIMATE_SKILL 可检测 → 释放技能(3s CD)
+└─ 循环检测
+```
+
+#### Phase 6: SETTLEMENT — 结算领奖
+
+```
+├─ clickOutside() → 点空白处关闭弹窗
+├─ 找 CONFIRM_BUTTON → 点击确定
+├─ detect() 回到大厅 → 累加完成次数
+├─ allCompleted → DONE
+└─ IDLE → 开始下一轮
+```
+
+### 6.3 辅助方法
+
+| 方法 | 功能 |
+|--|--|
+| `exitTeam()` | 点返回按钮(最多10次)，检测EXIT_CONFIRM弹窗自动确认 |
+| `useSkills(screen)` | 释放大招(ULTIMATE_SKILL检测) |
+| `clickOutside()` | 点击屏幕中央偏下(540, 1200)关闭弹窗 |
+| `captureBitmap()` | 截图(最多3次重试) |
+| `click(coord)` | 无障碍点击指定坐标 |
+
+---
+
+## 7. 场景识别系统
+
+### 7.1 SceneDetector
+
+模板路径与阈值集中管理，ScreenState 枚举不耦合识别配置。
+
+**模板注册表：**
+
+```kotlin
+ScreenState.CHAT_ICON      → templates/hall/hall_chat.png        (0.75f)
+ScreenState.RECRUIT_TAB    → templates/chat/team_recruit.png     (0.8f)
+ScreenState.JOIN_BUTTON    → templates/bounty/chatbox/join_team.png (0.8f)
+ScreenState.TEAM_COMPLETED → templates/bounty/chatbox/out_time.png (0.8f)
+ScreenState.TEAM_FULL      → templates/bounty/preparation/full.png (0.8f)
+ScreenState.READY_BUTTON   → templates/bounty/preparation/prepare.png (0.8f)
+ScreenState.BATTLE_WARNING → templates/fight/warning.png         (0.7f)
+ScreenState.ULTIMATE_SKILL → templates/fight/ninjutsu.png        (0.6f)
+ScreenState.SETTLEMENT_POPUP → templates/bounty/settlement/congratulations.png (0.8f)
+ScreenState.CONFIRM_BUTTON → templates/bounty/settlement/confirm.png (0.8f)
+ScreenState.EXIT_CONFIRM   → templates/bounty/preparation/confirm.png (0.8f)
+ScreenState.BACK_BUTTON    → templates/other/backward.png        (0.8f)
+```
+
+**检测方法：**
+- `detect(screen)` → ScreenState（按 detectionOrder 优先匹配）
+- `detectWithCoord(screen)` → Pair(ScreenState, Coord)
+- `matchTemplate(screen, state)` → Coord?
+- `matchGradeIcon(screen, grade)` → Coord?
+- `matchLevelIcon(screen, grade)` → Coord?（队伍房间内的建议等级标识）
+- `matchAnyGrade(screen, grades)` → Pair(BountyGrade, Coord)?
+- `matchAnyLevelIcon(screen, grades)` → Pair(BountyGrade, Coord)?
+
+**检测顺序：**
+```
+CONFIRM_BUTTON → SETTLEMENT_POPUP → BATTLE_WARNING → WAITING_SCREEN
+→ READY_BUTTON → TEAM_COMPLETED → TEAM_FULL → EXIT_CONFIRM
+→ TEAM_ROOM → JOIN_BUTTON → RECRUIT_TAB → CHAT_ICON → BACK_BUTTON
+```
+
+越靠前的状态越具体/稀有，优先匹配。UNKNOWN 兜底。
+
+### 7.2 TemplateMatcher（单例）
+
+OpenCV 模板匹配核心：
+
+```kotlin
+fun match(screen: Bitmap, template: Bitmap, threshold: Float): MatchResult
+```
+
+- 算法：`Imgproc.TM_CCOEFF_NORMED`（归一化相关系数匹配）
+- 返回：是否匹配 + 相似度 + 坐标 + 中心点坐标
+- 自动 OpenCV 按需初始化（`System.loadLibrary("opencv_java4")`）
+
+---
+
+## 8. 模板资产清单
+
+### 8.1 assets/ 目录结构
+
+```
+assets/templates/
+├── hall/
+│   ├── hall_chat.png          # 大廳聊天按钮图标 (17KB)
+│   ├── hall_main.png          # 大廳全屏截图 (4.1MB, 未使用)
+│   ├── bounty_tab.png         # 悬赏tab
+│   └── family_tab.png         # 家族tab
+├── chat/
+│   ├── team_recruit.png       # 组队招募页签 (16KB)
+│   └── chat_bar.png           # 聊天栏
+├── bounty/
+│   ├── chatbox/
+│   │   ├── join_team.png      # 加入队伍按钮
+│   │   ├── out_time.png       # 已完成/超时标记
+│   │   ├── 资深前台.png       # 招募队长头像? 
+│   │   ├── SS+.png / SS.png / S+.png / S.png / A+.png / A.png / B.png / C.png / D.png
+│   │   └── (缺: NSS+.png, NS.png, NA.png)
+│   ├── preparation/
+│   │   ├── prepare.png        # 准备按钮
+│   │   ├── full.png           # 队伍已满
+│   │   ├── lv30.png           # 建议等级30 (D)
+│   │   ├── lv40.png           # 建议等级40 (C)
+│   │   ├── lv60.png           # 建议等级60 (B)
+│   │   ├── lv125.png          # 建议等级125 (SS+ etc.)
+│   │   └── confirm.png        # 退出确认弹窗按钮 (用户提供)
+│   │   └── (缺: lv80.png, lv90.png, lv100.png)
+│   └── settlement/
+│       ├── congratulations.png # 结算弹窗
+│       ├── confirm.png         # 确定按钮
+│       └── blank_space.png     # 空白关闭区域
+├── fight/
+│   ├── warning.png            # 战斗WARNING
+│   ├── ninjutsu.png           # 大招图标
+│   ├── jump.png               # 跳跃按钮
+│   ├── decline.png            # 拒绝按钮
+│   └── scroll_down.png        # 下滑
+├── login/
+│   ├── tap_to_start.png       # 点击开始
+│   └── user_info.png          # 用户信息
+└── other/
+    ├── backward.png           # 返回按钮
+    ├── home.png               # 主页
+    └── Snipaste_*.png         # (备用截图)
+```
+
+### 8.2 等级→模板映射
+
+| 等级 | 招募列表图标 | 队伍房间等级标识 | 状态 |
 |--|--|--|--|
-| HALL_CHAT | `templates/hall/hall_chat.png` | 0.8 | |
-| RECRUIT_TAB | `templates/chat/team_recruit.png` | 0.8 | |
-| JOIN_TEAM | `templates/bounty/chatbox/join_team.png` | 0.8 | |
-| READY_BTN | `templates/bounty/preparation/prepare.png` | 0.8 | |
-| SLIDE_BUTTON | `templates/fight/decline.png` | 0.8 | |
-| BATTLE_WARNING | `templates/fight/warning.png` | 0.7 | 较低阈值 |
-| BATTLE_TARGET | `templates/fight/ninjutsu.png` | 0.6 | 最低阈值 |
-| REWARD_POPUP | `templates/bounty/settlement/blank_space.png` | 0.8 | |
-| CONFIRM_BTN | `templates/bounty/settlement/confirm.png` | 0.8 | |
-| BACK_BUTTON | `templates/other/backward.png` | 0.8 | |
-
-### 6.3 OpenCV 匹配策略
-
-- 方法: `Imgproc.TM_CCOEFF_NORMED`
-- 相似度范围: [0, 1]，越接近 1 越匹配
-- 匹配条件: `maxSimilarity >= threshold`
-- 坐标计算: 返回匹配区域中心点 (centerX, centerY)
+| SS+ | chatbox/SS+.png ✅ | lv125.png ✅ | 就绪 |
+| SS | chatbox/SS.png ✅ | lv100.png ❌缺 | 缺等级模板 |
+| S+ | chatbox/S+.png ✅ | lv90.png ❌缺 | 缺等级模板 |
+| S | chatbox/S.png ✅ | lv90.png ❌缺 | 缺等级模板 |
+| A+ | chatbox/A+.png ✅ | lv80.png ❌缺 | 缺等级模板 |
+| A | chatbox/A.png ✅ | lv80.png ❌缺 | 缺等级模板 |
+| B | chatbox/B.png ✅ | lv60.png ✅ | 就绪 |
+| C | chatbox/C.png ✅ | lv40.png ✅ | 就绪 |
+| D | chatbox/D.png ✅ | lv30.png ✅ | 就绪 |
+| NSS+ | chatbox/NSS+.png ❌缺 | lv125.png ✅ | 缺图标 |
+| NS | chatbox/NS.png ❌缺 | lv125.png ✅ | 缺图标 |
+| NA | chatbox/NA.png ❌缺 | lv125.png ✅ | 缺图标 |
 
 ---
 
-## 7. 当前缺陷清单
+## 9. 权限系统
 
-按严重度排列：
+### 9.1 权限清单
 
-### 🔴 P0 — 功能性缺陷
-
-| ID | 缺陷 | 位置 | 影响 |
-|--|--|--|--|
-| D-001 | **ScreenState 和 UIMap 配置重复**：同样的模板配置在两个地方定义，一处修改另处必不一致 | `model/ScreenState.kt` vs `core/uimap/UIMap.kt` | 后续新增模板时极易出现遗漏或错位 |
-| D-002 | **ScriptEngine 的流程是硬编码顺序**，不是真正的"扫描匹配"逻辑。当前只做 HALL→END 的线性流程，无法实现"持续扫描招募列表，发现匹配等级的悬赏才进入"的需求 | `ScriptEngine.runLoop()` | 与用户的"勾选后续自动识别"需求不匹配 |
-| D-003 | **BountyCheckList 状态有双重同步**：内部 `editableConfigs` 和 `GameManager.updateBountyConfigs` 在两个地方写入 | `ui/floating/BountyCheckList.kt` | 可能导致状态不一致 |
-| D-004 | **ScreenDetector 在 detect() 中对每个分支调用两次 matchScreen**（一次条件判断、一次返回值），浪费一倍 CPU | `ScreenDetector.detect()` | 性能浪费，每轮循环多 8 次模板匹配 |
-
-### 🟠 P1 — 设计缺陷
-
-| ID | 缺陷 | 位置 |
+| 权限 | 用途 | 获取方式 |
 |--|--|--|
-| D-005 | **ScriptEngine 和 BountyExecutor 都持有 ScreenDetector**，职责重叠 | 两个文件 |
-| D-006 | **model 层引用 core 层**：`ScreenState` 在 `model/` 包中导入了 `core.uimap.TemplateConfig`，违反分层依赖规则 | `model/ScreenState.kt` |
-| D-007 | **AppControl 零引用**：创建了完整的应用控制工具但没有任何地方调用 | `core/util/AppControl.kt` |
-| D-008 | **MainActivity 中的 mediaProjectionManager 字段未被任何方法使用** | `MainActivity.kt:11` |
+| 无障碍服务 | 模拟点击 | 系统设置 → 无障碍 → NinjaAu |
+| 悬浮窗权限 | 前台悬浮球 | Settings.canDrawOverlays |
+| MediaProjection | 截取游戏画面 | startActivityForResult → 用户授权 |
 
-### 🟡 P2 — 代码质量
+### 9.2 PermissionManager
 
-| ID | 缺陷 | 位置 |
-|--|--|--|
-| D-009 | **BountyExecutor 中大部分方法仍然自己做截图**，仅 `clickCoord` 复用了传入的坐标。executeBattle / executeCloseReward / executeSlide 等每个都自己走 `capture.capture()` → `detector.matchScreen()` 流程 | `BountyExecutor.kt` |
-| D-010 | **ScreenCapture 是单例 + 双重锁**：测试困难，无法 mock | `capture/ScreenCapture.kt` |
-| D-011 | **FloatingWindowService（313行）和 BountyExecutor（196行）偏大**，各承担了 3+ 种不同职责 | 两个文件 |
-| D-012 | **权限引导流程繁琐**：用户授权截图后需要再次点击 Link Start 才能启动悬浮窗 | `NinjaScriptMainUI.kt` + `CapturePermissionActivity.kt` |
-| D-013 | **模板配置名与实际图片文件名可能不一致**：`TemplateConfig.templateName` 和 assets 目录下的文件名无编译期校验 | `UIMap.kt` |
+**关键属性：**
+- `mResultCode` / `mProjectionIntent` — 授权数据
+- `mediaProjection` — MediaProjection 实例（线程安全）
+
+**关键方法：**
+- `initMediaProjection(context)` → Boolean（创建 MediaProjection + 注册 onStop 回调）
+- `pauseMediaProjection()` — 暂停时保留权限
+- `resumeMediaProjection(context)` — 恢复时重新初始化
+- `saveProjectionPermission(context)` — 持久化授权数据到 SharedPreferences
+- `restoreProjectionPermission(context)` — 进程重启后恢复授权
+
+**持久化机制：**
+- `Intent.toUri(Intent.URI_INTENT_SCHEME)` 序列化 Intent
+- 在 CapturePermissionActivity 授权成功时保存
+- 在 FloatingWindowService.onCreate() 和 GameManager.startScript() 中恢复
 
 ---
 
-## 8. 代码质量评估
+## 10. UI 层
 
-### 8.1 量化评分
+### 10.1 NinjaScriptMainUI（主界面）
 
-| 维度 | 评分 | 说明 |
+Compose Material3 暗色主题，包含：
+
+| 区域 | 组件 | 说明 |
 |--|--|--|
-| **可读性** | ⭐⭐⭐⭐ 4/5 | 命名清晰，有中文注释，逻辑分段合理 |
-| **模块化** | ⭐⭐⭐ 3/5 | 目录结构合理但模块间职责有重叠 |
-| **可测试性** | ⭐ 1/5 | 大量单例 + Android 依赖，无法单元测试 |
-| **错误处理** | ⭐⭐⭐ 3/5 | try-finally 保证 recycle，但异常后恢复策略简单 |
-| **性能** | ⭐⭐⭐ 3/5 | Bitmap 及时回收，但 detect() 中重复匹配浪费 |
-| **一致性** | ⭐⭐ 2/5 | 配置两套、检测两套、状态同步有两条路径 |
-| **可扩展性** | ⭐⭐ 2/5 | 新增悬赏等级需改多个地方，没有插件化设计 |
+| 顶栏 | TopAppBar | "NinjaAu 忍三自动化" |
+| 权限状态 | PermChip × 3 | 无障碍 / 悬浮窗 / 截图 (绿色=已授权) |
+| 控制区 | Button + TextButton | LINK START / 暂停 / 继续 / 停止 |
+| 悬赏选择 | BountyGradeCard × 12 | 4列网格，分"日常悬赏"和"活动悬赏"两栏 |
+| 运行日志 | Text × N | 最近日志(最多200条，显示8条) |
 
-**综合评分: 2.6 / 5** — 可运行但维护成本较高，扩展困难。
+**权限检查流程（onStart）：**
+```
+无障碍? → ❌ →跳转无障碍设置
+悬浮窗? → ❌ →跳转悬浮窗设置
+截图?   → ❌ →跳转授权Activity
+勾选?   → ❌ →提示"请勾选悬赏"
+→ 启动FloatingWindowService + GameManager.startScript()
+```
 
-### 8.2 代码量统计
+**生命周期：** DisposableEffect + LifecycleEventObserver(ON_RESUME) 自动刷新权限状态
 
-> 注: 已按重构前的代码量计算，下方含文件路径参照
+### 10.2 FloatingWindowService（悬浮窗）
 
-| 包 | 文件数 | 代码行(约) |
-|--|--|--|
-| `model/` | 3 | 52 |
-| `core/capture/` | 2 | 177 |
-| `core/recognition/` | 3 | 293 |
-| `core/floating/` | 1 | 313 |
-| `core/accessibility/` | 1 | 53 |
-| `core/uimap/` | 1 | 45 |
-| `core/util/` | 6 | 410 |
-| `core/` (GameManager + ScriptEngine) | 2 | 197 |
-| `ui/` | 3 | 208 |
-| **总计** | **22** | **~1748** |
+前台服务，包含：
 
----
-
-## 9. 建议重构路线图
-
-### 阶段一：消除冗余和缺陷（短期 1-2 天）
-
-| 序号 | 任务 | 涉及文件 |
-|--|--|--|
-| 1 | 统一配置：删除 `UIMap.kt`，将配置全部收敛到 `ScreenState.kt` 或独立的 `ScreenConfig.kt` | UIMap.kt, ScreenState.kt, ScreenDetector.kt |
-| 2 | 修复 ScreenDetector 重复匹配 | ScreenDetector.detect() |
-| 3 | 修复 BountyCheckList 状态同步 | BountyCheckList.kt |
-| 4 | 删除 AppControl + MainActivity 死字段 | AppControl.kt, MainActivity.kt |
-| 5 | 删除 `model/ScreenState` 对 `core.uimap` 的依赖 | ScreenState.kt |
-
-### 阶段二：重新设计循环引擎（中期 3-5 天）
-
-| 序号 | 任务 | 说明 |
-|--|--|--|
-| 6 | 重新设计 ScriptEngine：改为"扫描→匹配→执行"模式 | 不再硬编码 HALL→END 顺序 |
-| 7 | 抽象 `ScriptTask` 接口：单一动作步骤（检测+点击+验证） | 取代 BountyExecutor 中的重复代码 |
-| 8 | 引入 `WorkflowPipeline`：按需组合多个 ScriptTask | 支持不同悬赏等级的不同流程 |
-| 9 | 将 ScreenState 检测输出缓存到当前上下文，避免重复截图 | 提升性能 |
-
-### 阶段三：依赖注入 + 可测试性（中期 3-5 天）
-
-| 序号 | 任务 | 说明 |
-|--|--|--|
-| 10 | ScreenCapture 改为接口 + 实现，移除单例 | 可 mock 截图进行测试 |
-| 11 | GameManager 状态机抽离接口 | 方便单元测试 |
-| 12 | BountyExecutor 改为组合模式而非 switch-case | 方便为不同悬赏等级定制动作 |
-
-### 阶段四：悬浮窗 UI 增强（长期）
-
-| 序号 | 任务 |
+| 功能 | 实现 |
 |--|--|
-| 13 | 悬浮窗菜单改用 Compose (而非 XML layout) |
-| 14 | 悬赏勾选面板嵌入悬浮窗滑动菜单 |
-| 15 | 实时日志显示面板 |
-| 16 | 运行状态指示器 |
+| 悬浮球 | WindowManager + 拖拽 + 边缘吸附 + 5s自动半隐藏 |
+| 菜单动画 | TranslateAnimation + AlphaAnimation + OvershootInterpolator |
+| 控制按钮 | play/pause/stop 图标（根据 ScriptState 切换） |
+| 快捷勾选 | AlertDialog + MultiChoice（12等级） |
+
+### 10.3 BountyCheckList（悬浮窗勾选）
+
+悬浮窗内嵌的悬赏勾选列表，同步 GameManager 配置。
 
 ---
 
-> 本文档对应代码版本 v2.0.0。
-> 下次更新本文档时，请同步更新版本号和变更日期。
+## 11. 数据流
+
+### 11.1 勾选配置流
+
+```
+[NinjaScriptMainUI 勾选]
+  └→ bountyConfigs (Compose State)
+       └→ GameManager.updateBountyConfigs()
+            └→ selectedBounties
+                 └→ WorkflowEngine.runLoop(configs)
+                      └→ GameContext(activeGrades, runCounts)
+
+[FloatingWindowService 快捷勾选]
+  └→ AlertDialog multi-choice
+       └→ GameManager.updateBountyConfigs()
+```
+
+### 11.2 运行期数据流
+
+```
+WorkflowEngine.runLoop()
+  │
+  ├─→ captureBitmap()
+  │     └─→ ScreenCapture.capture() → Bitmap
+  │
+  ├─→ detector.detect(screen) → ScreenState
+  │     └─→ matchTemplate() → TemplateMatcher.match() → Coord?
+  │
+  ├─→ detector.matchAnyGrade(screen, grades) → (BountyGrade, Coord)?
+  │     └─→ TemplateMatcher.match(gradeIcon) → 匹配等级
+  │
+  ├─→ click(coord)
+  │     └─→ NinjaAccessibilityService.clickAt(x, y)
+  │           └─→ dispatchGesture(GestureDescription)
+  │
+  └─→ postLog(msg) → GameManager._logEvents → UI
+```
+
+### 11.3 日志流
+
+```
+WorkflowEngine.log() → postLog?.invoke(msg)
+                             ↓
+                    GameManager.postLog(msg)
+                             ↓
+                    _logEvents.tryEmit(msg)
+                             ↓
+                    NinjaScriptMainUI collect
+                             ↓
+                    logLines (Compose State) → UI 展示
+```
+
+---
+
+## 12. 异常处理策略
+
+### 12.1 重试机制
+
+| 场景 | 重试次数 | 间隔 |
+|--|--|--|
+| 截图失败 | 3次 | 300ms |
+| MediaProjection 等待 | 20次(10s) | 500ms |
+| 导航到招募列表 | 15次 | 800-1500ms |
+| 加入队伍 | 10次 | 800ms |
+| 校验准备 | 10次 | 800ms |
+| 扫描等级 | 20次 | 1500ms |
+| 退出队伍 | 10次 | 500-1200ms |
+
+### 12.2 阶段恢复
+
+```
+WorkflowEngine recoveryCount ≤ 3:
+  catch(Exception) → currentPhase = RECOVERY → delay(1.5s) → IDLE
+
+超出恢复次数 → runLoop 结束 → GameManager state = IDLE
+```
+
+### 12.3 特殊处理
+
+- **MediaProjection 被系统回收** → onStop 回调 → 自动释放（保留授权数据，不清空 mResultCode）
+- **授权持久化** → 进程重启后从 SharedPreferences 恢复
+- **OpenCV 加载失败** → `System.loadLibrary` 异常捕获 → match 返回 false
+- **退出确认弹窗** → EXIT_CONFIRM 检测 + 自动点击确认（最多3次兜底）
+
+---
+
+## 13. 已知问题与待办
+
+### 13.1 模板缺失
+
+| 缺失模板 | 影响 | 优先级 |
+|--|--|--|
+| chatbox/NSS+.png, NS.png, NA.png | N系列活动悬赏无法扫描匹配 | 低(活动很少) |
+| preparation/lv80.png | A/A+等级校验无法使用等级匹配 | 中 |
+| preparation/lv90.png | S/S+等级校验无法使用等级匹配 | 中 |
+| preparation/lv100.png | SS等级校验无法使用等级匹配 | 中 |
+
+### 13.2 待优化项
+
+| 问题 | 说明 |
+|--|--|
+| 等级图标模板精度 | 当前 `*.png` 可能不匹配实际游戏画面，需要用户确认/替换 |
+| 战斗技能单一 | 仅支持大招，无武器技能模板 |
+| 无战斗血条/Boss检测 | BOSS_HP_BAR/COUNTDOWN 无模板，技能释放时机不精确 |
+| 无重连机制 | 游戏断线/弹窗等异常场景未处理 |
+| 无多分辨率适配 | 假定 1080p 屏幕，坐标硬编码 |
+
+### 13.3 gating 检查清单
+
+- [ ] hall_chat.png → 是否准确匹配聊天按钮
+- [ ] team_recruit.png → 是否准确匹配招募tab
+- [ ] join_team.png → 是否准确匹配加入按钮
+- [ ] prepare.png → 是否准确匹配准备按钮
+- [ ] lv30/lv40/lv60/lv125 → 是否准确匹配等级标识
+- [ ] confirm.png → 是否准确匹配退出确认按钮
+- [ ] congratulations.png → 是否准确匹配结算弹窗
+- [ ] confirm.png(settlement) → 是否准确匹配确定按钮
+- [ ] backward.png → 是否准确匹配返回按钮
+
+---
+
+## 14. 附录：Phase 状态变迁图
+
+```
+                      ┌──────────────────────────────┐
+                      │         IDLE                  │
+                      │  初始状态 / 回到大厅           │
+                      └──────────────┬───────────────┘
+                                     │ runLoop 开始
+                                     ▼
+                      ┌──────────────────────────────┐
+                      │       SCANNING                │
+                      │  ensureRecruitView()          │
+                      │  导航到招募列表 + 扫描等级     │
+                      └──────┬───────────────┬───────┘
+                             │ 匹配到等级     │ 重试耗尽
+                             ▼                ▼
+                      ┌──────────────┐  ┌──────────────┐
+                      │   JOINING    │  │    IDLE      │
+                      │  加入队伍     │  │  回大厅重试   │
+                      └──────┬───────┘  └──────────────┘
+                             │ 进入队伍房间
+                             ▼
+                      ┌──────────────────────────────┐
+                      │       VALIDATING              │
+                      │  已完成→退出                   │
+                      │  等级校验→仅警告               │
+                      │  点击准备                      │
+                      └──────┬───────────────┬───────┘
+                             │ 准备成功       │ 已完成/退出
+                             ▼                ▼
+                      ┌──────────────┐  ┌──────────────┐
+                      │   WAITING    │  │    IDLE      │
+                      │  等待倒计时   │  │  回大厅      │
+                      └──────┬───────┘  └──────────────┘
+                    ┌────────┤
+                    ▼        ▼ 超时
+             ┌──────────┐  ┌──────┐
+             │  BATTLE  │  │ IDLE │
+             │ 战斗     │  │退出队│
+             └────┬─────┘  └──────┘
+                  │ 结算弹窗
+                  ▼
+             ┌──────────┐
+             │SETTLEMENT│
+             │ 领奖     │
+             └────┬─────┘
+                  │ 回大厅
+                  ▼
+               [IDLE/S面CANNING 下一轮]
+```
+
+---
+
+> 本文档对应架构版本 v3.1
+> 最后更新：2026-05-11

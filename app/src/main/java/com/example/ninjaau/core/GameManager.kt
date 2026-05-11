@@ -5,15 +5,18 @@ import android.widget.Toast
 import com.example.ninjaau.core.util.LogUtil
 import com.example.ninjaau.core.util.PermissionManager
 import com.example.ninjaau.model.BountyConfig
+import com.example.ninjaau.model.BountyGrade
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 enum class ScriptState {
@@ -31,10 +34,24 @@ object GameManager {
     private var mainJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
-    private var selectedBounties: List<BountyConfig> = BountyConfig.presetList().filter { it.enabled }
+    private var selectedBounties: List<BountyConfig> = BountyConfig.defaultList().filter { it.enabled }
+
+    /** 日志事件流 — UI 可收集此流显示到运行日志面板 */
+    private val _logEvents = MutableSharedFlow<String>(extraBufferCapacity = 64)
+    val logEvents: SharedFlow<String> = _logEvents
+
+    private fun postLog(msg: String) {
+        LogUtil.i(TAG, msg)
+        _logEvents.tryEmit(msg)
+    }
 
     fun updateBountyConfigs(configs: List<BountyConfig>) {
         selectedBounties = configs
+    }
+
+    /** 返回当前已勾选的等级列表（供 UI 读取） */
+    fun getSelectedGrades(): List<BountyGrade> {
+        return selectedBounties.filter { it.enabled }.map { it.grade }
     }
 
     fun toggleScript(context: Context) {
@@ -47,64 +64,78 @@ object GameManager {
 
     fun startScript(context: Context) {
         if (_state.value != ScriptState.IDLE) return
-        if (PermissionManager.mediaProjection == null) {
-            LogUtil.e(TAG, "MediaProjection 未初始化")
-            Toast.makeText(context, "请先点击Link Start启动服务", Toast.LENGTH_SHORT).show()
-            return
-        }
         _state.value = ScriptState.RUNNING
         val appContext = context.applicationContext
 
         mainJob = scope.launch {
-            LogUtil.i(TAG, "自动化脚本启动")
-            try {
-                val engine = ScriptEngine(appContext)
-                while (isActive && _state.value == ScriptState.RUNNING) {
-                    engine.runLoop(selectedBounties)
+            postLog("⏳ 等待截图授权...")
+
+            // 进程重启后尝试从本地恢复授权数据
+            PermissionManager.restoreProjectionPermission(appContext)
+
+            var waited = 0
+            while (PermissionManager.mediaProjection == null && waited < 20) {
+                // 权限数据存在但实例被释放 → 尝试重新初始化
+                if (PermissionManager.hasProjectionPermission()) {
+                    PermissionManager.initMediaProjection(appContext)
                 }
+                if (PermissionManager.mediaProjection != null) break
+                delay(500)
+                waited++
+            }
+            if (PermissionManager.mediaProjection == null) {
+                postLog("❌ 截图授权超时(10s)")
+                Toast.makeText(appContext, "截图授权失败，请重试", Toast.LENGTH_SHORT).show()
+                _state.value = ScriptState.IDLE
+                return@launch
+            }
+
+            postLog("✅ 截图就绪，脚本开始运行")
+            try {
+                WorkflowEngine(appContext) { msg -> postLog(msg) }.runLoop(selectedBounties)
             } catch (e: CancellationException) {
                 LogUtil.i(TAG, "脚本已取消")
             } catch (e: Exception) {
                 LogUtil.e(TAG, "脚本执行异常", e)
-                _state.value = ScriptState.IDLE
             }
+            _state.value = ScriptState.IDLE
         }
     }
 
-    private fun pauseScript() {
+    fun pauseScript() {
+        if (_state.value != ScriptState.RUNNING) return
+        postLog("⏸ 脚本已暂停")
         mainJob?.cancel(CancellationException("脚本暂停"))
         mainJob = null
         _state.value = ScriptState.PAUSED
         PermissionManager.pauseMediaProjection()
-        LogUtil.i(TAG, "脚本已暂停")
     }
 
-    private fun resumeScript(context: Context) {
+    fun resumeScript(context: Context) {
+        if (_state.value != ScriptState.PAUSED) return
         if (PermissionManager.resumeMediaProjection(context)) {
+            postLog("▶ 脚本已恢复")
             _state.value = ScriptState.RUNNING
             val appContext = context.applicationContext
             mainJob = scope.launch {
-                LogUtil.i(TAG, "脚本已恢复")
                 try {
-                    val engine = ScriptEngine(appContext)
-                    while (isActive && _state.value == ScriptState.RUNNING) {
-                        engine.runLoop(selectedBounties)
-                    }
+                    WorkflowEngine(appContext) { msg -> postLog(msg) }.runLoop(selectedBounties)
                 } catch (e: CancellationException) {
-                    LogUtil.i(TAG, "脚本已取消")
+                    postLog("脚本已取消")
                 } catch (e: Exception) {
-                    LogUtil.e(TAG, "脚本执行异常", e)
-                    _state.value = ScriptState.IDLE
+                    postLog("❌ 脚本异常: ${e.message}")
                 }
+                _state.value = ScriptState.IDLE
             }
         } else {
+            postLog("❌ 截图权限失效")
             Toast.makeText(context, "截图权限失效，请重新启动悬浮窗", Toast.LENGTH_SHORT).show()
             _state.value = ScriptState.IDLE
         }
     }
 
     fun stopScript() {
-        LogUtil.i(TAG, "停止脚本，清理资源")
+        postLog("⏹ 停止脚本")
         mainJob?.cancel()
         mainJob = null
         PermissionManager.releaseMediaProjection()

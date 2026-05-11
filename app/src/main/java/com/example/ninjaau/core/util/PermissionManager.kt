@@ -19,6 +19,7 @@ import com.example.ninjaau.core.accessibility.NinjaAccessibilityService
  * 3. Android 12+ 前台服务类型强制检查
  * 4. 详细日志+脏数据清理
  * 5. 上下文安全（仅用ApplicationContext）
+ * 6. SharedPreferences 持久化授权数据，重启应用无需重新授权
  */
 object PermissionManager {
     // 线程同步锁：解决多线程同时初始化/释放MediaProjection的问题
@@ -32,6 +33,60 @@ object PermissionManager {
     private var _mediaProjection: MediaProjection? = null
     private var isReleased = false // 标记是否彻底释放
     val mediaProjection: MediaProjection? get() = _mediaProjection
+
+    // SharedPreferences 持久化键名
+    private const val PREFS_NAME = "ninja_au_prefs"
+    private const val KEY_RESULT_CODE = "media_projection_result_code"
+    private const val KEY_INTENT_URI = "media_projection_intent_uri"
+
+    /**
+     * 保存授权数据到 SharedPreferences（进程重启后恢复用）
+     */
+    fun saveProjectionPermission(context: Context) {
+        synchronized(lock) {
+            try {
+                val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                prefs.edit()
+                    .putInt(KEY_RESULT_CODE, mResultCode)
+                    .putString(KEY_INTENT_URI, mProjectionIntent?.toUri(Intent.URI_INTENT_SCHEME))
+                    .apply()
+                LogUtil.i("PermissionManager", "授权数据已持久化")
+            } catch (e: Exception) {
+                LogUtil.e("PermissionManager", "持久化授权数据失败", e)
+            }
+        }
+    }
+
+    /**
+     * 从 SharedPreferences 恢复授权数据（进程重启后调用）
+     * @return 是否有有效数据被恢复
+     */
+    fun restoreProjectionPermission(context: Context): Boolean {
+        synchronized(lock) {
+            // 内存中已有有效数据，无需恢复
+            if (mResultCode == Activity.RESULT_OK && mProjectionIntent != null) return true
+
+            try {
+                val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                val savedCode = prefs.getInt(KEY_RESULT_CODE, -1)
+                val savedUri = prefs.getString(KEY_INTENT_URI, null)
+
+                if (savedCode == Activity.RESULT_OK && savedUri != null) {
+                    val intent = Intent.parseUri(savedUri, Intent.URI_INTENT_SCHEME)
+                    mResultCode = savedCode
+                    mProjectionIntent = intent
+                    LogUtil.i("PermissionManager", "已从本地恢复授权数据")
+                    return true
+                }
+            } catch (e: Exception) {
+                LogUtil.e("PermissionManager", "恢复授权数据失败", e)
+                // 恢复失败时清空脏数据
+                mResultCode = -1
+                mProjectionIntent = null
+            }
+            return false
+        }
+    }
 
 
     // 暂停时调用：仅置空但不释放（保留权限）
@@ -145,10 +200,10 @@ object PermissionManager {
                         // MediaProjection被系统停止（比如用户手动关闭权限），及时释放资源
                         LogUtil.w("PermissionManager", "MediaProjection被系统停止，释放资源")
                         releaseMediaProjection()
-                        clearProjectionPermission() // 清空授权数据，下次重新申请
-                        isReleased = true // 标记为已释放
+                        // 不清空授权数据，允许后续重新初始化（无需再次请求权限）
+                        isReleased = true
                     }
-                }, null) // 第二个参数是Handler，传null用主线程
+                }, null)
 
                 // 6. 校验创建结果（只释放实例，不清空数据！）
                 val createSuccess = _mediaProjection != null

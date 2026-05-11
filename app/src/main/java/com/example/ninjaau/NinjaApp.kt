@@ -1,9 +1,7 @@
 package com.example.ninjaau
 
 import android.app.Application
-import android.util.Log
 import com.example.ninjaau.core.util.LogUtil
-import org.opencv.android.OpenCVLoader
 
 /**
  * 全局 Application 类
@@ -16,11 +14,7 @@ class NinjaApp : Application() {
         // 1. 先初始化日志工具
         LogUtil.init(this)
 
-        // 2. 最后初始化OpenCV
-        if (OpenCVLoader.initDebug()) {
-            LogUtil.i("NinjaApp", "OpenCV 库加载成功")
-        } else {
-            LogUtil.e("NinjaApp", "OpenCV 库加载失败")
-        }
+        // 2. OpenCV 由各模块使用时按需初始化，避免冷启动耗时长
+        LogUtil.i("NinjaApp", "NinjaApp 初始化完成")
     }
 }

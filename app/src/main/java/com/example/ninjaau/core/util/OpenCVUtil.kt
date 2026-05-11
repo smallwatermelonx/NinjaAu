@@ -11,9 +11,20 @@ import org.opencv.imgproc.Imgproc
  */
 object OpenCVUtil {
     private const val TAG = "OpenCVUtil"
+    private var isLoaded = false
 
     fun initOpenCV(): Boolean {
-        return OpenCVLoader.initDebug()
+        if (isLoaded) return true
+        return try {
+            // quickbirdstudios AAR 已打包 opencv_java4 原生库，直接加载
+            System.loadLibrary("opencv_java4")
+            isLoaded = true
+            LogUtil.i(TAG, "OpenCV 初始化成功")
+            true
+        } catch (e: Exception) {
+            LogUtil.e(TAG, "OpenCV 初始化异常: ${e.message}", e)
+            false
+        }
     }
 
     /**

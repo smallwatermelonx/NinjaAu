@@ -31,7 +31,7 @@ fun BountyCheckList(
                     checked = config.enabled,
                     onCheckedChange = { checked ->
                         editableConfigs = editableConfigs.map {
-                            if (it.id == config.id) it.copy(enabled = checked) else it
+                            if (it.grade == config.grade) it.copy(enabled = checked) else it
                         }
                         onConfigsChanged(editableConfigs)
                         GameManager.updateBountyConfigs(editableConfigs)
@@ -39,7 +39,7 @@ fun BountyCheckList(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = config.name,
+                    text = config.grade.displayName,
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
