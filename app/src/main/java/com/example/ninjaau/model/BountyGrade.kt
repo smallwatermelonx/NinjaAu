@@ -4,7 +4,7 @@ package com.example.ninjaau.model
  * 悬赏等级定义
  * 每个等级关联：显示名、默认完成次数、建议等级、招募列表等级图标模板路径、UI排序
  * level: 游戏内建议等级，队伍房间中显示为 lv{level}
- * 模板文件统一放在 assets/templates/bounty/ 下
+ * 模板文件统一放在 assets/templates/recruit_list/ 下
  */
 enum class BountyGrade(
     val key: String,
@@ -28,14 +28,18 @@ enum class BountyGrade(
     D("d", "D", 5, "d.png", 8, 30);
 
     /** 等级图标在 assets 中的完整路径（聊天招募列表中的字母等级图标） */
-    fun gradeIconPath() = "templates/bounty/chatbox/${displayName}.png"
+    fun gradeIconPath() = "templates/recruit_list/${displayName}.png"
 
-    /** 队伍房间中建议等级图标的路径（lv30 / lv40 / lv60 / lv125 等） */
+    /** 队伍房间中建议等级图标的路径（lv30 / lv40 / lv60 / lv80 / lv90 / lv125 等） */
     fun levelIconPath(): String? = when (level) {
-        30 -> "templates/bounty/preparation/lv30.png"
-        40 -> "templates/bounty/preparation/lv40.png"
-        60 -> "templates/bounty/preparation/lv60.png"
-        125 -> "templates/bounty/preparation/lv125.png"
+        30 -> "templates/team_room/lv30.png"
+        40 -> "templates/team_room/lv40.png"
+        60 -> "templates/team_room/lv60.png"
+        80 -> "templates/team_room/lv80.png"
+        90 -> "templates/team_room/lv90.png"
+        // TODO lv100.png — 待补充 SS 等级建议等级图标
+        100 -> "templates/team_room/lv100.png"
+        125 -> "templates/team_room/lv125.png"
         else -> null
     }
 
