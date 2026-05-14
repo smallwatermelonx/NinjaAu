@@ -24,7 +24,7 @@ class SceneDetector(private val context: Context) {
         ScreenState.CHAT_ICON to TemplateEntry("templates/lobby/hall_chat.png", 0.75f),
         // ── 聊天/招募 ──
         ScreenState.RECRUIT_TAB to TemplateEntry("templates/chat/team_recruit.png"),
-        ScreenState.RECRUIT_EXCEPTION to TemplateEntry("templates/recruit_list/exception.png", 0.7f),
+        ScreenState.OUT_OF_RANGE_RECRUIT to TemplateEntry("templates/recruit_list/out_of_range.png", 0.7f),
         // ── 入队 ──
         ScreenState.JOIN_BUTTON to TemplateEntry("templates/recruit_list/join_team.png"),
         ScreenState.TEAM_COMPLETED to TemplateEntry("templates/recruit_list/out_time.png"),
@@ -53,6 +53,8 @@ class SceneDetector(private val context: Context) {
         val SCOPE_NAVIGATE = listOf(
             ScreenState.CONFIRM_BUTTON,
             ScreenState.SETTLEMENT_POPUP,
+            ScreenState.DAILY_LIMIT,
+            ScreenState.DEFEAT_POPUP,
             ScreenState.CHAT_ICON,
             ScreenState.RECRUIT_TAB,
             ScreenState.RECRUIT_LIST,
@@ -114,6 +116,8 @@ class SceneDetector(private val context: Context) {
 
     // ── 模板缓存 ──
     private val templateCache = mutableMapOf<String, Bitmap>()
+    private val gradeIconCache = mutableMapOf<BountyGrade, Bitmap>()
+    private val levelIconCache = mutableMapOf<BountyGrade, Bitmap>()
 
     private fun getTemplate(state: ScreenState): Bitmap? {
         val entry = templates[state] ?: return null
@@ -127,6 +131,10 @@ class SceneDetector(private val context: Context) {
     fun release() {
         templateCache.values.forEach { if (!it.isRecycled) it.recycle() }
         templateCache.clear()
+        gradeIconCache.values.forEach { if (!it.isRecycled) it.recycle() }
+        gradeIconCache.clear()
+        levelIconCache.values.forEach { if (!it.isRecycled) it.recycle() }
+        levelIconCache.clear()
     }
 
     // ── 公开检测方法 ──
@@ -153,7 +161,7 @@ class SceneDetector(private val context: Context) {
         for (state in states) {
             val coord = matchTemplate(screenBitmap, state)
             if (coord != null) {
-                LogUtil.i(TAG, "✅ 匹配成功: $state")
+                LogUtil.i(TAG, "匹配成功: $state")
                 return Pair(state, coord)
             }
         }
@@ -175,35 +183,66 @@ class SceneDetector(private val context: Context) {
         }
         val result = TemplateMatcher.match(screen, template, entry.threshold)
         if (result.isMatched) {
-            LogUtil.i(TAG, "✅ $state: 相似度 ${String.format("%.2f", result.similarity)} ≥ ${entry.threshold}")
+            LogUtil.i(TAG, "$state: 相似度 ${String.format("%.2f", result.similarity)} ≥ ${entry.threshold}")
             return Pair(result.centerX, result.centerY)
-        } else {
-            LogUtil.d(TAG, "❌ $state: 相似度 ${String.format("%.2f", result.similarity)} < ${entry.threshold} (${entry.path})")
-            return null
         }
+        return null
+    }
+
+    /**
+     * 在指定坐标附近搜索模板（邻近扩散匹配）
+     * 用于等级图标→同一悬赏块的加入按钮匹配。
+     * 从 nearX,nearY 向右下矩形区域搜索，避免匹配到其他悬赏块的按钮。
+     */
+    fun matchTemplateNear(
+        screen: Bitmap,
+        state: ScreenState,
+        nearX: Float,
+        nearY: Float,
+        rangeRight: Int = 350,
+        rangeDown: Int = 300
+    ): Pair<Float, Float>? {
+        val entry = templates[state] ?: return null
+        val template = getTemplate(state) ?: return null
+
+        val left = maxOf(0, nearX.toInt())
+        val top = maxOf(0, nearY.toInt())
+        val right = minOf(screen.width, nearX.toInt() + rangeRight)
+        val bottom = minOf(screen.height, nearY.toInt() + rangeDown)
+
+        if (right - left < template.width || bottom - top < template.height) return null
+
+        val cropped = Bitmap.createBitmap(screen, left, top, right - left, bottom - top)
+        val result = TemplateMatcher.match(cropped, template, entry.threshold)
+        cropped.recycle()
+
+        if (result.isMatched) {
+            val ax = left + result.centerX
+            val ay = top + result.centerY
+            LogUtil.i(TAG, "邻近匹配 $state: 局部(${result.centerX}, ${result.centerY}) → 全局($ax, $ay)")
+            return Pair(ax, ay)
+        }
+        LogUtil.d(TAG, "❌ 邻近匹配 $state: 等级图标($nearX,$nearY) 附近未找到")
+        return null
     }
 
     /** 在截图中匹配指定悬赏等级的图标（用于节点3扫描） */
     fun matchGradeIcon(screen: Bitmap, grade: BountyGrade): Pair<Float, Float>? {
-        val template = AssetUtil.loadBitmapFromAssets(context, grade.gradeIconPath()) ?: return null
-        return try {
-            val result = TemplateMatcher.match(screen, template, 0.8f)
-            if (result.isMatched) Pair(result.centerX, result.centerY) else null
-        } finally {
-            template.recycle()
+        val template = gradeIconCache.getOrPut(grade) {
+            AssetUtil.loadBitmapFromAssets(context, grade.gradeIconPath()) ?: return null
         }
+        val result = TemplateMatcher.match(screen, template, 0.8f)
+        if (result.isMatched) return Pair(result.centerX, result.centerY) else return null
     }
 
     /** 在截图中匹配队伍房间内的建议等级标识（lv30 / lv40 / lv60 / lv125） */
     fun matchLevelIcon(screen: Bitmap, grade: BountyGrade): Pair<Float, Float>? {
-        val path = grade.levelIconPath() ?: return null
-        val template = AssetUtil.loadBitmapFromAssets(context, path) ?: return null
-        return try {
-            val result = TemplateMatcher.match(screen, template, 0.8f)
-            if (result.isMatched) Pair(result.centerX, result.centerY) else null
-        } finally {
-            template.recycle()
+        val template = levelIconCache.getOrPut(grade) {
+            val path = grade.levelIconPath() ?: return null
+            AssetUtil.loadBitmapFromAssets(context, path) ?: return null
         }
+        val result = TemplateMatcher.match(screen, template, 0.9f)
+        if (result.isMatched) return Pair(result.centerX, result.centerY) else return null
     }
 
     /** 在截图中搜索多个等级的建议等级标识 */
@@ -239,7 +278,7 @@ class SceneDetector(private val context: Context) {
         ScreenState.TEAM_ROOM,
         ScreenState.JOIN_BUTTON,
         ScreenState.RECRUIT_TAB,
-        ScreenState.RECRUIT_EXCEPTION,
+        ScreenState.OUT_OF_RANGE_RECRUIT,
         ScreenState.CHAT_ICON,
         ScreenState.BACK_BUTTON,
         ScreenState.CHAT_TAB,

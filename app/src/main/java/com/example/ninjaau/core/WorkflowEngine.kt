@@ -22,11 +22,11 @@ import java.util.Locale
 import kotlin.coroutines.coroutineContext
 
 /**
- * 悬赏自动化流水线引擎 v2
+ * 悬赏自动化流水线引擎 v2.2
  *
- * 节点流程（对应业务规范）:
- *   节点1(聊天) → 节点2(招募tab) → 节点3(抢悬赏,100ms) → 节点4(队伍→准备→等战斗,15s)
- *   → 节点5(战斗) → 节点6(结算领奖) → 回到节点1
+ * 页面流程（GamePhase 映射 template 目录）:
+ *   LOBBY(lobby/) → CHAT(chat/) → RECRUIT_LIST(recruit_list/,100ms)
+ *   → TEAM_ROOM(team_room/) → FIGHT(fight/) → SETTLEMENT(settlement/) → LOBBY...
  *
  * 识别周期: 普通 1s / 招募列表 100ms
  * 异常兜底: 3次连续失败 → 整体判定 → 3次整体判定失败 → 停止脚本并写日志
@@ -73,17 +73,16 @@ class WorkflowEngine(
         ) {
             try {
                 val phaseName = ctx.currentPhase.name
-                log("▶ Phase: $phaseName 开始")
+                log("Phase: $phaseName")
                 val next = when (ctx.currentPhase) {
-                    GamePhase.IDLE, GamePhase.SCANNING -> phaseNavigateAndScan(ctx)
-                    GamePhase.JOINING -> phaseJoin(ctx)
-                    GamePhase.VALIDATING, GamePhase.WAITING -> phaseValidate(ctx)
-                    GamePhase.BATTLE -> phaseBattle(ctx)
+                    GamePhase.IDLE, GamePhase.LOBBY, GamePhase.CHAT, GamePhase.RECRUIT_LIST ->
+                        phaseNavigateAndScan(ctx)
+                    GamePhase.TEAM_ROOM -> phaseValidate(ctx)
+                    GamePhase.FIGHT -> phaseBattle(ctx)
                     GamePhase.SETTLEMENT -> phaseClaim(ctx)
                     GamePhase.RECOVERY -> { delay(1500); GamePhase.IDLE }
                     GamePhase.DONE -> GamePhase.DONE
                 }
-                log("▶ Phase $phaseName → $next")
                 ctx.currentPhase = next
             } catch (e: CancellationException) {
                 throw e
@@ -104,7 +103,6 @@ class WorkflowEngine(
             writeCrashLog(ctx)
         }
         LogUtil.i(TAG, "流水线结束: allCompleted=$allDone, globalFailCount=$globalFailCount")
-        log("流水线结束: allCompleted=$allDone, recoveryCount=$globalFailCount")
         return allDone
     }
 
@@ -121,124 +119,117 @@ class WorkflowEngine(
         val arrived = ensureRecruitView()
         if (!arrived) {
             log("⚠ 无法到达招募列表")
-            return GamePhase.SCANNING
+            return GamePhase.LOBBY
         }
 
-        // ── 节点3：快速扫描（100ms），单循环处理 匹配→加入→准备 ──
-        log("🔍 进入100ms快速扫描模式")
-        var refreshCount = 0
+        // ── 节点3: 100ms 全屏检查循环 ──
+        log("🔍 进入100ms全屏检查循环")
         var noMatchCycles = 0
-        ctx.currentBounty = null  // 确保以干净状态进入扫描
+        var refreshCooldown = 0  // 刷新冷却计数，防无限刷新循环
+        ctx.currentBounty = null
 
         while (coroutineContext.isActive) {
             val screen = captureBitmap()
             if (screen == null) { delay(FAST_INTERVAL_MS); continue }
             try {
-                // ═══ 异常检测（最高优先级） ═══
-                if (detector.matchTemplate(screen, ScreenState.RECRUIT_EXCEPTION) != null) {
-                    if (ctx.currentBounty == null) {
-                        log("⚠ 招募列表异常，页签刷新")
-                        performTabRefresh(screen)
+                // ═══ ① 超出范围悬赏检测（校验模式中跳过，直接点击刷新列表） ═══
+                if (ctx.currentBounty == null && refreshCooldown <= 0) {
+                    val rangeCoord = detector.matchTemplate(screen, ScreenState.OUT_OF_RANGE_RECRUIT)
+                    if (rangeCoord != null) {
+                        log("⚠ 超出范围悬赏，点击刷新列表")
+                        click(rangeCoord)
                         noMatchCycles = 0
+                        refreshCooldown = 10  // 1秒冷却，防无限刷新
                         continue
                     }
                 }
+                if (refreshCooldown > 0) refreshCooldown--
 
-                // ═══ 已选择悬赏 → 正在加入 / 已在队伍 ═══
+                // ═══ ② 校验模式（已在队伍房间，100ms节奏） ═══
                 if (ctx.currentBounty != null) {
-                    val joinCoord = detector.matchTemplate(screen, ScreenState.JOIN_BUTTON)
-                    if (joinCoord != null) {
-                        click(joinCoord)
-                        log("🔄 再次点击加入 ${ctx.currentBounty?.displayName}")
-                        delay(POST_CLICK_DELAY)
-                        continue
-                    }
 
-                    // JOIN_BUTTON 消失 → 进入队伍房间
-                    val readyCoord = detector.matchTemplate(screen, ScreenState.READY_BUTTON)
-                    if (readyCoord != null) {
-                        click(readyCoord)
-                        log("✅ 已在队伍房间，点击准备")
-                        delay(POST_CLICK_DELAY)
-                        return GamePhase.VALIDATING
-                    }
-
-                    // 异常弹窗检查
-                    if (detector.matchTemplate(screen, ScreenState.DAILY_LIMIT) != null ||
-                        detector.matchTemplate(screen, ScreenState.TEAM_COMPLETED) != null ||
-                        detector.matchTemplate(screen, ScreenState.TEAM_FULL) != null
-                    ) {
-                        log("⚠ 加入失败，退出队伍")
+                    // 已达上限 → 退出队伍
+                    if (detector.matchTemplate(screen, ScreenState.DAILY_LIMIT) != null) {
+                        log("⚠ 已达上限，退出")
                         exitTeam()
                         ctx.currentBounty = null
-                        refreshCount = 0
-                        noMatchCycles = 0
                         continue
                     }
 
-                    // 过渡状态 → 慢速等待房间加载
-                    delay(NORMAL_INTERVAL_MS)
+                    // 检查是否还在招募列表（加入失败异常→扔回主流程）
+                    val (recruitState, _) = detector.detectForPhase(screen, SceneDetector.SCOPE_RECRUIT)
+                    if (recruitState != ScreenState.UNKNOWN) {
+                        log("⚠ 加入失败，仍在招募界面($recruitState)，返回主流程")
+                        ctx.currentBounty = null
+                        return GamePhase.LOBBY
+                    }
+
+                    // 准备按钮 + 等级校验（对着用户勾选的全部级别匹配）
+                    val readyCoord = detector.matchTemplate(screen, ScreenState.READY_BUTTON)
+                    if (readyCoord != null) {
+                        val levelMatch = detector.matchAnyLevelIcon(screen, ctx.activeGrades)
+                        if (levelMatch == null) {
+                            log("⚠ 队伍级别不在勾选范围内，退出")
+                            exitTeam()
+                            ctx.currentBounty = null
+                            continue
+                        }
+                        val (actualGrade, _) = levelMatch
+                        log("✅ 等级匹配 ${actualGrade.displayName} (lv${actualGrade.level})，点击准备")
+                        click(readyCoord)
+                        delay(POST_CLICK_DELAY)
+                        return GamePhase.TEAM_ROOM
+                    }
+
+                    delay(FAST_INTERVAL_MS)
                     continue
                 }
 
-                // ═══ 普通扫描模式 ═══
-
-                // READY_BUTTON（被邀请直达队伍房间）
-                val readyCoord = detector.matchTemplate(screen, ScreenState.READY_BUTTON)
-                if (readyCoord != null) {
-                    click(readyCoord)
-                    log("✅ 已在队伍房间（被邀请），点击准备")
-                    delay(POST_CLICK_DELAY)
-                    return GamePhase.VALIDATING
-                }
-
-                // SCOPE_RECRUIT 检查
-                val (currentState, _) = detector.detectForPhase(screen, SceneDetector.SCOPE_RECRUIT)
-                when (currentState) {
-                    ScreenState.CHAT_ICON, ScreenState.RECRUIT_TAB -> {
-                        log("已离开招募界面($currentState)，重新导航")
-                        return GamePhase.SCANNING
-                    }
-                    ScreenState.UNKNOWN -> {
-                        log("⚠ 招募界面无法识别，页签刷新")
-                        performTabRefresh(screen)
-                        noMatchCycles = 0
-                        continue
-                    }
-                    else -> {}
-                }
-
-                // 等级匹配
-                // TODO NSS+.png / NS.png / NA.png — 三种活动悬赏等级图标模板缺失
+                // ═══ ③ 普通扫描模式（100ms节奏） ═══
+                // 等级匹配 — 只匹配用户勾选的等级
                 val match = detector.matchAnyGrade(screen, remaining)
                 if (match != null) {
-                    val (grade, coord) = match
+                    val (grade, _) = match
                     ctx.currentBounty = grade
-                    log("✅ 匹配到悬赏 ${grade.displayName}，坐标=${coord}")
-
                     val joinCoord = detector.matchTemplate(screen, ScreenState.JOIN_BUTTON)
                     if (joinCoord != null) {
                         click(joinCoord)
-                        log("✅ 点击加入队伍")
+                        log("${grade.displayName}悬赏可见，点击加入")
                         delay(POST_CLICK_DELAY)
-                    } else {
-                        click(coord)
-                        delay(POST_CLICK_DELAY)
+                        noMatchCycles = 0
+                        continue
                     }
+                    log("⚠ 未找到加入按钮，跳过")
+                    ctx.currentBounty = null
+                    delay(FAST_INTERVAL_MS)
                     continue
                 }
 
-                // 未匹配到 → 计数，准备刷新
+                // 100ms×3 无等级匹配 → 检查是否被邀请进队伍
                 noMatchCycles++
-                if (noMatchCycles >= SCAN_REFRESH_CYCLES) {
-                    if (refreshCount >= SCAN_MAX_REFRESH) {
-                        log("⚠ 刷新${SCAN_MAX_REFRESH}次仍无匹配，整体判定")
-                        ctx.currentBounty = null
-                        return GamePhase.SCANNING
+                if (noMatchCycles >= 3) {
+                    noMatchCycles = 0  // 只判定一次
+                    val readyCoord = detector.matchTemplate(screen, ScreenState.READY_BUTTON)
+                    if (readyCoord != null) {
+                        val levelMatch = detector.matchAnyLevelIcon(screen, ctx.activeGrades)
+                        if (levelMatch != null) {
+                            val (g, _) = levelMatch
+                            ctx.currentBounty = g
+                            log("✅ 被邀请进入 ${g.displayName}，进入校验")
+                            continue  // 下周期进入校验分支
+                        }
+                        log("⚠ 被邀请但等级不匹配，退出")
+                        exitTeam()
+                        continue
                     }
-                    refreshCount++
-                    log("🔄 未匹配(${noMatchCycles}周期)，页签刷新 第${refreshCount}次")
-                    noMatchCycles = 0
+                    // 界面状态检查（离开招募界面时重新导航）
+                    val (currentState, _) = detector.detectForPhase(screen, SceneDetector.SCOPE_RECRUIT)
+                    if (currentState == ScreenState.CHAT_ICON || currentState == ScreenState.RECRUIT_TAB) {
+                        log("已离开招募界面($currentState)，重新导航")
+                        return GamePhase.LOBBY
+                    }
+                    // 无 READY_BUTTON + 在招募界面 → 页签刷新
+                    log("🔄 3周期无等级匹配，刷新")
                     performTabRefresh(screen)
                 }
             } finally {
@@ -264,7 +255,7 @@ class WorkflowEngine(
             if (screen == null) { delay(FAST_INTERVAL_MS); continue }
             try {
                 // 优先级1: 异常 → 页签刷新
-                if (detector.matchTemplate(screen, ScreenState.RECRUIT_EXCEPTION) != null) {
+                if (detector.matchTemplate(screen, ScreenState.OUT_OF_RANGE_RECRUIT) != null) {
                     log("⚠ 加入阶段招募列表异常，页签刷新")
                     performTabRefresh(screen)
                     continue
@@ -276,7 +267,7 @@ class WorkflowEngine(
                     log("✅ 已在队伍房间，点击准备")
                     click(readyCoord)
                     delay(POST_CLICK_DELAY)
-                    return GamePhase.VALIDATING
+                    return GamePhase.TEAM_ROOM
                 }
 
                 // 优先级3: 点击加入队伍
@@ -294,7 +285,7 @@ class WorkflowEngine(
         }
 
         log("⚠ 加入队伍超时")
-        return GamePhase.SCANNING
+        return GamePhase.LOBBY
     }
 
     // ══════════════════════════════════════════
@@ -302,65 +293,11 @@ class WorkflowEngine(
     // ══════════════════════════════════════════
 
     private suspend fun phaseValidate(ctx: GameContext): GamePhase {
-        val targetGrade = ctx.currentBounty ?: return GamePhase.SCANNING
-        log("校验 Phase，目标=${targetGrade.displayName}(lv${targetGrade.level})")
+        val targetGrade = ctx.currentBounty ?: return GamePhase.LOBBY
+        log("等待战斗 Phase，目标=${targetGrade.displayName}(lv${targetGrade.level})")
 
-        // ── 阶段1: 准备（1s普通模式） ──
-        var readyFound = false
-        for (i in 0 until 15) {
-            if (!coroutineContext.isActive) return GamePhase.DONE
-            val screen = captureBitmap()
-            if (screen == null) { delay(NORMAL_INTERVAL_MS); continue }
-            try {
-                // 检测准备按钮
-                val readyCoord = detector.matchTemplate(screen, ScreenState.READY_BUTTON)
-                if (readyCoord != null) {
-                    // 等级校验（仅日志）
-                    val levelVisible = detector.matchLevelIcon(screen, targetGrade) != null
-                    if (levelVisible) log("✅ 建议等级匹配 (lv${targetGrade.level})")
-                    else log("⚠ 建议等级未匹配，继续执行")
-
-                    click(readyCoord)
-                    log("✅ 点击准备")
-                    delay(POST_CLICK_DELAY)
-                    readyFound = true
-                    break
-                }
-
-                // 已达上限 → 退出
-                if (detector.matchTemplate(screen, ScreenState.DAILY_LIMIT) != null) {
-                    log("⚠ ${targetGrade.displayName} 已达上限，退出队伍")
-                    exitTeam()
-                    ctx.currentBounty = null
-                    return GamePhase.IDLE
-                }
-
-                // 已完成标记 → 退出
-                if (detector.matchTemplate(screen, ScreenState.TEAM_COMPLETED) != null) {
-                    log("⚠ 该悬赏已完成，退出队伍")
-                    exitTeam()
-                    ctx.currentBounty = null
-                    return GamePhase.IDLE
-                }
-
-                // 队伍已满 → 退出
-                if (detector.matchTemplate(screen, ScreenState.TEAM_FULL) != null) {
-                    log("⚠ 队伍已满，退出")
-                    exitTeam()
-                    ctx.currentBounty = null
-                    return GamePhase.IDLE
-                }
-            } finally {
-                screen.recycle()
-            }
-            delay(NORMAL_INTERVAL_MS)
-        }
-
-        if (!readyFound) {
-            log("⚠ 未找到准备按钮，退出队伍")
-            exitTeam()
-            return GamePhase.SCANNING
-        }
+        // 扫描循环已处理完成 阻断检查+等级校验+点击准备
+        // 本阶段直接从等待战斗开始
 
         // ── 阶段2: 等待战斗开始（15s超时） ──
         log("等待战斗开始(15s超时)")
@@ -376,7 +313,7 @@ class WorkflowEngine(
                     log("✅ 战斗开始，点击滑屏")
                     click(warningCoord)
                     delay(1000)
-                    return GamePhase.BATTLE
+                    return GamePhase.FIGHT
                 }
 
                 // 正常等待中
@@ -481,16 +418,19 @@ class WorkflowEngine(
             val screen = captureBitmap()
             if (screen == null) { delay(NORMAL_INTERVAL_MS); continue }
             try {
-                // 先点空白关闭弹窗
-                clickOutside()
-                delay(300)
+                // 结算弹窗（黑色遮罩）→ 点击空白关闭
+                if (detector.matchTemplate(screen, ScreenState.SETTLEMENT_POPUP) != null) {
+                    clickOutside(screen)
+                    delay(800)
+                    continue
+                }
 
-                // 点击确定按钮
+                // 确定按钮（领奖确认）
                 val confirmCoord = detector.matchTemplate(screen, ScreenState.CONFIRM_BUTTON)
                 if (confirmCoord != null) {
-                    log("点击确定按钮")
                     click(confirmCoord)
                     delay(POST_CLICK_DELAY)
+                    continue
                 }
 
                 // 回到大厅？
@@ -515,12 +455,16 @@ class WorkflowEngine(
             val count = ctx.runCounts[grade] ?: 0
             ctx.runCounts[grade] = count + 1
             ctx.totalCycles++
-            log("✅ ${grade.displayName} 完成 ${count + 1}/${grade.defaultRuns}")
+            log("✅ ${grade.displayName} 完成 ${count + 1}/${ctx.targetRuns[grade] ?: grade.defaultRuns}")
+            if ((ctx.runCounts[grade] ?: 0) >= (ctx.targetRuns[grade] ?: grade.defaultRuns)) {
+                ctx.activeGrades = ctx.activeGrades - grade
+                log("✅ ${grade.displayName} 全部完成，从集合移除")
+            }
         }
         ctx.currentBounty = null
 
-        if (ctx.allCompleted) {
-            log("🎉 所有勾选悬赏已完成！")
+        if (ctx.activeGrades.isEmpty()) {
+            log("🎉 所有悬赏已完成！")
             return GamePhase.DONE
         }
         return GamePhase.IDLE
@@ -535,12 +479,15 @@ class WorkflowEngine(
         return GameContext(
             currentPhase = GamePhase.IDLE,
             activeGrades = enabled.map { it.grade },
-            runCounts = enabled.associate { it.grade to 0 }.toMutableMap()
+            runCounts = enabled.associate { it.grade to 0 }.toMutableMap(),
+            targetRuns = enabled.associate { it.grade to it.targetRuns }
         )
     }
 
     private fun remainingGrades(ctx: GameContext): List<BountyGrade> {
-        return ctx.activeGrades.filter { g -> (ctx.runCounts[g] ?: 0) < g.defaultRuns }
+        return ctx.activeGrades.filter { g ->
+            (ctx.runCounts[g] ?: 0) < (ctx.targetRuns[g] ?: g.defaultRuns)
+        }
     }
 
     /** 节点1+2：从任意位置导航到招募列表 */
@@ -573,6 +520,11 @@ class WorkflowEngine(
                     ScreenState.SETTLEMENT_POPUP, ScreenState.CONFIRM_BUTTON -> {
                         log("检测到弹窗，点击关闭")
                         click(coord!!)
+                        delay(POST_CLICK_DELAY)
+                    }
+                    ScreenState.DAILY_LIMIT, ScreenState.DEFEAT_POPUP -> {
+                        log("检测到弹窗($state)，继续导航")
+                        clickOutside(screen)
                         delay(POST_CLICK_DELAY)
                     }
                     ScreenState.BACK_BUTTON -> {
@@ -674,8 +626,37 @@ class WorkflowEngine(
         delay(300)
     }
 
-    private suspend fun clickOutside() {
-        accessibility?.clickAt(540f, 1200f)
+    /**
+     * 点击空白区域关闭弹窗
+     *
+     * 作用: 游戏中的弹窗（结算、公告等）通过点击弹窗外部关闭。
+     * 当前使用 OpenCV 模板识别结果动态决定点击位置，不再硬编码固定像素。
+     *
+     * 策略:
+     * 1. 检测 SETTLEMENT_POPUP → 弹窗在屏幕中央 → 底部空白处点击
+     * 2. 检测 CONFIRM_BUTTON → 按钮在弹窗底部 → 弹窗上方空白处点击
+     * 3. 兜底 → 屏幕底部中央
+     */
+    private suspend fun clickOutside(screen: Bitmap? = null) {
+        val display = context.resources.displayMetrics
+        val w = display.widthPixels.toFloat()
+        val h = display.heightPixels.toFloat()
+
+        if (screen != null) {
+            if (detector.matchTemplate(screen, ScreenState.SETTLEMENT_POPUP) != null) {
+                accessibility?.clickAt(w / 2f, h * 0.88f)
+                delay(300)
+                return
+            }
+            if (detector.matchTemplate(screen, ScreenState.CONFIRM_BUTTON) != null) {
+                accessibility?.clickAt(w / 2f, h * 0.2f)
+                delay(300)
+                return
+            }
+        }
+
+        // 兜底: 屏幕底部中央（弹窗外部）
+        accessibility?.clickAt(w / 2f, h * 0.88f)
         delay(300)
     }
 

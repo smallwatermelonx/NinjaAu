@@ -11,7 +11,7 @@ enum class ScreenState(val description: String) {
     CHAT_ICON("聊天图标"),
     RECRUIT_TAB("组队招募页签"),
     RECRUIT_LIST("招募列表"),
-    RECRUIT_EXCEPTION("招募列表异常"),
+    OUT_OF_RANGE_RECRUIT("超出范围的悬赏"),
 
     // === 入队 ===
     JOIN_BUTTON("加入队伍按钮"),
