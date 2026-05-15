@@ -30,10 +30,16 @@ enum class GamePhase {
     CHAT,
     /** 招募列表 — templates/recruit_list/ */
     RECRUIT_LIST,
-    /** 队伍房间 — templates/team_room/ */
-    TEAM_ROOM,
+    /** 招募邀请弹窗 */
+    RECRUIT_INVITE,
+    /** 悬赏详情 — templates/team_room/ */
+    BOUNTY_DETAIL,
+    /** 战斗加载界面 — templates/battle_loading/ */
+    BATTLE_LOADING,
     /** 战斗中 — templates/fight/ */
     FIGHT,
+    /** 失败结算 */
+    DEFEAT,
     /** 结算领奖 — templates/settlement/ */
     SETTLEMENT,
     /** 异常恢复 */

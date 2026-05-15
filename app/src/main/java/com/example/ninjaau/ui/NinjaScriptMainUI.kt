@@ -28,6 +28,7 @@ import com.example.ninjaau.core.GameManager
 import com.example.ninjaau.core.ScriptState
 import com.example.ninjaau.core.floating.FloatingWindowService
 import com.example.ninjaau.core.capture.CapturePermissionActivity
+import com.example.ninjaau.core.util.BountyConfigStorage
 import com.example.ninjaau.core.util.LogUtil
 import com.example.ninjaau.core.util.PermissionManager
 import com.example.ninjaau.model.BountyConfig
@@ -54,7 +55,7 @@ fun NinjaScriptMainUI() {
     val scope = rememberCoroutineScope()
 
     // 用户勾选配置
-    var bountyConfigs by remember { mutableStateOf(BountyConfig.defaultList()) }
+    var bountyConfigs by remember { mutableStateOf(BountyConfigStorage.load(context)) }
     // 运行日志
     var logLines by remember { mutableStateOf(listOf("就绪，等待启动...")) }
     // 权限状态
@@ -275,9 +276,11 @@ fun NinjaScriptMainUI() {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 TextButton(onClick = {
                                     bountyConfigs = bountyConfigs.map { it.copy(enabled = true) }
+                                    BountyConfigStorage.save(context, bountyConfigs)
                                 }) { Text("全选", fontSize = 13.sp, color = PurpleLight) }
                                 TextButton(onClick = {
                                     bountyConfigs = bountyConfigs.map { it.copy(enabled = false) }
+                                    BountyConfigStorage.save(context, bountyConfigs)
                                 }) { Text("清空", fontSize = 13.sp, color = TextSecondary) }
                             }
                         }
@@ -303,6 +306,7 @@ fun NinjaScriptMainUI() {
                                                 else it
                                             }
                                             GameManager.updateBountyConfigs(bountyConfigs.filter { it.enabled })
+                                            BountyConfigStorage.save(context, bountyConfigs)
                                         }
                                     )
                                 }
@@ -341,6 +345,7 @@ fun NinjaScriptMainUI() {
                                                 else it
                                             }
                                             GameManager.updateBountyConfigs(bountyConfigs.filter { it.enabled })
+                                            BountyConfigStorage.save(context, bountyConfigs)
                                         }
                                     )
                                 }

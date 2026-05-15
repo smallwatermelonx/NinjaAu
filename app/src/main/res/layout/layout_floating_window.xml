@@ -1,69 +1,134 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="wrap_content"
-    android:layout_height="80dp">
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical">
 
+    <!-- 左侧信息面板 -->
     <LinearLayout
-        android:id="@+id/ll_menu"
-        android:layout_width="wrap_content"
-        android:layout_height="80dp"
-        android:orientation="horizontal"
+        android:id="@+id/ll_info_panel"
+        android:layout_width="260dp"
+        android:layout_height="300dp"
+        android:orientation="vertical"
         android:visibility="gone"
-        android:layout_gravity="center_vertical"
-        android:paddingStart="80dp"
-        android:paddingEnd="10dp"
-        android:background="@android:color/transparent">
+        android:background="#CC1A1A2E"
+        android:padding="10dp">
 
-        <FrameLayout
-            android:id="@+id/btn_start"
-            android:layout_width="60dp"
-            android:layout_height="60dp"
-            android:layout_margin="10dp"
-            android:background="@drawable/float_btn_bg">
-            <ImageView
-                android:id="@+id/iv_control_icon"
-                android:layout_width="30dp"
-                android:layout_height="30dp"
-                android:layout_gravity="center"
-                android:src="@android:drawable/ic_media_play" />
-        </FrameLayout>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="◆ 完成进度"
+            android:textColor="#FFB388FF"
+            android:textSize="13sp"
+            android:textStyle="bold" />
 
-        <FrameLayout
-            android:id="@+id/btn_bounty"
-            android:layout_width="60dp"
-            android:layout_height="60dp"
-            android:layout_margin="10dp"
-            android:background="@drawable/float_btn_bg">
-            <ImageView
-                android:layout_width="30dp"
-                android:layout_height="30dp"
-                android:layout_gravity="center"
-                android:src="@android:drawable/ic_menu_agenda" />
-        </FrameLayout>
+        <LinearLayout
+            android:id="@+id/ll_progress"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="8dp" />
 
-        <FrameLayout
-            android:id="@+id/iv_close"
-            android:layout_width="60dp"
-            android:layout_height="60dp"
-            android:layout_margin="10dp"
-            android:background="@drawable/float_btn_bg">
-            <ImageView
-                android:layout_width="30dp"
-                android:layout_height="30dp"
-                android:layout_gravity="center"
-                android:src="@android:drawable/ic_lock_power_off" />
-        </FrameLayout>
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#334A4A6A" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="◆ 运行日志"
+            android:textColor="#FFB388FF"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:layout_marginTop="8dp" />
+
+        <ScrollView
+            android:id="@+id/sv_logs"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="4dp"
+            android:scrollbars="vertical">
+            <LinearLayout
+                android:id="@+id/ll_logs"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </ScrollView>
     </LinearLayout>
 
+    <!-- 右侧浮窗主体 -->
     <FrameLayout
-        android:id="@+id/fl_main_ball"
-        android:layout_width="80dp"
-        android:layout_height="80dp"
-        android:background="@drawable/float_ball_bg">
-        <ImageView
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:layout_gravity="center"
-            android:src="@mipmap/ic_launcher" />
+        android:layout_width="wrap_content"
+        android:layout_height="80dp">
+
+        <!-- 展开菜单 -->
+        <LinearLayout
+            android:id="@+id/ll_menu"
+            android:layout_width="wrap_content"
+            android:layout_height="80dp"
+            android:orientation="horizontal"
+            android:visibility="gone"
+            android:layout_gravity="center_vertical"
+            android:paddingStart="80dp"
+            android:paddingEnd="10dp"
+            android:background="@android:color/transparent">
+
+            <FrameLayout
+                android:id="@+id/btn_start"
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+                android:layout_margin="10dp"
+                android:background="@drawable/float_btn_bg">
+                <ImageView
+                    android:id="@+id/iv_control_icon"
+                    android:layout_width="30dp"
+                    android:layout_height="30dp"
+                    android:layout_gravity="center"
+                    android:src="@android:drawable/ic_media_play" />
+            </FrameLayout>
+
+            <FrameLayout
+                android:id="@+id/btn_bounty"
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+                android:layout_margin="10dp"
+                android:background="@drawable/float_btn_bg">
+                <ImageView
+                    android:layout_width="30dp"
+                    android:layout_height="30dp"
+                    android:layout_gravity="center"
+                    android:src="@android:drawable/ic_menu_agenda" />
+            </FrameLayout>
+
+            <FrameLayout
+                android:id="@+id/iv_close"
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+                android:layout_margin="10dp"
+                android:background="@drawable/float_btn_bg">
+                <ImageView
+                    android:layout_width="30dp"
+                    android:layout_height="30dp"
+                    android:layout_gravity="center"
+                    android:src="@android:drawable/ic_lock_power_off" />
+            </FrameLayout>
+        </LinearLayout>
+
+        <!-- 主球 -->
+        <FrameLayout
+            android:id="@+id/fl_main_ball"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:background="@drawable/float_ball_bg">
+            <ImageView
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_gravity="center"
+                android:src="@mipmap/ic_launcher" />
+        </FrameLayout>
     </FrameLayout>
-</FrameLayout>
+</LinearLayout>

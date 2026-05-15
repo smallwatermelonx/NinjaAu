@@ -25,19 +25,16 @@ class SceneDetector(private val context: Context) {
         // ── 聊天/招募 ──
         ScreenState.RECRUIT_TAB to TemplateEntry("templates/chat/team_recruit.png"),
         ScreenState.OUT_OF_RANGE_RECRUIT to TemplateEntry("templates/recruit_list/out_of_range.png", 0.7f),
+        ScreenState.RECRUIT_INVITE to TemplateEntry("templates/recruit_list/recruit_invite.png"),
         // ── 入队 ──
-        ScreenState.JOIN_BUTTON to TemplateEntry("templates/recruit_list/join_team.png"),
-        ScreenState.TEAM_COMPLETED to TemplateEntry("templates/recruit_list/out_time.png"),
-        ScreenState.TEAM_FULL to TemplateEntry("templates/team_room/template.png"),
         ScreenState.READY_BUTTON to TemplateEntry("templates/team_room/prepare.png"),
         ScreenState.EXIT_CONFIRM to TemplateEntry("templates/team_room/confirm.png"),
-        // TODO DAILY_LIMIT — 待补充模板 daily_limit.png（"已达上限"弹窗）
         ScreenState.DAILY_LIMIT to TemplateEntry("templates/team_room/daily_limit.png"),
         // ── 战斗 ──
-        ScreenState.BATTLE_WARNING to TemplateEntry("templates/fight/warning.png", 0.7f),
+        ScreenState.BATTLE_LOADING to TemplateEntry("templates/battle_loading/smile.png"),
+        ScreenState.WARNING to TemplateEntry("templates/fight/warning.png", 0.7f),
         ScreenState.ULTIMATE_SKILL to TemplateEntry("templates/fight/r_ziyuan.png", 0.6f),
         ScreenState.WEAPON_SKILL to TemplateEntry("templates/fight/wopen_shedao.png", 0.6f),
-        // TODO DEFEAT_POPUP — 待补充模板 defeat_popup.png（失败弹窗）
         ScreenState.DEFEAT_POPUP to TemplateEntry("templates/fight/defeat_popup.png", 0.6f),
         // ── 结算 ──
         ScreenState.SETTLEMENT_POPUP to TemplateEntry("templates/settlement/black.png", 0.7f),
@@ -55,16 +52,17 @@ class SceneDetector(private val context: Context) {
             ScreenState.SETTLEMENT_POPUP,
             ScreenState.DAILY_LIMIT,
             ScreenState.DEFEAT_POPUP,
+            ScreenState.EXIT_CONFIRM,
             ScreenState.CHAT_ICON,
             ScreenState.RECRUIT_TAB,
             ScreenState.RECRUIT_LIST,
-            ScreenState.JOIN_BUTTON,
+            ScreenState.RECRUIT_INVITE,
             ScreenState.BACK_BUTTON,
         )
         /** 节点 3：组队招募列表（抢悬赏） */
         val SCOPE_RECRUIT = listOf(
             ScreenState.RECRUIT_LIST,
-            ScreenState.JOIN_BUTTON,
+            ScreenState.RECRUIT_INVITE,
             ScreenState.RECRUIT_TAB,
             ScreenState.CHAT_ICON,
         )
@@ -72,15 +70,13 @@ class SceneDetector(private val context: Context) {
         val SCOPE_TEAM_ROOM = listOf(
             ScreenState.READY_BUTTON,
             ScreenState.TEAM_ROOM,
-            ScreenState.TEAM_COMPLETED,
-            ScreenState.TEAM_FULL,
             ScreenState.WAITING_SCREEN,
             ScreenState.DAILY_LIMIT,
             ScreenState.EXIT_CONFIRM,
         )
         /** 节点 4（等待战斗开始） */
         val SCOPE_WAIT_BATTLE = listOf(
-            ScreenState.BATTLE_WARNING,
+            ScreenState.WARNING,
             ScreenState.WAITING_SCREEN,
             ScreenState.ULTIMATE_SKILL,
             ScreenState.SETTLEMENT_POPUP,
@@ -231,8 +227,12 @@ class SceneDetector(private val context: Context) {
         val template = gradeIconCache.getOrPut(grade) {
             AssetUtil.loadBitmapFromAssets(context, grade.gradeIconPath()) ?: return null
         }
-        val result = TemplateMatcher.match(screen, template, 0.8f)
-        if (result.isMatched) return Pair(result.centerX, result.centerY) else return null
+        val result = TemplateMatcher.match(screen, template, 0.85f)
+        if (result.isMatched) {
+            LogUtil.i(TAG, "等级图标 ${grade.displayName}: 匹配度 ${String.format("%.2f", result.similarity)}")
+            return Pair(result.centerX, result.centerY)
+        }
+        return null
     }
 
     /** 在截图中匹配队伍房间内的建议等级标识（lv30 / lv40 / lv60 / lv125） */
@@ -242,7 +242,11 @@ class SceneDetector(private val context: Context) {
             AssetUtil.loadBitmapFromAssets(context, path) ?: return null
         }
         val result = TemplateMatcher.match(screen, template, 0.9f)
-        if (result.isMatched) return Pair(result.centerX, result.centerY) else return null
+        if (result.isMatched) {
+            LogUtil.i(TAG, "建议等级图标 ${grade.displayName}(lv${grade.level}): 匹配度 ${String.format("%.2f", result.similarity)}")
+            return Pair(result.centerX, result.centerY)
+        }
+        return null
     }
 
     /** 在截图中搜索多个等级的建议等级标识 */
@@ -258,8 +262,10 @@ class SceneDetector(private val context: Context) {
     fun matchAnyGrade(screen: Bitmap, grades: List<BountyGrade>): Pair<BountyGrade, Pair<Float, Float>>? {
         for (grade in grades) {
             val coord = matchGradeIcon(screen, grade) ?: continue
+            LogUtil.i(TAG, "matchAnyGrade → 选中 ${grade.displayName}")
             return Pair(grade, coord)
         }
+        LogUtil.d(TAG, "matchAnyGrade: ${grades.size}个等级均未匹配")
         return null
     }
 
@@ -268,15 +274,14 @@ class SceneDetector(private val context: Context) {
         ScreenState.CONFIRM_BUTTON,
         ScreenState.SETTLEMENT_POPUP,
         ScreenState.DEFEAT_POPUP,
-        ScreenState.BATTLE_WARNING,
+        ScreenState.BATTLE_LOADING,
+        ScreenState.WARNING,
         ScreenState.WAITING_SCREEN,
         ScreenState.READY_BUTTON,
         ScreenState.DAILY_LIMIT,
-        ScreenState.TEAM_COMPLETED,
-        ScreenState.TEAM_FULL,
         ScreenState.EXIT_CONFIRM,
         ScreenState.TEAM_ROOM,
-        ScreenState.JOIN_BUTTON,
+        ScreenState.RECRUIT_INVITE,
         ScreenState.RECRUIT_TAB,
         ScreenState.OUT_OF_RANGE_RECRUIT,
         ScreenState.CHAT_ICON,

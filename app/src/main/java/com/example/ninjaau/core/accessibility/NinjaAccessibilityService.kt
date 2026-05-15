@@ -24,7 +24,9 @@ class NinjaAccessibilityService : AccessibilityService() {
         LogUtil.i(TAG, "无障碍服务已连接")
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+
+    }
 
     override fun onInterrupt() {
         instance = null

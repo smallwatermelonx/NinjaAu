@@ -12,19 +12,21 @@ enum class ScreenState(val description: String) {
     RECRUIT_TAB("组队招募页签"),
     RECRUIT_LIST("招募列表"),
     OUT_OF_RANGE_RECRUIT("超出范围的悬赏"),
+    /** 列表过期时的"悬赏令组队的邀请"标识 */
+    RECRUIT_INVITE("招募邀请标识"),
 
     // === 入队 ===
-    JOIN_BUTTON("加入队伍按钮"),
+//    JOIN_BUTTON("加入队伍按钮"),
     TEAM_ROOM("队伍房间"),
-    TEAM_COMPLETED("已完成标记"),
-    TEAM_FULL("队伍已满"),
     READY_BUTTON("准备按钮"),
     WAITING_SCREEN("等待倒计时"),
     EXIT_CONFIRM("退出确认弹窗"),
     DAILY_LIMIT("今日已达上限"),
 
+    // === 战斗加载 ===
+    BATTLE_LOADING("战斗加载中"),
     // === 战斗 ===
-    BATTLE_WARNING("战斗WARNING"),
+    WARNING("WARNING"),
     BATTLE_ACTIVE("战斗中"),
     ULTIMATE_SKILL("大招图标"),
     WEAPON_SKILL("武器图标"),

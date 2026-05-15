@@ -40,6 +40,14 @@ object GameManager {
     private val _logEvents = MutableSharedFlow<String>(extraBufferCapacity = 64)
     val logEvents: SharedFlow<String> = _logEvents
 
+    /** 悬赏完成进度 — 浮窗可收集此流显示完成次数 */
+    private val _bountyProgress = MutableStateFlow<Map<BountyGrade, Pair<Int, Int>>>(emptyMap())
+    val bountyProgress: StateFlow<Map<BountyGrade, Pair<Int, Int>>> = _bountyProgress
+
+    /** 页面跳转事件流 — 用于中上方 Toast 提示 */
+    private val _pageEvents = MutableSharedFlow<String>(extraBufferCapacity = 64)
+    val pageEvents: SharedFlow<String> = _pageEvents
+
     private fun postLog(msg: String) {
         LogUtil.i(TAG, msg)
         _logEvents.tryEmit(msg)
@@ -92,7 +100,14 @@ object GameManager {
 
             postLog("✅ 截图就绪，脚本开始运行")
             try {
-                WorkflowEngine(appContext) { msg -> postLog(msg) }.runLoop(selectedBounties)
+                WorkflowEngine(
+                    appContext,
+                    postLog = { msg -> postLog(msg) },
+                    onPageEvent = { event -> _pageEvents.tryEmit(event) }
+                ).runLoop(
+                    selectedBounties,
+                    onProgress = { progress -> _bountyProgress.value = progress }
+                )
             } catch (e: CancellationException) {
                 LogUtil.i(TAG, "脚本已取消")
             } catch (e: Exception) {
@@ -119,7 +134,14 @@ object GameManager {
             val appContext = context.applicationContext
             mainJob = scope.launch {
                 try {
-                    WorkflowEngine(appContext) { msg -> postLog(msg) }.runLoop(selectedBounties)
+                    WorkflowEngine(
+                        appContext,
+                        postLog = { msg -> postLog(msg) },
+                        onPageEvent = { event -> _pageEvents.tryEmit(event) }
+                    ).runLoop(
+                        selectedBounties,
+                        onProgress = { progress -> _bountyProgress.value = progress }
+                    )
                 } catch (e: CancellationException) {
                     postLog("脚本已取消")
                 } catch (e: Exception) {

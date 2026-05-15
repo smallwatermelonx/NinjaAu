@@ -9,7 +9,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.ninjaau.core.GameManager
+import com.example.ninjaau.core.util.BountyConfigStorage
 import com.example.ninjaau.model.BountyConfig
+import androidx.compose.ui.platform.LocalContext
 
 @Composable
 fun BountyCheckList(
@@ -17,6 +19,7 @@ fun BountyCheckList(
     onConfigsChanged: (List<BountyConfig>) -> Unit
 ) {
     var editableConfigs by remember(configs) { mutableStateOf(configs) }
+    val context = LocalContext.current
 
     LazyColumn(
         modifier = Modifier.fillMaxWidth().padding(8.dp),
@@ -35,6 +38,7 @@ fun BountyCheckList(
                         }
                         onConfigsChanged(editableConfigs)
                         GameManager.updateBountyConfigs(editableConfigs)
+                        BountyConfigStorage.save(context, editableConfigs)
                     }
                 )
                 Spacer(modifier = Modifier.width(8.dp))
