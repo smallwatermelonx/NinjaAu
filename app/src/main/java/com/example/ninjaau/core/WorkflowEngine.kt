@@ -141,7 +141,7 @@ class WorkflowEngine(
             GamePhase.IDLE, GamePhase.LOBBY, GamePhase.CHAT -> hallNode.execute(ctx)
             GamePhase.RECRUIT_LIST -> recruitListNode.execute(ctx)
             GamePhase.RECRUIT_INVITE -> recruitInviteNode.execute(ctx)
-            GamePhase.BOUNTY_DETAIL, GamePhase.BOUNTY_DETAIL -> bountyDetailNode.execute(ctx)
+            GamePhase.BOUNTY_DETAIL -> bountyDetailNode.execute(ctx)
             GamePhase.BATTLE_LOADING -> battleLoadingNode.execute(ctx)
             GamePhase.FIGHT -> battleNode.execute(ctx)
             GamePhase.DEFEAT -> defeatNode.execute(ctx)
@@ -192,8 +192,7 @@ class WorkflowEngine(
         if (state == ScreenState.UNKNOWN) return null
         return when (state) {
             ScreenState.CHAT_ICON, ScreenState.RECRUIT_TAB -> GamePhase.IDLE
-            ScreenState.RECRUIT_LIST, ScreenState.RECRUIT_INVITE -> GamePhase.RECRUIT_LIST
-            ScreenState.READY_BUTTON, ScreenState.TEAM_ROOM, ScreenState.WAITING_SCREEN -> GamePhase.BOUNTY_DETAIL
+            ScreenState.READY_BUTTON -> GamePhase.BOUNTY_DETAIL
             ScreenState.BATTLE_LOADING -> GamePhase.BATTLE_LOADING
             ScreenState.WARNING, ScreenState.ULTIMATE_SKILL, ScreenState.WEAPON_SKILL, ScreenState.DEFEAT_POPUP -> GamePhase.FIGHT
             ScreenState.SETTLEMENT_POPUP, ScreenState.CONFIRM_BUTTON -> GamePhase.SETTLEMENT

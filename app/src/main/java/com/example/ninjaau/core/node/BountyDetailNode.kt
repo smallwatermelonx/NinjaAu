@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import com.example.ninjaau.core.GameNode
 import com.example.ninjaau.core.NodeContext
 import com.example.ninjaau.core.RecognizeResult
-import com.example.ninjaau.core.recognition.SceneDetector
 import com.example.ninjaau.model.GameContext
 import com.example.ninjaau.model.GamePhase
 import com.example.ninjaau.model.ScreenState
@@ -99,32 +98,6 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                         return GamePhase.BATTLE_LOADING
                     }
 
-                    // 战斗开始
-                    val warningCoord = this.ctx.detector.matchTemplate(screen, ScreenState.WARNING)
-                    if (warningCoord != null) {
-                        this.ctx.log("战斗开始，点击滑屏")
-                        this.ctx.click(warningCoord)
-                        this.ctx.delay(1000)
-                        return GamePhase.FIGHT
-                    }
-
-                    // 速通结算
-                    if (this.ctx.detector.matchTemplate(screen, ScreenState.SETTLEMENT_POPUP) != null ||
-                        this.ctx.detector.matchTemplate(screen, ScreenState.CONFIRM_BUTTON) != null
-                    ) {
-                        this.ctx.log("战斗已结束（速通）")
-                        return GamePhase.SETTLEMENT
-                    }
-
-                    // 回到大厅（异常）
-                    if (this.ctx.detector.matchTemplate(screen, ScreenState.CHAT_ICON) != null ||
-                        this.ctx.detector.matchTemplate(screen, ScreenState.RECRUIT_TAB) != null
-                    ) {
-                        this.ctx.log("等待期间回到大厅")
-                        ctx.currentBounty = null
-                        return GamePhase.LOBBY
-                    }
-
                     // 超时检测
                     val elapsed = System.currentTimeMillis() - battleWaitStart
                     if (elapsed >= WAIT_BATTLE_TIMEOUT_MS) {
@@ -135,21 +108,8 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                     }
                 }
 
-                // ═══ ⑥ 返回按钮（未点击准备前） ═══
-                if (battleWaitStart == 0L) {
-                    val backCoord = this.ctx.detector.matchTemplate(screen, ScreenState.BACK_BUTTON)
-                    if (backCoord != null) {
-                        this.ctx.log("检测到返回按钮，点击退出")
-                        this.ctx.click(backCoord)
-                        this.ctx.delay(800)
-                        continue
-                    }
-                }
-
                 // ═══ ⑦ 回到大厅（各种方式退出后） ═══
-                if (this.ctx.detector.matchTemplate(screen, ScreenState.CHAT_ICON) != null ||
-                    this.ctx.detector.matchTemplate(screen, ScreenState.RECRUIT_TAB) != null
-                ) {
+                if (this.ctx.detector.matchTemplate(screen, ScreenState.CHAT_ICON) != null) {
                     this.ctx.log("已回到大厅")
                     ctx.currentBounty = null
                     return GamePhase.LOBBY
@@ -172,39 +132,38 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
         repeat(10) {
             val screen = this.ctx.captureBitmap() ?: return@repeat this.ctx.delay(500)
             try {
-                val (state, _) = this.ctx.detector.detectForPhase(screen, SceneDetector.SCOPE_EXIT)
-                when (state) {
-                    ScreenState.CHAT_ICON, ScreenState.RECRUIT_TAB -> {
-                        this.ctx.log("已回到大厅")
-                        return
-                    }
-                    ScreenState.EXIT_CONFIRM -> {
-                        val confirmCoord = this.ctx.detector.matchTemplate(screen, ScreenState.EXIT_CONFIRM)
-                        if (confirmCoord != null) {
-                            this.ctx.click(confirmCoord)
-                            this.ctx.delay(1000)
-                            confirmAttempts++
-                            if (confirmAttempts > 3) {
-                                this.ctx.clickOutside(null)
-                                this.ctx.delay(800)
-                            }
-                        }
-                    }
-                    else -> {
-                        val backCoord = this.ctx.detector.matchTemplate(screen, ScreenState.BACK_BUTTON)
-                        if (backCoord != null) {
-                            this.ctx.click(backCoord)
-                            this.ctx.delay(1200)
-                        } else {
-                            if (state == ScreenState.UNKNOWN) {
-                                this.ctx.clickOutside(null)
-                                this.ctx.delay(800)
-                            } else {
-                                this.ctx.delay(500)
-                            }
-                        }
-                    }
+                // 已回到大厅
+                if (this.ctx.detector.matchTemplate(screen, ScreenState.CHAT_ICON) != null ||
+                    this.ctx.detector.matchTemplate(screen, ScreenState.RECRUIT_TAB) != null
+                ) {
+                    this.ctx.log("已回到大厅")
+                    return
                 }
+
+                // 退出确认弹窗
+                val confirmCoord = this.ctx.detector.matchTemplate(screen, ScreenState.EXIT_CONFIRM)
+                if (confirmCoord != null) {
+                    this.ctx.click(confirmCoord)
+                    this.ctx.delay(1000)
+                    confirmAttempts++
+                    if (confirmAttempts > 3) {
+                        this.ctx.clickOutside(null)
+                        this.ctx.delay(800)
+                    }
+                    return@repeat
+                }
+
+                // 返回按钮
+                val backCoord = this.ctx.detector.matchTemplate(screen, ScreenState.BACK_BUTTON)
+                if (backCoord != null) {
+                    this.ctx.click(backCoord)
+                    this.ctx.delay(1200)
+                    return@repeat
+                }
+
+                // 兜底空白点击
+                this.ctx.clickOutside(null)
+                this.ctx.delay(800)
             } finally {
                 screen.recycle()
             }

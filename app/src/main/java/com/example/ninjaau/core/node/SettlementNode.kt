@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import com.example.ninjaau.core.GameNode
 import com.example.ninjaau.core.NodeContext
 import com.example.ninjaau.core.RecognizeResult
-import com.example.ninjaau.core.recognition.SceneDetector
 import com.example.ninjaau.model.GameContext
 import com.example.ninjaau.model.GamePhase
 import com.example.ninjaau.model.ScreenState
@@ -76,23 +75,23 @@ class                                                                           
 
                 missCount++
                 if (missCount >= LINEAR_MAX_MISS) {
-                    val (state, _) = this.ctx.detector.detectForPhase(screen, SceneDetector.SCOPE_CLAIM)
-                    if (state == ScreenState.CHAT_ICON || state == ScreenState.RECRUIT_TAB) break
-                    if (state == ScreenState.UNKNOWN) {
-                        claimFallbackCount++
-                        this.ctx.log("结算状态无法识别 ($claimFallbackCount/3)")
-                        if (claimFallbackCount >= 3) {
-                            this.ctx.log("连续3次结算无法识别，尝试全量页面检测")
-                            val detectedPhase = this.ctx.detectCurrentPage(screen)
-                            if (detectedPhase != null) {
-                                this.ctx.log("检测到当前页面: $detectedPhase，跳转")
-                                return detectedPhase
-                            }
-                            this.ctx.log("页面完全无法识别，停止脚本")
-                            throw RuntimeException("结算阶段页面无法识别")
-                        }
-                    }
                     missCount = 0
+                    if (this.ctx.detector.matchTemplate(screen, ScreenState.CHAT_ICON) != null ||
+                        this.ctx.detector.matchTemplate(screen, ScreenState.RECRUIT_TAB) != null
+                    ) break
+
+                    claimFallbackCount++
+                    this.ctx.log("结算状态无法识别 ($claimFallbackCount/3)")
+                    if (claimFallbackCount >= 3) {
+                        this.ctx.log("连续3次结算无法识别，尝试全量页面检测")
+                        val detectedPhase = this.ctx.detectCurrentPage(screen)
+                        if (detectedPhase != null) {
+                            this.ctx.log("检测到当前页面: $detectedPhase，跳转")
+                            return detectedPhase
+                        }
+                        this.ctx.log("页面完全无法识别，停止脚本")
+                        throw RuntimeException("结算阶段页面无法识别")
+                    }
                 }
             } finally {
                 screen.recycle()

@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import com.example.ninjaau.core.GameNode
 import com.example.ninjaau.core.NodeContext
 import com.example.ninjaau.core.RecognizeResult
-import com.example.ninjaau.core.recognition.SceneDetector
 import com.example.ninjaau.model.BountyGrade
 import com.example.ninjaau.model.GameContext
 import com.example.ninjaau.model.GamePhase
@@ -27,12 +26,12 @@ import kotlin.coroutines.coroutineContext
 class RecruitListNode(private val ctx: NodeContext) : GameNode {
 
     companion object {
-        private const val FAST_INTERVAL_MS = 100L
+        private const val FAST_INTERVAL_MS = 1L
     }
 
     override suspend fun recognize(screen: Bitmap): RecognizeResult {
-        val (state, coord) = ctx.detector.detectForPhase(screen, SceneDetector.SCOPE_RECRUIT)
-        return RecognizeResult(state != ScreenState.UNKNOWN, coord)
+        val recruitTab = ctx.detector.matchTemplate(screen, ScreenState.RECRUIT_TAB)
+        return RecognizeResult(recruitTab != null, recruitTab)
     }
 
     /**
@@ -59,7 +58,8 @@ class RecruitListNode(private val ctx: NodeContext) : GameNode {
         while (coroutineContext.isActive) {
             val screen = this.ctx.captureBitmap()
             if (screen == null) {
-                this.ctx.delay(FAST_INTERVAL_MS); continue
+                this.ctx.delay(FAST_INTERVAL_MS);
+                continue
             }
             try {
                 // ═══ ① 刷新检测 ═══
@@ -105,10 +105,10 @@ class RecruitListNode(private val ctx: NodeContext) : GameNode {
                 gradeMissCount++
                 if (gradeMissCount >= 10) {
                     gradeMissCount = 0
-                    val (state, _) = this.ctx.detector.detectForPhase(
-                        screen, SceneDetector.SCOPE_RECRUIT
-                    )
-                    if (state == ScreenState.UNKNOWN) {
+                    // 检测是否仍在招募列表页面
+                    val onRecruitList =
+                        this.ctx.detector.matchTemplate(screen, ScreenState.RECRUIT_TAB_BLACK) != null
+                    if (!onRecruitList) {
                         pageFailCount++
                         this.ctx.log("招募界面无法识别 ($pageFailCount/3)")
                         if (pageFailCount >= 3) {
@@ -117,7 +117,7 @@ class RecruitListNode(private val ctx: NodeContext) : GameNode {
                         }
                     } else {
                         pageFailCount = 0
-                        this.ctx.log("仍在招募列表($state)，继续扫描")
+                        this.ctx.log("仍在招募列表，继续扫描")
                     }
                 }
             } finally {

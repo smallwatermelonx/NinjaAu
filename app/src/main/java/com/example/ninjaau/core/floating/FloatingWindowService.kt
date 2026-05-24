@@ -80,6 +80,7 @@ class FloatingWindowService : Service() {
 
     private var isExpanded = false
     private var isSideHidden = false
+    private var isOnRecruitList = false
     private var screenWidth = 0
     private var screenHeight = 0
     private var ballWidth = 0
@@ -176,7 +177,7 @@ class FloatingWindowService : Service() {
                     ScriptState.RUNNING -> {
                         ivControlIcon.setImageResource(android.R.drawable.ic_media_pause)
                         showHud()
-                        showInfoPanel()
+                        updatePanelVisibility()
                     }
                     ScriptState.PAUSED -> {
                         ivControlIcon.setImageResource(android.R.drawable.ic_media_play)
@@ -206,10 +207,12 @@ class FloatingWindowService : Service() {
                 addLogEntry(msg)
             }
         }
-        // 页面跳转事件 → Toast
+        // 页面跳转事件 → Toast + 面板可见性
         serviceScope.launch {
             GameManager.pageEvents.collectLatest { event ->
                 showPageToast(event)
+                isOnRecruitList = event == "进入招募列表"
+                updatePanelVisibility()
             }
         }
     }
@@ -220,29 +223,27 @@ class FloatingWindowService : Service() {
 
     private fun initInfoPanel() {
         val density = resources.displayMetrics.density
-        val panelWidth = (screenWidth * 0.4).toInt()
+        val panelWidth = (screenWidth * 0.7).toInt()
+        val panelHeight = (screenHeight * 0.35).toInt()
         val startX = (screenWidth * 0.58).toInt()
-        val taskHeight = (screenHeight * 0.3).toInt()
-        val logHeight = (screenHeight * 0.35).toInt()
-        val topMargin = minY + (10 * density).toInt()
+        var topMargin = minY + (10 * density).toInt()
 
         val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+            orientation = LinearLayout.HORIZONTAL
             val bg = GradientDrawable().apply {
-                setColor(0xCC000000.toInt())
+                setColor(0xF5000000.toInt())
                 cornerRadius = 12f * density
             }
             background = bg
         }
 
-        // ── 任务进度区 ──
+        // ── 左侧：悬赏进度 ──
         val taskSection = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, taskHeight
-            )
-            setPadding((10 * density).toInt(), (8 * density).toInt(),
-                (10 * density).toInt(), (8 * density).toInt())
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply {
+                setMargins((10 * density).toInt(), (8 * density).toInt(),
+                    (5 * density).toInt(), (8 * density).toInt())
+            }
         }
         taskSection.addView(TextView(this).apply {
             text = "◆ 悬赏进度"
@@ -255,29 +256,29 @@ class FloatingWindowService : Service() {
         }
         progressGrid = grid
         val gridLp = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, 0
+            ViewGroup.LayoutParams.MATCH_PARENT, 0
         )
         gridLp.weight = 1f
         gridLp.topMargin = (4 * density).toInt()
         taskSection.addView(grid, gridLp)
         root.addView(taskSection)
 
-        // 分割线
+        // 垂直分割线
         root.addView(View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 1
-            )
-            setBackgroundColor(0x334A4A6A.toInt())
+            layoutParams = LinearLayout.LayoutParams(1, ViewGroup.LayoutParams.MATCH_PARENT).apply {
+                topMargin = (8 * density).toInt()
+                bottomMargin = (8 * density).toInt()
+            }
+            setBackgroundColor(0x664A4A6A.toInt())
         })
 
-        // ── 日志区 ──
+        // ── 右侧：运行日志 ──
         val logSection = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, logHeight
-            )
-            setPadding((10 * density).toInt(), (8 * density).toInt(),
-                (10 * density).toInt(), (8 * density).toInt())
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply {
+                setMargins((5 * density).toInt(), (8 * density).toInt(),
+                    (10 * density).toInt(), (8 * density).toInt())
+            }
         }
         logSection.addView(TextView(this).apply {
             text = "◆ 运行日志"
@@ -287,8 +288,8 @@ class FloatingWindowService : Service() {
         })
         val scroll = ScrollView(this).apply {
             layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.MATCH_PARENT
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
             )
         }
         logScroll = scroll
@@ -296,7 +297,7 @@ class FloatingWindowService : Service() {
         logContainer = inner
         scroll.addView(inner)
         val logLp = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, 0
+            ViewGroup.LayoutParams.MATCH_PARENT, 0
         )
         logLp.weight = 1f
         logLp.topMargin = (4 * density).toInt()
@@ -307,7 +308,7 @@ class FloatingWindowService : Service() {
 
         infoPanelParams = WindowManager.LayoutParams(
             panelWidth,
-            WindowManager.LayoutParams.WRAP_CONTENT,
+            panelHeight,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
@@ -342,6 +343,14 @@ class FloatingWindowService : Service() {
             }
         }
         isInfoPanelVisible = false
+    }
+
+    private fun updatePanelVisibility() {
+        if (isOnRecruitList && GameManager.state.value == ScriptState.RUNNING) {
+            if (isExpanded) showInfoPanel()
+        } else {
+            hideInfoPanel()
+        }
     }
 
     private fun updateProgressGrid(progress: Map<BountyGrade, Pair<Int, Int>>) {
@@ -722,9 +731,7 @@ class FloatingWindowService : Service() {
         if (isExpanded) {
             snapToEdgeForPanel()
             showMenu()
-            if (GameManager.state.value != ScriptState.IDLE) {
-                showInfoPanel()
-            }
+            updatePanelVisibility()
         } else {
             hideMenu()
             hideInfoPanel()
@@ -872,7 +879,7 @@ class FloatingWindowService : Service() {
         addFloatingView()
         if (GameManager.state.value != ScriptState.IDLE) {
             showHud()
-            showInfoPanel()
+            updatePanelVisibility()
         }
     }
 

@@ -24,6 +24,7 @@ class SceneDetector(private val context: Context) {
         ScreenState.CHAT_ICON to TemplateEntry("templates/lobby/hall_chat.png", 0.75f),
         // ── 聊天/招募 ──
         ScreenState.RECRUIT_TAB to TemplateEntry("templates/chat/team_recruit.png"),
+        ScreenState.RECRUIT_TAB_BLACK to TemplateEntry("templates/chat/team_recruit_black.png", 0.75f),
         ScreenState.OUT_OF_RANGE_RECRUIT to TemplateEntry("templates/recruit_list/out_of_range.png", 0.7f),
         ScreenState.RECRUIT_INVITE to TemplateEntry("templates/recruit_list/recruit_invite.png"),
         // ── 入队 ──
@@ -33,7 +34,7 @@ class SceneDetector(private val context: Context) {
         // ── 战斗 ──
         ScreenState.BATTLE_LOADING to TemplateEntry("templates/battle_loading/smile.png"),
         ScreenState.WARNING to TemplateEntry("templates/fight/warning.png", 0.7f),
-        ScreenState.ULTIMATE_SKILL to TemplateEntry("templates/fight/r_ziyuan.png", 0.6f),
+        ScreenState.ULTIMATE_SKILL to TemplateEntry("templates/fight/shihara/r_shihara.png", 0.6f),
         ScreenState.WEAPON_SKILL to TemplateEntry("templates/fight/wopen_shedao.png", 0.6f),
         ScreenState.DEFEAT_POPUP to TemplateEntry("templates/fight/defeat_popup.png", 0.6f),
         // ── 结算 ──
@@ -55,29 +56,21 @@ class SceneDetector(private val context: Context) {
             ScreenState.EXIT_CONFIRM,
             ScreenState.CHAT_ICON,
             ScreenState.RECRUIT_TAB,
-            ScreenState.RECRUIT_LIST,
-            ScreenState.RECRUIT_INVITE,
             ScreenState.BACK_BUTTON,
         )
         /** 节点 3：组队招募列表（抢悬赏） */
         val SCOPE_RECRUIT = listOf(
-            ScreenState.RECRUIT_LIST,
-            ScreenState.RECRUIT_INVITE,
             ScreenState.RECRUIT_TAB,
-            ScreenState.CHAT_ICON,
         )
         /** 节点 4：队伍房间 */
         val SCOPE_TEAM_ROOM = listOf(
             ScreenState.READY_BUTTON,
-            ScreenState.TEAM_ROOM,
-            ScreenState.WAITING_SCREEN,
             ScreenState.DAILY_LIMIT,
             ScreenState.EXIT_CONFIRM,
         )
         /** 节点 4（等待战斗开始） */
         val SCOPE_WAIT_BATTLE = listOf(
             ScreenState.WARNING,
-            ScreenState.WAITING_SCREEN,
             ScreenState.ULTIMATE_SKILL,
             ScreenState.SETTLEMENT_POPUP,
             ScreenState.CHAT_ICON,
@@ -181,6 +174,8 @@ class SceneDetector(private val context: Context) {
         if (result.isMatched) {
             LogUtil.i(TAG, "$state: 相似度 ${String.format("%.2f", result.similarity)} ≥ ${entry.threshold}")
             return Pair(result.centerX, result.centerY)
+        }else {
+            LogUtil.d(TAG, "$state: 最高相似度 = ${String.format("%.2f", result.similarity)} (阈值=${entry.threshold})")
         }
         return null
     }
@@ -276,11 +271,9 @@ class SceneDetector(private val context: Context) {
         ScreenState.DEFEAT_POPUP,
         ScreenState.BATTLE_LOADING,
         ScreenState.WARNING,
-        ScreenState.WAITING_SCREEN,
         ScreenState.READY_BUTTON,
         ScreenState.DAILY_LIMIT,
         ScreenState.EXIT_CONFIRM,
-        ScreenState.TEAM_ROOM,
         ScreenState.RECRUIT_INVITE,
         ScreenState.RECRUIT_TAB,
         ScreenState.OUT_OF_RANGE_RECRUIT,

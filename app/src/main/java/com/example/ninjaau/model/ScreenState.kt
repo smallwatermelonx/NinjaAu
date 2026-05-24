@@ -1,25 +1,19 @@
 package com.example.ninjaau.model
 
 /**
- * 游戏界面状态枚举（仅描述界面，不包含模板配置）
+ * 游戏界面状态枚举（每个枚举值必须有对应的静态模板资源）
  */
 enum class ScreenState(val description: String) {
-    // === 大厅 ===
-    LOBBY("游戏大厅"),
-
     // === 聊天/招募 ===
     CHAT_ICON("聊天图标"),
     RECRUIT_TAB("组队招募页签"),
-    RECRUIT_LIST("招募列表"),
+    RECRUIT_TAB_BLACK("组队招募页签-黑色字体"),
     OUT_OF_RANGE_RECRUIT("超出范围的悬赏"),
     /** 列表过期时的"悬赏令组队的邀请"标识 */
     RECRUIT_INVITE("招募邀请标识"),
 
     // === 入队 ===
-//    JOIN_BUTTON("加入队伍按钮"),
-    TEAM_ROOM("队伍房间"),
     READY_BUTTON("准备按钮"),
-    WAITING_SCREEN("等待倒计时"),
     EXIT_CONFIRM("退出确认弹窗"),
     DAILY_LIMIT("今日已达上限"),
 
@@ -27,7 +21,6 @@ enum class ScreenState(val description: String) {
     BATTLE_LOADING("战斗加载中"),
     // === 战斗 ===
     WARNING("WARNING"),
-    BATTLE_ACTIVE("战斗中"),
     ULTIMATE_SKILL("大招图标"),
     WEAPON_SKILL("武器图标"),
     DEFEAT_POPUP("失败弹窗"),

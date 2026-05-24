@@ -7,6 +7,7 @@ import com.example.ninjaau.core.RecognizeResult
 import com.example.ninjaau.model.GameContext
 import com.example.ninjaau.model.GamePhase
 import com.example.ninjaau.model.ScreenState
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlin.coroutines.coroutineContext
 
@@ -23,8 +24,7 @@ import kotlin.coroutines.coroutineContext
 class BattleLoadingNode(private val ctx: NodeContext) : GameNode {
 
     companion object {
-        private const val FAST_INTERVAL_MS = 100L
-        private const val LOADING_TIMEOUT_MS = 30_000L
+        private const val INTERVAL_MS = 1000L
     }
 
     override suspend fun recognize(screen: Bitmap): RecognizeResult {
@@ -34,42 +34,21 @@ class BattleLoadingNode(private val ctx: NodeContext) : GameNode {
 
     override suspend fun execute(ctx: GameContext): GamePhase? {
         this.ctx.log("战斗加载 Phase")
-        val startTime = System.currentTimeMillis()
 
-        while (coroutineContext.isActive) {
-            val elapsed = System.currentTimeMillis() - startTime
-            if (elapsed >= LOADING_TIMEOUT_MS) {
-                this.ctx.log("战斗加载超时")
-                return GamePhase.LOBBY
-            }
-
+        while (currentCoroutineContext().isActive) {
             val screen = this.ctx.captureBitmap()
-            if (screen == null) { this.ctx.delay(FAST_INTERVAL_MS); continue }
+            if (screen == null) { this.ctx.delay(INTERVAL_MS); continue }
             try {
                 // 加载完成 → 战斗开始
-                val warningCoord = this.ctx.detector.matchTemplate(screen, ScreenState.WARNING)
-                if (warningCoord != null) {
+                val warningCoord = this.ctx.detector.matchTemplate(screen, ScreenState.BATTLE_LOADING)
+                if (warningCoord == null) {
                     this.ctx.log("战斗加载完成，进入战斗")
-                    this.ctx.click(warningCoord)
-                    this.ctx.delay(1000)
                     return GamePhase.FIGHT
-                }
-
-                // 还在加载中
-                if (this.ctx.detector.matchTemplate(screen, ScreenState.BATTLE_LOADING) != null) {
-                    this.ctx.delay(FAST_INTERVAL_MS)
-                    continue
-                }
-
-                // 异常回到大厅
-                if (this.ctx.detector.matchTemplate(screen, ScreenState.CHAT_ICON) != null) {
-                    this.ctx.log("加载期间回到大厅")
-                    return GamePhase.LOBBY
                 }
             } finally {
                 screen.recycle()
             }
-            this.ctx.delay(FAST_INTERVAL_MS)
+            this.ctx.delay(INTERVAL_MS)
         }
         return GamePhase.DONE
     }

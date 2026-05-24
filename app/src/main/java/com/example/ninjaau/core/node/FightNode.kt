@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import com.example.ninjaau.core.GameNode
 import com.example.ninjaau.core.NodeContext
 import com.example.ninjaau.core.RecognizeResult
-import com.example.ninjaau.core.recognition.SceneDetector
 import com.example.ninjaau.model.GameContext
 import com.example.ninjaau.model.GamePhase
 import com.example.ninjaau.model.ScreenState
@@ -72,26 +71,29 @@ class FightNode(private val ctx: NodeContext) : GameNode {
 
                 missCount++
                 if (missCount >= 10) {
-                    val (state, _) = this.ctx.detector.detectForPhase(screen, SceneDetector.SCOPE_BATTLE)
-                    if (state == ScreenState.CHAT_ICON || state == ScreenState.RECRUIT_TAB) {
+                    missCount = 0
+                    // 是否回到大厅
+                    if (this.ctx.detector.matchTemplate(screen, ScreenState.CHAT_ICON) != null ||
+                        this.ctx.detector.matchTemplate(screen, ScreenState.RECRUIT_TAB) != null
+                    ) {
                         this.ctx.log("战斗异常回到大厅")
                         return GamePhase.IDLE
                     }
-                    if (state == ScreenState.UNKNOWN) {
-                        battleFallbackCount++
-                        this.ctx.log("战斗状态无法识别 ($battleFallbackCount/3)")
-                        if (battleFallbackCount >= 3) {
-                            this.ctx.log("连续3次战斗无法识别，尝试全量页面检测")
-                            val detectedPhase = this.ctx.detectCurrentPage(screen)
-                            if (detectedPhase != null) {
-                                this.ctx.log("检测到当前页面: $detectedPhase，跳转")
-                                return detectedPhase
-                            }
-                            this.ctx.log("页面完全无法识别，停止脚本")
-                            throw RuntimeException("战斗阶段页面无法识别")
+                    // 仍在战斗（有技能图标）→ 继续
+                    if (this.ctx.detector.matchTemplate(screen, ScreenState.ULTIMATE_SKILL) != null) continue
+
+                    battleFallbackCount++
+                    this.ctx.log("战斗状态无法识别 ($battleFallbackCount/3)")
+                    if (battleFallbackCount >= 3) {
+                        this.ctx.log("连续3次战斗无法识别，尝试全量页面检测")
+                        val detectedPhase = this.ctx.detectCurrentPage(screen)
+                        if (detectedPhase != null) {
+                            this.ctx.log("检测到当前页面: $detectedPhase，跳转")
+                            return detectedPhase
                         }
+                        this.ctx.log("页面完全无法识别，停止脚本")
+                        throw RuntimeException("战斗阶段页面无法识别")
                     }
-                    missCount = 0
                 }
             } finally {
                 screen.recycle()
