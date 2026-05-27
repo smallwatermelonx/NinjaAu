@@ -6,26 +6,48 @@ package com.example.ninjaau.model
  * level: 游戏内建议等级，队伍房间中显示为 lv{level}
  * 模板文件统一放在 assets/templates/recruit_list/ 下
  */
+enum class GradeGroup(val defaultRuns: Int) {
+    A_GROUP(3),
+    S_GROUP(5),
+    B(4),
+    C(5),
+    D(5),
+    SS(1),
+    SS_PLUS(1),
+    NSS_PLUS(1),
+    NS(5),
+    NA(2);
+
+    fun members(): List<BountyGrade> = BountyGrade.entries.filter { it.group == this }
+
+    fun totalRuns(runCounts: Map<BountyGrade, Int>): Int =
+        members().sumOf { runCounts[it] ?: 0 }
+
+    fun isComplete(runCounts: Map<BountyGrade, Int>): Boolean =
+        totalRuns(runCounts) >= defaultRuns
+}
+
 enum class BountyGrade(
     val key: String,
     val displayName: String,
     val defaultRuns: Int,
     val templateName: String,
     val priority: Int,
-    val level: Int   // 建议等级，队伍房间以此数值显示
+    val level: Int,   // 建议等级，队伍房间以此数值显示
+    val group: GradeGroup
 ) {
-    NSS_PLUS("nss_plus", "NSS+", 1, "nss_plus.png", 12, 125),
-    NS("ns", "NS", 5, "ns.png", 13, 125),
-    NA("na", "NA", 2, "na.png", 14, 125),
-    SS_PLUS("ss_plus", "SS+", 1, "ss_plus.png", 0, 125),
-    SS("ss", "SS", 1, "ss.png", 1, 100),
-    S_PLUS("s_plus", "S+", 5, "s_plus.png", 2, 90),
-    S("s", "S", 5, "s.png", 3, 90),
-    A_PLUS("a_plus", "A+", 3, "a_plus.png", 4, 80),
-    A("a", "A", 3, "a.png", 5, 80),
-    B("b", "B", 4, "b.png", 6, 60),
-    C("c", "C", 5, "c.png", 7, 40),
-    D("d", "D", 5, "d.png", 8, 30);
+    NSS_PLUS("nss_plus", "NSS+", 1, "nss_plus.png", 12, 125, GradeGroup.NSS_PLUS),
+    NS("ns", "NS", 5, "ns.png", 13, 125, GradeGroup.NS),
+    NA("na", "NA", 2, "na.png", 14, 125, GradeGroup.NA),
+    SS_PLUS("ss_plus", "SS+", 1, "ss_plus.png", 0, 125, GradeGroup.SS_PLUS),
+    SS("ss", "SS", 1, "ss.png", 1, 100, GradeGroup.SS),
+    S_PLUS("s_plus", "S+", 5, "s_plus.png", 2, 90, GradeGroup.S_GROUP),
+    S("s", "S", 5, "s.png", 3, 90, GradeGroup.S_GROUP),
+    A_PLUS("a_plus", "A+", 3, "a_plus.png", 4, 80, GradeGroup.A_GROUP),
+    A("a", "A", 3, "a.png", 5, 80, GradeGroup.A_GROUP),
+    B("b", "B", 4, "b.png", 6, 60, GradeGroup.B),
+    C("c", "C", 5, "c.png", 7, 40, GradeGroup.C),
+    D("d", "D", 5, "d.png", 8, 30, GradeGroup.D);
 
     /** 等级图标在 assets 中的完整路径（聊天招募列表中的字母等级图标） */
     fun gradeIconPath() = "templates/recruit_list/${displayName}.png"
@@ -37,7 +59,6 @@ enum class BountyGrade(
         60 -> "templates/team_room/lv60.png"
         80 -> "templates/team_room/lv80.png"
         90 -> "templates/team_room/lv90.png"
-        // TODO lv100.png — 待补充 SS 等级建议等级图标
         100 -> "templates/team_room/lv100.png"
         125 -> "templates/team_room/lv125.png"
         else -> null

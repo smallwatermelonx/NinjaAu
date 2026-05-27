@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import com.example.ninjaau.core.GameNode
 import com.example.ninjaau.core.NodeContext
 import com.example.ninjaau.core.RecognizeResult
+import com.example.ninjaau.core.checkNodeTimeout
 import com.example.ninjaau.model.GameContext
 import com.example.ninjaau.model.GamePhase
 import com.example.ninjaau.model.ScreenState
@@ -11,113 +12,167 @@ import kotlinx.coroutines.isActive
 import kotlin.coroutines.coroutineContext
 
 /**
- * 战斗节点 — 执行战斗循环直到结束。
+ * 战斗节点 — 下滑 → Boss战 → 结算。
  *
- * 职责：
- * - 检测结算/胜利/失败弹窗
- * - 自动释放技能（大招 + 武器技能，500ms 检测间隔）
- * - 连续 10 次无匹配 → SCOPE_BATTLE 整体判定
- * - 连续 3 次整体判定失败 → detectCurrentPage 兜底
+ * 流程：
+ * ① 下滑阶段（500ms间隔）：识别下滑按钮并点击，
+ *    连续3次无匹配 → Boss阶段
+ * ② Boss检测（300ms间隔）：识别Lv图标判定Boss出现
+ * ③ Boss战斗（1000ms间隔）：跳跃/大招(5次)/武器(1次)，
+ *    连续3次无跳跃 → 阵亡检测 TODO → 结算节点
+ * ④ 30秒无匹配 → 抛 NodeTimeoutException 回到主流程
  */
 class FightNode(private val ctx: NodeContext) : GameNode {
 
     companion object {
-        private const val FAST_INTERVAL_MS = 100L
-        private const val SKILL_DETECT_INTERVAL = 500L
+        private const val SLIDE_INTERVAL_MS = 500L
+        private const val BOSS_DETECT_INTERVAL_MS = 300L
+        private const val BOSS_LOOP_INTERVAL_MS = 1000L
+        private const val MAX_SLIDE_MISS = 3
+        private const val MAX_JUMP_MISS = 3
+        private const val MAX_SKILL_ATTEMPTS = 5
+        private const val MAX_WEAPON_ATTEMPTS = 1
     }
 
     override suspend fun recognize(screen: Bitmap): RecognizeResult {
-        val coord = ctx.detector.matchTemplate(screen, ScreenState.WARNING)
-        if (coord != null) return RecognizeResult(true, coord)
+        val slide = ctx.detector.matchTemplate(screen, ScreenState.SLIDE_BUTTON)
+        if (slide != null) return RecognizeResult(true, slide)
         val skill = ctx.detector.matchTemplate(screen, ScreenState.ULTIMATE_SKILL)
         return RecognizeResult(skill != null, skill)
     }
 
-    /**
-     * 战斗循环：
-     * - 持续截图检测结束标志
-     * - 间隔释放技能
-     * - 异常兜底
-     */
     override suspend fun execute(ctx: GameContext): GamePhase? {
-        this.ctx.log("战斗 Phase")
-        var lastSkillTime = 0L
-        var missCount = 0
-        var battleFallbackCount = 0
+        this.ctx.log("战斗 Phase — 下滑阶段")
+        this.ctx.delay(6000)
+
+        // ═════════════════════════════════════
+        //  ① 下滑阶段
+        // ═════════════════════════════════════
+        var slideMissCount = 0
+        while (coroutineContext.isActive && slideMissCount < MAX_SLIDE_MISS) {
+            val screen = this.ctx.captureBitmap()
+            if (screen == null) { this.ctx.delay(SLIDE_INTERVAL_MS); continue }
+            try {
+                val slideCoord = this.ctx.detector.matchTemplate(screen, ScreenState.SLIDE_BUTTON)
+                if (slideCoord != null) {
+                    this.ctx.click(slideCoord)
+                    this.ctx.log("下滑")
+                    slideMissCount = 0
+                } else {
+                    slideMissCount++
+                }
+            } finally {
+                screen.recycle()
+            }
+            this.ctx.delay(SLIDE_INTERVAL_MS)
+        }
+
+        if (!coroutineContext.isActive) return null
+        this.ctx.log("下滑结束，进入Boss检测")
+
+        // ═════════════════════════════════════
+        //  ② Boss检测（Lv图标）
+        // ═════════════════════════════════════
+        while (coroutineContext.isActive) {
+            val screen = this.ctx.captureBitmap()
+            if (screen == null) { this.ctx.delay(BOSS_DETECT_INTERVAL_MS); continue }
+            try {
+                val lvCoord = this.ctx.detector.matchTemplate(screen, ScreenState.LV_ICON)
+                if (lvCoord != null) {
+                    this.ctx.log("Boss出现")
+                    break
+                }
+            } finally {
+                screen.recycle()
+            }
+            this.ctx.delay(BOSS_DETECT_INTERVAL_MS)
+        }
+
+        if (!coroutineContext.isActive) return null
+        this.ctx.log("Boss战斗阶段")
+
+        // ═════════════════════════════════════
+        //  ③ Boss战斗阶段
+        // ═════════════════════════════════════
+        var ultimateCount = 0
+        var weaponCount = 0
+        var jumpMissCount = 0
+        var lastMatchMs = System.currentTimeMillis()
 
         while (coroutineContext.isActive) {
             val screen = this.ctx.captureBitmap()
-            if (screen == null) { this.ctx.delay(FAST_INTERVAL_MS); continue }
+            if (screen == null) { this.ctx.delay(BOSS_LOOP_INTERVAL_MS); continue }
             try {
-                if (this.ctx.detector.matchTemplate(screen, ScreenState.SETTLEMENT_POPUP) != null) {
+                // ── 结算/失败检测 ──
+                if (this.ctx.detector.matchTemplate(screen, ScreenState.SETTLEMENT_POPUP) != null ||
+                    this.ctx.detector.matchTemplate(screen, ScreenState.CONFIRM_BUTTON) != null
+                ) {
                     this.ctx.log("结算弹窗")
                     return GamePhase.SETTLEMENT
                 }
-
-                if (this.ctx.detector.matchTemplate(screen, ScreenState.CONFIRM_BUTTON) != null) {
-                    this.ctx.log("胜利确定按钮")
-                    return GamePhase.SETTLEMENT
-                }
-
                 if (this.ctx.detector.matchTemplate(screen, ScreenState.DEFEAT_POPUP) != null) {
                     this.ctx.log("战斗失败")
                     return GamePhase.SETTLEMENT
                 }
 
-                val now = System.currentTimeMillis()
-                if (now - lastSkillTime >= SKILL_DETECT_INTERVAL) {
-                    if (useSkills(screen)) lastSkillTime = now
-                }
-
-                missCount++
-                if (missCount >= 10) {
-                    missCount = 0
-                    // 是否回到大厅
-                    if (this.ctx.detector.matchTemplate(screen, ScreenState.CHAT_ICON) != null ||
-                        this.ctx.detector.matchTemplate(screen, ScreenState.RECRUIT_TAB) != null
-                    ) {
-                        this.ctx.log("战斗异常回到大厅")
-                        return GamePhase.IDLE
-                    }
-                    // 仍在战斗（有技能图标）→ 继续
-                    if (this.ctx.detector.matchTemplate(screen, ScreenState.ULTIMATE_SKILL) != null) continue
-
-                    battleFallbackCount++
-                    this.ctx.log("战斗状态无法识别 ($battleFallbackCount/3)")
-                    if (battleFallbackCount >= 3) {
-                        this.ctx.log("连续3次战斗无法识别，尝试全量页面检测")
-                        val detectedPhase = this.ctx.detectCurrentPage(screen)
-                        if (detectedPhase != null) {
-                            this.ctx.log("检测到当前页面: $detectedPhase，跳转")
-                            return detectedPhase
+                // ── 跳跃/上翻按钮（优先跳跃，无跳跃则上翻） ──
+                val jumpCoord = this.ctx.detector.matchTemplate(screen, ScreenState.JUMP_BUTTON)
+                if (jumpCoord != null) {
+                    this.ctx.click(jumpCoord)
+                    this.ctx.log("跳跃")
+                    jumpMissCount = 0
+                    lastMatchMs = System.currentTimeMillis()
+                } else {
+                    val scrollCoord = this.ctx.detector.matchTemplate(screen, ScreenState.SCROLL_UP)
+                    if (scrollCoord != null) {
+                        this.ctx.click(scrollCoord)
+                        this.ctx.log("上翻")
+                        jumpMissCount = 0
+                        lastMatchMs = System.currentTimeMillis()
+                    } else {
+                        jumpMissCount++
+                        if (jumpMissCount >= MAX_JUMP_MISS) {
+                            this.ctx.log("连续3次未识别跳跃/上翻按钮")
+                            // ═══ ④ 阵亡检测（TODO） ═══
+                            this.ctx.log("阵亡检测 TODO → 直接进入结算节点")
+                            return GamePhase.SETTLEMENT
                         }
-                        this.ctx.log("页面完全无法识别，停止脚本")
-                        throw RuntimeException("战斗阶段页面无法识别")
                     }
                 }
+
+                // ── 大招（最多5次） ──
+                if (ultimateCount < MAX_SKILL_ATTEMPTS) {
+                    val ultCoord = this.ctx.detector.matchTemplate(screen, ScreenState.ULTIMATE_SKILL)
+                    if (ultCoord != null) {
+                        this.ctx.click(ultCoord)
+                        this.ctx.log("大招 (${ultimateCount + 1}/$MAX_SKILL_ATTEMPTS)")
+                        ultimateCount++
+                        lastMatchMs = System.currentTimeMillis()
+                        this.ctx.delay(200)
+                        continue
+                    }
+                }
+
+                // ── 武器（最多1次） ──
+                if (weaponCount < MAX_WEAPON_ATTEMPTS) {
+                    val wpnCoord = this.ctx.detector.matchTemplate(screen, ScreenState.WEAPON_SKILL)
+                    if (wpnCoord != null) {
+                        this.ctx.click(wpnCoord)
+                        this.ctx.log("武器 (1/$MAX_WEAPON_ATTEMPTS)")
+                        weaponCount++
+                        lastMatchMs = System.currentTimeMillis()
+                        this.ctx.delay(200)
+                        continue
+                    }
+                }
+
+                // ── 超时检测 ──
+                checkNodeTimeout(lastMatchMs)
             } finally {
                 screen.recycle()
             }
-            this.ctx.delay(FAST_INTERVAL_MS)
+            this.ctx.delay(BOSS_LOOP_INTERVAL_MS)
         }
         return GamePhase.DONE
-    }
-
-    private suspend fun useSkills(screen: Bitmap): Boolean {
-        val ultimate = this.ctx.detector.matchTemplate(screen, ScreenState.ULTIMATE_SKILL)
-        if (ultimate != null) {
-            this.ctx.click(ultimate)
-            this.ctx.log("释放大招")
-            this.ctx.delay(200)
-            return true
-        }
-        val weapon = this.ctx.detector.matchTemplate(screen, ScreenState.WEAPON_SKILL)
-        if (weapon != null) {
-            this.ctx.click(weapon)
-            this.ctx.log("释放武器技能")
-            this.ctx.delay(200)
-            return true
-        }
-        return false
     }
 }

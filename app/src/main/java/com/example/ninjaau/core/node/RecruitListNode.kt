@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import com.example.ninjaau.core.GameNode
 import com.example.ninjaau.core.NodeContext
 import com.example.ninjaau.core.RecognizeResult
+import com.example.ninjaau.core.checkNodeTimeout
 import com.example.ninjaau.model.BountyGrade
 import com.example.ninjaau.model.GameContext
 import com.example.ninjaau.model.GamePhase
@@ -21,7 +22,7 @@ import kotlin.coroutines.coroutineContext
  * - 匹配后固定偏移点击（右430px, 下300px）代替按钮识别
  * - 刷新检测（超出范围、列表过期）
  * - 点击加入后检测页面切换 → 进入 [BountyDetailNode]
- * - 退出确认弹窗兜底
+ * - 30秒无匹配 → 抛 NodeTimeoutException 回到主流程
  */
 class RecruitListNode(private val ctx: NodeContext) : GameNode {
 
@@ -40,20 +41,16 @@ class RecruitListNode(private val ctx: NodeContext) : GameNode {
      * ① 刷新检测 → OUT_OF_RANGE_RECRUIT
      * ② 等级匹配 → 固定偏移点击
      * ③ 页面切换检测 → READY_BUTTON → BOUNTY_DETAIL
-     * ④ 无匹配兜底：
-     *    - 累计 10 次无匹配 → SCOPE_RECRUIT 检测是否仍在招募列表
-     *    - 不在招募列表 → pageFailCount++，3 次后抛回主流程
-     *    - 仍在招募列表 → 重置计数继续扫描
+     * ④ 无匹配 → checkNodeTimeout 超时检测
      */
     override suspend fun execute(ctx: GameContext): GamePhase? {
         val remaining = remainingGrades(ctx)
         if (remaining.isEmpty()) return GamePhase.DONE
 
         this.ctx.log("待完成等级: ${remaining.joinToString { it.displayName }}")
-        this.ctx.log("招募列表 — 进入100ms扫描循环")
+        this.ctx.log("招募列表 — 进入扫描循环")
 
-        var gradeMissCount = 0
-        var pageFailCount = 0
+        var lastMatchMs = System.currentTimeMillis()
 
         while (coroutineContext.isActive) {
             val screen = this.ctx.captureBitmap()
@@ -68,13 +65,10 @@ class RecruitListNode(private val ctx: NodeContext) : GameNode {
                 if (rangeCoord != null) {
                     this.ctx.log("超出范围悬赏，点击刷新列表")
                     this.ctx.click(rangeCoord)
-                    gradeMissCount = 0
+                    lastMatchMs = System.currentTimeMillis()
                     continue
                 }
                 // ═══ ② 等级匹配 → 固定偏移点击 ═══
-                // 点击后将 currentBounty 设为目标等级。
-                // 下次循环检测 READY_BUTTON → 已进入队伍房间 → 交给 BountyDetailNode
-                // 未检测到 → 仍在招募列表（加入失败/网络延迟）
                 val match = this.ctx.detector.matchAnyGrade(screen, remaining)
                 if (match != null) {
                     val (grade, coord) = match
@@ -84,13 +78,11 @@ class RecruitListNode(private val ctx: NodeContext) : GameNode {
                     this.ctx.click(Pair(clickX, clickY))
                     this.ctx.log("${grade.displayName}悬赏，点击加入 ($clickX, $clickY)")
                     this.ctx.onPageEvent?.invoke("匹配到 ${grade.displayName} 悬赏，加入队伍")
-                    gradeMissCount = 0
+                    lastMatchMs = System.currentTimeMillis()
                     continue
                 }
 
                 // ═══ ③ 页面切换检测 ═══
-                // 如果 currentBounty != null 但检测到准备按钮，
-                //  说明已进入队伍房间 → 交给 BountyDetailNode
                 if (ctx.currentBounty != null) {
                     val readyCoord =
                         this.ctx.detector.matchTemplate(screen, ScreenState.READY_BUTTON)
@@ -98,28 +90,10 @@ class RecruitListNode(private val ctx: NodeContext) : GameNode {
                         this.ctx.log("检测到准备按钮，切换至悬赏详情")
                         return GamePhase.BOUNTY_DETAIL
                     }
-                    // 否则还在招募列表中，继续循环
                 }
 
-                // ═══ ④ 无匹配兜底 ═══
-                gradeMissCount++
-                if (gradeMissCount >= 10) {
-                    gradeMissCount = 0
-                    // 检测是否仍在招募列表页面
-                    val onRecruitList =
-                        this.ctx.detector.matchTemplate(screen, ScreenState.RECRUIT_TAB_BLACK) != null
-                    if (!onRecruitList) {
-                        pageFailCount++
-                        this.ctx.log("招募界面无法识别 ($pageFailCount/3)")
-                        if (pageFailCount >= 3) {
-                            this.ctx.log("连续3次无法识别招募界面，返回主流程")
-                            throw RuntimeException("无法识别当前页面")
-                        }
-                    } else {
-                        pageFailCount = 0
-                        this.ctx.log("仍在招募列表，继续扫描")
-                    }
-                }
+                // ═══ ④ 无匹配 → 超时检测 ═══
+                checkNodeTimeout(lastMatchMs)
             } finally {
                 screen.recycle()
             }

@@ -756,10 +756,29 @@ class FloatingWindowService : Service() {
 
     private fun showMenu() {
         llMenu.visibility = View.VISIBLE
-        llMenu.translationX = -200f
         llMenu.alpha = 0f
+        val density = resources.displayMetrics.density
+        val slidePx = 200f * density
+
+        val isOnRight = layoutParams.x > screenWidth / 2
+        val startX: Float
+        val endX: Float
+
+        if (isOnRight) {
+            // 球在右侧：菜单向左展开（仅 menu 移动，球保持在右边缘）
+            val menuWidthPx = 330f * density
+            val ballWidthPx = 80f * density
+            endX = -(menuWidthPx - ballWidthPx)
+            startX = endX + slidePx
+        } else {
+            // 球在左侧：菜单向右展开（默认行为）
+            endX = 0f
+            startX = -slidePx
+        }
+
+        llMenu.translationX = startX
         llMenu.animate()
-            .translationX(0f)
+            .translationX(endX)
             .alpha(1f)
             .setDuration(ANIM_DURATION)
             .setInterpolator(OvershootInterpolator(1.1f))
@@ -767,8 +786,14 @@ class FloatingWindowService : Service() {
     }
 
     private fun hideMenu() {
+        val density = resources.displayMetrics.density
+        val slidePx = 200f * density
+        val isOnRight = layoutParams.x > screenWidth / 2
+
+        val hideTargetX = if (isOnRight) 0f else -slidePx
+
         llMenu.animate()
-            .translationX(-200f)
+            .translationX(hideTargetX)
             .alpha(0f)
             .setDuration(ANIM_DURATION)
             .setInterpolator(AccelerateInterpolator())

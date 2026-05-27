@@ -3,10 +3,13 @@ package com.example.ninjaau.core.node
 import android.graphics.Bitmap
 import com.example.ninjaau.core.GameNode
 import com.example.ninjaau.core.NodeContext
+import com.example.ninjaau.core.NodeTimeoutException
 import com.example.ninjaau.core.RecognizeResult
+import com.example.ninjaau.core.checkNodeTimeout
 import com.example.ninjaau.model.GameContext
 import com.example.ninjaau.model.GamePhase
 import com.example.ninjaau.model.ScreenState
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlin.coroutines.coroutineContext
 
@@ -16,12 +19,11 @@ import kotlin.coroutines.coroutineContext
  * 职责：
  * - 识别当前界面元素并执行对应导航操作
  * - 按优先级依次检测弹窗、导航按钮、返回按钮
- * - 连续 3 次无匹配 → detectCurrentPage 兜底
+ * - 30秒无匹配 → 抛 NodeTimeoutException 回到主流程
  */
 class HallNode(private val ctx: NodeContext) : GameNode {
 
     companion object {
-        private const val NAVIGATE_RETRIES = 6
         private const val POST_CLICK_DELAY = 1000L
         private const val NORMAL_INTERVAL_MS = 1000L
     }
@@ -35,19 +37,16 @@ class HallNode(private val ctx: NodeContext) : GameNode {
 
     /**
      * 按优先级依次检测当前界面元素并执行对应操作。
-     *
-     * 优先级顺序（高 → 低）：
-     * 弹窗关闭（CONFIRM_BUTTON / SETTLEMENT_POPUP / DAILY_LIMIT / DEFEAT_POPUP）
-     * → 退出确认（EXIT_CONFIRM）
-     * → 导航操作（CHAT_ICON / RECRUIT_TAB）
-     * → 返回（BACK_BUTTON）
-     * → 无匹配兜底
      */
     override suspend fun execute(ctx: GameContext): GamePhase? {
-        var unknownCount = 0
-        repeat(NAVIGATE_RETRIES) {
-            if (!coroutineContext.isActive) return null
-            val screen = this.ctx.captureBitmap() ?: return@repeat this.ctx.delay(NORMAL_INTERVAL_MS)
+        var lastMatchMs = System.currentTimeMillis()
+
+        while (currentCoroutineContext().isActive) {
+            val screen = this.ctx.captureBitmap()
+            if (screen == null) {
+                this.ctx.delay(NORMAL_INTERVAL_MS)
+                continue
+            }
             try {
                 // ═══ 弹窗关闭 ═══
                 val confirmCoord = this.ctx.detector.matchTemplate(screen, ScreenState.CONFIRM_BUTTON)
@@ -55,7 +54,7 @@ class HallNode(private val ctx: NodeContext) : GameNode {
                     this.ctx.log("导航: 确定按钮，点击关闭")
                     this.ctx.click(confirmCoord)
                     this.ctx.delay(POST_CLICK_DELAY)
-                    unknownCount = 0; return@repeat
+                    lastMatchMs = System.currentTimeMillis(); continue
                 }
 
                 val settlementCoord = this.ctx.detector.matchTemplate(screen, ScreenState.SETTLEMENT_POPUP)
@@ -63,17 +62,7 @@ class HallNode(private val ctx: NodeContext) : GameNode {
                     this.ctx.log("导航: 结算弹窗，点击关闭")
                     this.ctx.click(settlementCoord)
                     this.ctx.delay(POST_CLICK_DELAY)
-                    unknownCount = 0; return@repeat
-                }
-
-                // ═══ 障碍弹窗 ═══
-                if (this.ctx.detector.matchTemplate(screen, ScreenState.DAILY_LIMIT) != null ||
-                    this.ctx.detector.matchTemplate(screen, ScreenState.DEFEAT_POPUP) != null
-                ) {
-                    this.ctx.log("导航: 障碍弹窗，点击空白关闭")
-                    this.ctx.clickOutside(screen)
-                    this.ctx.delay(POST_CLICK_DELAY)
-                    unknownCount = 0; return@repeat
+                    lastMatchMs = System.currentTimeMillis(); continue
                 }
 
                 // ═══ 退出确认 ═══
@@ -82,7 +71,7 @@ class HallNode(private val ctx: NodeContext) : GameNode {
                     this.ctx.log("导航: 退出确认，点击")
                     this.ctx.click(exitConfirm)
                     this.ctx.delay(800)
-                    unknownCount = 0; return@repeat
+                    lastMatchMs = System.currentTimeMillis(); continue
                 }
 
                 // ═══ 已在大厅 ═══
@@ -91,7 +80,7 @@ class HallNode(private val ctx: NodeContext) : GameNode {
                     this.ctx.log("导航: 聊天按钮，点击进入招募")
                     this.ctx.click(chatIcon)
                     this.ctx.delay(POST_CLICK_DELAY)
-                    unknownCount = 0; return@repeat
+                    lastMatchMs = System.currentTimeMillis(); continue
                 }
 
                 // ═══ 招募页签 ═══
@@ -109,28 +98,16 @@ class HallNode(private val ctx: NodeContext) : GameNode {
                     this.ctx.log("导航: 返回按钮，点击")
                     this.ctx.click(backBtn)
                     this.ctx.delay(800)
-                    unknownCount = 0; return@repeat
+                    lastMatchMs = System.currentTimeMillis(); continue
                 }
 
-                // ═══ 无匹配 ═══
-                unknownCount++
-                this.ctx.log("导航: 界面无法识别 ($unknownCount/3)")
-                if (unknownCount >= 3) {
-                    this.ctx.log("连续3次无法识别，尝试全量页面检测")
-                    val detectedPhase = this.ctx.detectCurrentPage(screen)
-                    if (detectedPhase != null) {
-                        this.ctx.log("导航失败，检测到当前页面: $detectedPhase")
-                        return detectedPhase
-                    }
-                    this.ctx.log("页面完全无法识别，停止脚本")
-                    throw RuntimeException("无法识别当前页面")
-                }
+                // ═══ 无匹配 → 超时检测 ═══
+                checkNodeTimeout(lastMatchMs)
                 this.ctx.delay(NORMAL_INTERVAL_MS)
             } finally {
                 screen.recycle()
             }
         }
-        this.ctx.log("导航重试耗尽")
-        throw RuntimeException("导航重试耗尽")
+        return null
     }
 }

@@ -34,6 +34,10 @@ class SceneDetector(private val context: Context) {
         // ── 战斗 ──
         ScreenState.BATTLE_LOADING to TemplateEntry("templates/battle_loading/smile.png"),
         ScreenState.WARNING to TemplateEntry("templates/fight/warning.png", 0.7f),
+        ScreenState.SLIDE_BUTTON to TemplateEntry("templates/fight/slide.png"),
+        ScreenState.LV_ICON to TemplateEntry("templates/fight/lv.png"),
+        ScreenState.JUMP_BUTTON to TemplateEntry("templates/fight/jump.png"),
+        ScreenState.SCROLL_UP to TemplateEntry("templates/fight/scroll_up.png"),
         ScreenState.ULTIMATE_SKILL to TemplateEntry("templates/fight/shihara/r_shihara.png", 0.6f),
         ScreenState.WEAPON_SKILL to TemplateEntry("templates/fight/wopen_shedao.png", 0.6f),
         ScreenState.DEFEAT_POPUP to TemplateEntry("templates/fight/defeat_popup.png", 0.6f),
@@ -47,58 +51,6 @@ class SceneDetector(private val context: Context) {
     )
 
     companion object {
-        /** 节点 1 ~ 2：导航到招募列表 */
-        val SCOPE_NAVIGATE = listOf(
-            ScreenState.CONFIRM_BUTTON,
-            ScreenState.SETTLEMENT_POPUP,
-            ScreenState.DAILY_LIMIT,
-            ScreenState.DEFEAT_POPUP,
-            ScreenState.EXIT_CONFIRM,
-            ScreenState.CHAT_ICON,
-            ScreenState.RECRUIT_TAB,
-            ScreenState.BACK_BUTTON,
-        )
-        /** 节点 3：组队招募列表（抢悬赏） */
-        val SCOPE_RECRUIT = listOf(
-            ScreenState.RECRUIT_TAB,
-        )
-        /** 节点 4：队伍房间 */
-        val SCOPE_TEAM_ROOM = listOf(
-            ScreenState.READY_BUTTON,
-            ScreenState.DAILY_LIMIT,
-            ScreenState.EXIT_CONFIRM,
-        )
-        /** 节点 4（等待战斗开始） */
-        val SCOPE_WAIT_BATTLE = listOf(
-            ScreenState.WARNING,
-            ScreenState.ULTIMATE_SKILL,
-            ScreenState.SETTLEMENT_POPUP,
-            ScreenState.CHAT_ICON,
-            ScreenState.RECRUIT_TAB,
-        )
-        /** 节点 5：战斗中 */
-        val SCOPE_BATTLE = listOf(
-            ScreenState.SETTLEMENT_POPUP,
-            ScreenState.CONFIRM_BUTTON,
-            ScreenState.DEFEAT_POPUP,
-            ScreenState.CHAT_ICON,
-            ScreenState.RECRUIT_TAB,
-            ScreenState.ULTIMATE_SKILL,
-        )
-        /** 节点 6：结算 */
-        val SCOPE_CLAIM = listOf(
-            ScreenState.CONFIRM_BUTTON,
-            ScreenState.CHAT_ICON,
-            ScreenState.RECRUIT_TAB,
-        )
-        /** 退出队伍 */
-        val SCOPE_EXIT = listOf(
-            ScreenState.EXIT_CONFIRM,
-            ScreenState.DAILY_LIMIT,
-            ScreenState.CHAT_ICON,
-            ScreenState.RECRUIT_TAB,
-            ScreenState.BACK_BUTTON,
-        )
         /** 整体判定（全量兜底） */
         val SCOPE_ALL = ScreenState.values().toList()
     }
@@ -138,21 +90,6 @@ class SceneDetector(private val context: Context) {
         for (state in detectionOrder) {
             val coord = matchTemplate(screenBitmap, state)
             if (coord != null) return Pair(state, coord)
-        }
-        return Pair(ScreenState.UNKNOWN, null)
-    }
-
-    /** 按阶段检测 — 只匹配给定的状态列表 */
-    fun detectForPhase(
-        screenBitmap: Bitmap,
-        states: List<ScreenState>
-    ): Pair<ScreenState, Pair<Float, Float>?> {
-        for (state in states) {
-            val coord = matchTemplate(screenBitmap, state)
-            if (coord != null) {
-                LogUtil.i(TAG, "匹配成功: $state")
-                return Pair(state, coord)
-            }
         }
         return Pair(ScreenState.UNKNOWN, null)
     }
@@ -230,26 +167,33 @@ class SceneDetector(private val context: Context) {
         return null
     }
 
-    /** 在截图中匹配队伍房间内的建议等级标识（lv30 / lv40 / lv60 / lv125） */
+    /** 在截图中匹配队伍房间内的建议等级标识（lv30 / lv40 / lv60 / lv80 / lv90 / lv100 / lv125） */
     fun matchLevelIcon(screen: Bitmap, grade: BountyGrade): Pair<Float, Float>? {
+        val path = grade.levelIconPath() ?: return null
         val template = levelIconCache.getOrPut(grade) {
-            val path = grade.levelIconPath() ?: return null
-            AssetUtil.loadBitmapFromAssets(context, path) ?: return null
+            AssetUtil.loadBitmapFromAssets(context, path) ?: run {
+                LogUtil.e(TAG, "等级图标模板加载失败: $path")
+                return null
+            }
         }
-        val result = TemplateMatcher.match(screen, template, 0.9f)
+        val result = TemplateMatcher.match(screen, template, 0.75f)
         if (result.isMatched) {
             LogUtil.i(TAG, "建议等级图标 ${grade.displayName}(lv${grade.level}): 匹配度 ${String.format("%.2f", result.similarity)}")
             return Pair(result.centerX, result.centerY)
         }
+        LogUtil.d(TAG, "等级图标 ${grade.displayName}(lv${grade.level}): 最高 ${String.format("%.2f", result.similarity)} < 0.75")
         return null
     }
 
     /** 在截图中搜索多个等级的建议等级标识 */
     fun matchAnyLevelIcon(screen: Bitmap, grades: List<BountyGrade>): Pair<BountyGrade, Pair<Float, Float>>? {
+        LogUtil.i(TAG, "matchAnyLevelIcon: 检查 ${grades.joinToString { "${it.displayName}(lv${it.level})" }}")
         for (grade in grades) {
             val coord = matchLevelIcon(screen, grade) ?: continue
+            LogUtil.i(TAG, "matchAnyLevelIcon → 匹配 ${grade.displayName}(lv${grade.level})")
             return Pair(grade, coord)
         }
+        LogUtil.w(TAG, "matchAnyLevelIcon: ${grades.size}个等级均未匹配")
         return null
     }
 
@@ -271,6 +215,13 @@ class SceneDetector(private val context: Context) {
         ScreenState.DEFEAT_POPUP,
         ScreenState.BATTLE_LOADING,
         ScreenState.WARNING,
+        ScreenState.SLIDE_BUTTON,
+        ScreenState.LV_ICON,
+        ScreenState.JUMP_BUTTON,
+        ScreenState.SCROLL_UP,
+        ScreenState.ULTIMATE_SKILL,
+        ScreenState.WEAPON_SKILL,
+        ScreenState.DEFEAT_POPUP,
         ScreenState.READY_BUTTON,
         ScreenState.DAILY_LIMIT,
         ScreenState.EXIT_CONFIRM,

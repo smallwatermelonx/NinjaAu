@@ -38,6 +38,26 @@ data class RecognizeResult(
 )
 
 /**
+ * 节点超时异常 — 节点连续30秒无任何匹配识别时抛出，
+ * 由 WorkflowEngine 捕获后进入 RECOVERY 流程。
+ */
+class NodeTimeoutException : RuntimeException("节点无匹配超时")
+
+/**
+ * 节点无匹配超时检测。
+ * 距上次匹配超过 [timeoutMs] 则抛出 [NodeTimeoutException]，
+ * 回到主流程由 WorkflowEngine 统一处理。
+ *
+ * 每个节点在 execute 循环开始处初始化 lastMatchMs，
+ * 每次匹配成功时重置，无匹配路径调用此方法。
+ */
+fun checkNodeTimeout(lastMatchMs: Long, timeoutMs: Long = 30_000L) {
+    if (lastMatchMs > 0L && System.currentTimeMillis() - lastMatchMs >= timeoutMs) {
+        throw NodeTimeoutException()
+    }
+}
+
+/**
  * 节点执行所需的上下文工具。
  * WorkflowEngine 在初始化时构造此对象并注入所有节点。
  */
@@ -45,8 +65,6 @@ class NodeContext(
     val detector: SceneDetector,
     val captureBitmap: suspend () -> Bitmap?,
     val click: (Pair<Float, Float>) -> Unit,
-    val clickOutside: suspend (Bitmap?) -> Unit,
-    val detectCurrentPage: suspend (Bitmap) -> GamePhase?,
     val log: (String) -> Unit,
     val onPageEvent: ((String) -> Unit)?,
     val delay: suspend (Long) -> Unit

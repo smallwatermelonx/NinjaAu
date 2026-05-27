@@ -3,7 +3,8 @@
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
-    android:gravity="center_vertical">
+    android:gravity="center_vertical"
+    android:clipChildren="false">
 
     <!-- 左侧信息面板 -->
     <LinearLayout
@@ -63,7 +64,8 @@
     <!-- 右侧浮窗主体 -->
     <FrameLayout
         android:layout_width="wrap_content"
-        android:layout_height="80dp">
+        android:layout_height="80dp"
+        android:clipChildren="false">
 
         <!-- 展开菜单 -->
         <LinearLayout

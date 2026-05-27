@@ -62,8 +62,6 @@ class WorkflowEngine(
             detector = detector,
             captureBitmap = { captureBitmap() },
             click = { click(it) },
-            clickOutside = { screen -> clickOutside(screen) },
-            detectCurrentPage = { screen -> detectCurrentPage(screen) },
             log = { log(it) },
             onPageEvent = onPageEvent,
             delay = { delay(it) }
@@ -170,9 +168,11 @@ class WorkflowEngine(
 
     private fun buildContext(configs: List<BountyConfig>): GameContext {
         val enabled = configs.filter { it.enabled }
+        val grades = enabled.map { it.grade }
         return GameContext(
             currentPhase = GamePhase.IDLE,
-            activeGrades = enabled.map { it.grade },
+            activeGrades = grades,
+            totalGrades = grades,
             runCounts = enabled.associate { it.grade to 0 }.toMutableMap(),
             targetRuns = enabled.associate { it.grade to it.targetRuns }
         )
@@ -180,54 +180,11 @@ class WorkflowEngine(
 
     private fun emitProgress(ctx: GameContext, onProgress: ((Map<BountyGrade, Pair<Int, Int>>) -> Unit)?) {
         if (onProgress == null) return
-        val progress = ctx.activeGrades.associateWith { grade ->
+        // 使用 totalGrades（含已完成）确保悬浮窗始终显示所有等级进度
+        val progress = ctx.totalGrades.associateWith { grade ->
             Pair(ctx.runCounts[grade] ?: 0, ctx.targetRuns[grade] ?: grade.defaultRuns)
         }
         onProgress(progress)
-    }
-
-    /** 全量页面检测：使用 SCOPE_ALL 兜底识别当前所在页面，返回对应 GamePhase */
-    private suspend fun detectCurrentPage(screen: Bitmap): GamePhase? {
-        val (state, _) = detector.detectWithCoord(screen)
-        if (state == ScreenState.UNKNOWN) return null
-        return when (state) {
-            ScreenState.CHAT_ICON, ScreenState.RECRUIT_TAB -> GamePhase.IDLE
-            ScreenState.READY_BUTTON -> GamePhase.BOUNTY_DETAIL
-            ScreenState.BATTLE_LOADING -> GamePhase.BATTLE_LOADING
-            ScreenState.WARNING, ScreenState.ULTIMATE_SKILL, ScreenState.WEAPON_SKILL, ScreenState.DEFEAT_POPUP -> GamePhase.FIGHT
-            ScreenState.SETTLEMENT_POPUP, ScreenState.CONFIRM_BUTTON -> GamePhase.SETTLEMENT
-            ScreenState.DAILY_LIMIT, ScreenState.EXIT_CONFIRM, ScreenState.BACK_BUTTON -> GamePhase.LOBBY
-            else -> null
-        }
-    }
-
-    /**
-     * 点击空白区域关闭弹窗。
-     * 策略:
-     * 1. SETTLEMENT_POPUP → 弹窗底部空白处点击
-     * 2. CONFIRM_BUTTON → 弹窗上方空白处点击
-     * 3. 兜底 → 屏幕底部中央
-     */
-    private suspend fun clickOutside(screen: Bitmap? = null) {
-        val display = context.resources.displayMetrics
-        val w = display.widthPixels.toFloat()
-        val h = display.heightPixels.toFloat()
-
-        if (screen != null) {
-            if (detector.matchTemplate(screen, ScreenState.SETTLEMENT_POPUP) != null) {
-                accessibility?.clickAt(w / 2f, h * 0.88f)
-                delay(300)
-                return
-            }
-            if (detector.matchTemplate(screen, ScreenState.CONFIRM_BUTTON) != null) {
-                accessibility?.clickAt(w / 2f, h * 0.2f)
-                delay(300)
-                return
-            }
-        }
-
-        accessibility?.clickAt(w / 2f, h * 0.88f)
-        delay(300)
     }
 
     private suspend fun captureBitmap(): Bitmap? {

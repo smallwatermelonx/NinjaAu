@@ -14,13 +14,17 @@ enum class ScreenState(val description: String) {
 
     // === 入队 ===
     READY_BUTTON("准备按钮"),
-    EXIT_CONFIRM("退出确认弹窗"),
+    EXIT_CONFIRM("退出确认按钮"),
     DAILY_LIMIT("今日已达上限"),
 
     // === 战斗加载 ===
     BATTLE_LOADING("战斗加载中"),
     // === 战斗 ===
     WARNING("WARNING"),
+    SLIDE_BUTTON("下滑按钮"),
+    LV_ICON("Lv图标"),
+    JUMP_BUTTON("跳跃按钮"),
+    SCROLL_UP("上翻按钮"),
     ULTIMATE_SKILL("大招图标"),
     WEAPON_SKILL("武器图标"),
     DEFEAT_POPUP("失败弹窗"),
