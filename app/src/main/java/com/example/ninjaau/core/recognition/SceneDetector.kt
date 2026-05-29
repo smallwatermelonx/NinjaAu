@@ -19,6 +19,127 @@ class SceneDetector(private val context: Context) {
 
     private data class TemplateEntry(val path: String, val threshold: Float = 0.8f)
 
+    /** 等级匹配结果（含相似度分数，用于最佳匹配策略） */
+    data class GradeMatch(
+        val grade: BountyGrade,
+        val similarity: Float,
+        val centerX: Float,
+        val centerY: Float
+    )
+
+    /** 模板测试结果 */
+    data class TemplateTestResult(
+        val name: String,
+        val similarity: Float,
+        val threshold: Float,
+        val passed: Boolean,
+        val centerX: Float?,
+        val centerY: Float?
+    )
+
+    /** 按节点分组的模板定义 */
+    enum class NodeTemplateGroup(
+        val displayName: String,
+        val states: List<ScreenState>,
+        val testLevelIcons: Boolean,
+        val testGradeIcons: Boolean
+    ) {
+        HALL("大厅导航", listOf(
+            ScreenState.CHAT_ICON
+        ), false, false),
+        RECRUIT_LIST("悬赏列表扫描", listOf(
+            ScreenState.RECRUIT_TAB
+        ), false, true),
+        BOUNTY_DETAIL("悬赏详情/队伍房间", listOf(
+            ScreenState.READY_BUTTON, ScreenState.DAILY_LIMIT
+        ), true, false),
+        BATTLE_LOADING("战斗加载", listOf(ScreenState.BATTLE_LOADING), false, false),
+        FIGHT("战斗", listOf(
+            ScreenState.SLIDE_BUTTON, ScreenState.ULTIMATE_SKILL, ScreenState.LV_ICON,
+            ScreenState.SETTLEMENT_POPUP, ScreenState.CONFIRM_BUTTON, ScreenState.DEFEAT_POPUP,
+            ScreenState.JUMP_BUTTON, ScreenState.SCROLL_UP, ScreenState.WEAPON_SKILL
+        ), false, false),
+        SETTLEMENT("结算领奖", listOf(
+            ScreenState.SETTLEMENT_POPUP, ScreenState.CONFIRM_BUTTON, ScreenState.CHAT_ICON
+        ), false, false),
+        DEFEAT("战斗失败", listOf(ScreenState.DEFEAT_POPUP), false, false),
+        RECRUIT_INVITE("招募邀请弹窗", listOf(ScreenState.RECRUIT_INVITE), false, false),
+    }
+
+    /**
+     * 按节点分组测试模板匹配 — 仅测试该节点相关的模板
+     * @param screen 当前屏幕截图
+     * @param group 要测试的节点模板组
+     * @return 按相似度降序排列的测试结果
+     */
+    fun testNodeTemplates(screen: Bitmap, group: NodeTemplateGroup): List<TemplateTestResult> {
+        val results = mutableListOf<TemplateTestResult>()
+
+        // 1. 测试 ScreenState 模板
+        for (state in group.states) {
+            val entry = templates[state] ?: continue
+            val template = getTemplate(state)
+            if (template == null) {
+                results.add(TemplateTestResult(state.description, 0f, entry.threshold, false, null, null))
+                continue
+            }
+            val result = TemplateMatcher.match(screen, template, entry.threshold)
+            results.add(TemplateTestResult(
+                name = state.description,
+                similarity = result.similarity,
+                threshold = entry.threshold,
+                passed = result.isMatched,
+                centerX = if (result.isMatched) result.centerX else null,
+                centerY = if (result.isMatched) result.centerY else null
+            ))
+        }
+
+        // 2. 测试等级图标（levelIcon）
+        if (group.testLevelIcons) {
+            for (grade in BountyGrade.entries) {
+                val path = grade.levelIconPath() ?: continue
+                val cached = levelIconCache[grade]
+                val template = if (cached != null && !cached.isRecycled) cached else {
+                    val loaded = AssetUtil.loadBitmapFromAssets(context, path) ?: continue
+                    levelIconCache[grade] = loaded
+                    loaded
+                }
+                val result = TemplateMatcher.match(screen, template, 0.75f)
+                results.add(TemplateTestResult(
+                    name = "等级 ${grade.displayName}(lv${grade.level})",
+                    similarity = result.similarity,
+                    threshold = 0.75f,
+                    passed = result.isMatched,
+                    centerX = if (result.isMatched) result.centerX else null,
+                    centerY = if (result.isMatched) result.centerY else null
+                ))
+            }
+        }
+
+        // 3. 测试招募列表等级图标（gradeIcon）
+        if (group.testGradeIcons) {
+            for (grade in BountyGrade.entries) {
+                val cached = gradeIconCache[grade]
+                val template = if (cached != null && !cached.isRecycled) cached else {
+                    val loaded = AssetUtil.loadBitmapFromAssets(context, grade.gradeIconPath()) ?: continue
+                    gradeIconCache[grade] = loaded
+                    loaded
+                }
+                val result = TemplateMatcher.match(screen, template, 0.85f)
+                results.add(TemplateTestResult(
+                    name = "招募 ${grade.displayName}",
+                    similarity = result.similarity,
+                    threshold = 0.85f,
+                    passed = result.isMatched,
+                    centerX = if (result.isMatched) result.centerX else null,
+                    centerY = if (result.isMatched) result.centerY else null
+                ))
+            }
+        }
+
+        return results.sortedByDescending { it.similarity }
+    }
+
     private val templates: Map<ScreenState, TemplateEntry> = mapOf(
         // ── 大厅 ──
         ScreenState.CHAT_ICON to TemplateEntry("templates/lobby/hall_chat.png", 0.75f),
@@ -155,20 +276,20 @@ class SceneDetector(private val context: Context) {
     }
 
     /** 在截图中匹配指定悬赏等级的图标（用于节点3扫描） */
-    fun matchGradeIcon(screen: Bitmap, grade: BountyGrade): Pair<Float, Float>? {
+    fun matchGradeIcon(screen: Bitmap, grade: BountyGrade): GradeMatch? {
         val template = gradeIconCache.getOrPut(grade) {
             AssetUtil.loadBitmapFromAssets(context, grade.gradeIconPath()) ?: return null
         }
         val result = TemplateMatcher.match(screen, template, 0.85f)
         if (result.isMatched) {
             LogUtil.i(TAG, "等级图标 ${grade.displayName}: 匹配度 ${String.format("%.2f", result.similarity)}")
-            return Pair(result.centerX, result.centerY)
+            return GradeMatch(grade, result.similarity, result.centerX, result.centerY)
         }
         return null
     }
 
     /** 在截图中匹配队伍房间内的建议等级标识（lv30 / lv40 / lv60 / lv80 / lv90 / lv100 / lv125） */
-    fun matchLevelIcon(screen: Bitmap, grade: BountyGrade): Pair<Float, Float>? {
+    fun matchLevelIcon(screen: Bitmap, grade: BountyGrade): GradeMatch? {
         val path = grade.levelIconPath() ?: return null
         val template = levelIconCache.getOrPut(grade) {
             AssetUtil.loadBitmapFromAssets(context, path) ?: run {
@@ -179,33 +300,67 @@ class SceneDetector(private val context: Context) {
         val result = TemplateMatcher.match(screen, template, 0.75f)
         if (result.isMatched) {
             LogUtil.i(TAG, "建议等级图标 ${grade.displayName}(lv${grade.level}): 匹配度 ${String.format("%.2f", result.similarity)}")
-            return Pair(result.centerX, result.centerY)
+            return GradeMatch(grade, result.similarity, result.centerX, result.centerY)
         }
         LogUtil.d(TAG, "等级图标 ${grade.displayName}(lv${grade.level}): 最高 ${String.format("%.2f", result.similarity)} < 0.75")
         return null
     }
 
-    /** 在截图中搜索多个等级的建议等级标识 */
+    /** 在截图中搜索多个等级的建议等级标识 — 最佳匹配策略 */
     fun matchAnyLevelIcon(screen: Bitmap, grades: List<BountyGrade>): Pair<BountyGrade, Pair<Float, Float>>? {
         LogUtil.i(TAG, "matchAnyLevelIcon: 检查 ${grades.joinToString { "${it.displayName}(lv${it.level})" }}")
+
+        val matches = mutableListOf<GradeMatch>()
         for (grade in grades) {
-            val coord = matchLevelIcon(screen, grade) ?: continue
-            LogUtil.i(TAG, "matchAnyLevelIcon → 匹配 ${grade.displayName}(lv${grade.level})")
-            return Pair(grade, coord)
+            val match = matchLevelIcon(screen, grade) ?: continue
+            matches.add(match)
         }
-        LogUtil.w(TAG, "matchAnyLevelIcon: ${grades.size}个等级均未匹配")
-        return null
+
+        if (matches.isEmpty()) {
+            LogUtil.w(TAG, "matchAnyLevelIcon: ${grades.size}个等级均未匹配")
+            return null
+        }
+
+        matches.sortByDescending { it.similarity }
+        val best = matches.first()
+
+        if (matches.size > 1) {
+            val matchSummary = matches.joinToString { "${it.grade.displayName}=${String.format("%.2f", it.similarity)}" }
+            val second = matches[1]
+            val gap = best.similarity - second.similarity
+            LogUtil.w(TAG, "matchAnyLevelIcon: 多个等级匹配 - $matchSummary，最佳=${best.grade.displayName}，差距=${String.format("%.3f", gap)}")
+            if (gap < 0.02f) {
+                LogUtil.w(TAG, "matchAnyLevelIcon: 警告! 最佳与次佳差距仅 ${String.format("%.3f", gap)}，匹配可能不可靠")
+            }
+        }
+
+        LogUtil.i(TAG, "matchAnyLevelIcon → 最佳匹配 ${best.grade.displayName}(lv${best.grade.level}) 相似度=${String.format("%.2f", best.similarity)}")
+        return Pair(best.grade, Pair(best.centerX, best.centerY))
     }
 
-    /** 在截图中搜索多个悬赏等级图标（节点3用） */
+    /** 在截图中搜索多个悬赏等级图标 — 最佳匹配策略 */
     fun matchAnyGrade(screen: Bitmap, grades: List<BountyGrade>): Pair<BountyGrade, Pair<Float, Float>>? {
+        val matches = mutableListOf<GradeMatch>()
         for (grade in grades) {
-            val coord = matchGradeIcon(screen, grade) ?: continue
-            LogUtil.i(TAG, "matchAnyGrade → 选中 ${grade.displayName}")
-            return Pair(grade, coord)
+            val match = matchGradeIcon(screen, grade) ?: continue
+            matches.add(match)
         }
-        LogUtil.d(TAG, "matchAnyGrade: ${grades.size}个等级均未匹配")
-        return null
+
+        if (matches.isEmpty()) {
+            LogUtil.d(TAG, "matchAnyGrade: ${grades.size}个等级均未匹配")
+            return null
+        }
+
+        matches.sortByDescending { it.similarity }
+        val best = matches.first()
+
+        if (matches.size > 1) {
+            val matchSummary = matches.joinToString { "${it.grade.displayName}=${String.format("%.2f", it.similarity)}" }
+            LogUtil.w(TAG, "matchAnyGrade: 多个等级匹配 - $matchSummary，最佳=${best.grade.displayName}")
+        }
+
+        LogUtil.i(TAG, "matchAnyGrade → 选中 ${best.grade.displayName} (相似度=${String.format("%.2f", best.similarity)})")
+        return Pair(best.grade, Pair(best.centerX, best.centerY))
     }
 
     // ── 全量检测顺序（兜底用） ──

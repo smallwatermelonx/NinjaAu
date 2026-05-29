@@ -8,6 +8,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -15,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -34,6 +36,9 @@ import com.example.ninjaau.core.util.PermissionManager
 import com.example.ninjaau.model.BountyConfig
 import com.example.ninjaau.model.BountyGrade
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private val Purple = Color(0xFF7C4DFF)
 private val PurpleLight = Color(0xFFB388FF)
@@ -56,8 +61,9 @@ fun NinjaScriptMainUI() {
 
     // 用户勾选配置
     var bountyConfigs by remember { mutableStateOf(BountyConfigStorage.load(context)) }
-    // 运行日志
-    var logLines by remember { mutableStateOf(listOf("就绪，等待启动...")) }
+    // 运行日志 (timestamp, message)
+    val timeFormatter = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
+    var logEntries by remember { mutableStateOf(listOf(System.currentTimeMillis() to "就绪，等待启动...")) }
     // 权限状态
     var permAccessibility by remember { mutableStateOf(false) }
     var permOverlay by remember { mutableStateOf(false) }
@@ -83,12 +89,12 @@ fun NinjaScriptMainUI() {
     // 收集 GameManager 日志事件到运行日志面板
     LaunchedEffect(Unit) {
         GameManager.logEvents.collect { msg ->
-            logLines = (logLines + msg).take(200)
+            logEntries = (logEntries + (System.currentTimeMillis() to msg)).take(200)
         }
     }
 
     fun addLog(msg: String) {
-        logLines = (logLines + msg).take(200)
+        logEntries = (logEntries + (System.currentTimeMillis() to msg)).take(200)
     }
 
     val onStart = {
@@ -187,15 +193,16 @@ fun NinjaScriptMainUI() {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    PermChip("无障碍", permAccessibility)
-                    PermChip("悬浮窗", permOverlay)
-                    PermChip("截图", permProjection)
+                    PermChip("无障碍", permAccessibility, "♿")
+                    PermChip("悬浮窗", permOverlay, "▣")
+                    PermChip("截图", permProjection, "📷")
                 }
 
                 // ========== 启动/停止按钮 ==========
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
                     colors = CardDefaults.cardColors(containerColor = DarkSurface)
                 ) {
                     Column(
@@ -218,26 +225,29 @@ fun NinjaScriptMainUI() {
                         )
                         Spacer(Modifier.height(16.dp))
 
-                        // 大启动/暂停/继续按钮
-                        Button(
-                            onClick = {
-                                when (scriptState) {
-                                    ScriptState.IDLE -> onStart()
-                                    ScriptState.RUNNING -> onPause()
-                                    ScriptState.PAUSED -> onResumeAction()
-                                }
-                            },
+                        // 大启动/暂停/继续按钮（渐变背景）
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(56.dp),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = when (scriptState) {
-                                    ScriptState.IDLE -> Purple
-                                    ScriptState.RUNNING -> Color(0xFFF5A623)
-                                    ScriptState.PAUSED -> GreenOn
-                                }
-                            )
+                                .height(56.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(
+                                    Brush.linearGradient(
+                                        colors = when (scriptState) {
+                                            ScriptState.IDLE -> listOf(Purple, PurpleLight)
+                                            ScriptState.RUNNING -> listOf(Color(0xFFF5A623), Color(0xFFFF8C00))
+                                            ScriptState.PAUSED -> listOf(GreenOn, Color(0xFF81C784))
+                                        }
+                                    )
+                                )
+                                .clickable {
+                                    when (scriptState) {
+                                        ScriptState.IDLE -> onStart()
+                                        ScriptState.RUNNING -> onPause()
+                                        ScriptState.PAUSED -> onResumeAction()
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 when (scriptState) {
@@ -246,7 +256,8 @@ fun NinjaScriptMainUI() {
                                     ScriptState.PAUSED -> "▶  继续"
                                 },
                                 fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
                             )
                         }
 
@@ -264,6 +275,7 @@ fun NinjaScriptMainUI() {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
                     colors = CardDefaults.cardColors(containerColor = DarkSurface)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -358,20 +370,41 @@ fun NinjaScriptMainUI() {
 
                 // ========== 运行日志 ==========
                 Card(
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 200.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 220.dp),
                     shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
                     colors = CardDefaults.cardColors(containerColor = LogBg)
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text("运行日志", fontSize = 13.sp, color = TextSecondary, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(4.dp))
-                        logLines.takeLast(8).forEach { line ->
-                            Text(
-                                text = line,
-                                fontSize = 11.sp,
-                                color = TextSecondary,
-                                modifier = Modifier.padding(vertical = 1.dp)
-                            )
+                        val logListState = rememberLazyListState()
+                        val displayLogs = logEntries.takeLast(30)
+                        LaunchedEffect(displayLogs.size) {
+                            if (displayLogs.isNotEmpty()) {
+                                logListState.animateScrollToItem(displayLogs.size - 1)
+                            }
+                        }
+                        LazyColumn(
+                            state = logListState,
+                            modifier = Modifier.fillMaxWidth().weight(1f)
+                        ) {
+                            items(displayLogs) { (ts, line) ->
+                                val time = timeFormatter.format(Date(ts))
+                                val isWarning = line.contains("警告") || line.contains("⚠")
+                                val isError = line.contains("错误") || line.contains("❌")
+                                val color = when {
+                                    isError -> Color(0xFFEF5350)
+                                    isWarning -> Color(0xFFFFB74D)
+                                    else -> TextSecondary
+                                }
+                                Text(
+                                    text = "$time  $line",
+                                    fontSize = 11.sp,
+                                    color = color,
+                                    modifier = Modifier.padding(vertical = 1.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -386,12 +419,13 @@ fun NinjaScriptMainUI() {
 // ========== 子组件 ==========
 
 @Composable
-private fun PermChip(label: String, granted: Boolean) {
+private fun PermChip(label: String, granted: Boolean, icon: String = "") {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .clip(RoundedCornerShape(20.dp))
             .background(if (granted) DarkCard else DarkSurface)
+            .border(1.dp, if (granted) GreenOn.copy(alpha = 0.3f) else Color.White.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
             .padding(horizontal = 12.dp, vertical = 6.dp)
     ) {
         Box(
@@ -401,6 +435,10 @@ private fun PermChip(label: String, granted: Boolean) {
                 .background(if (granted) GreenOn else RedOff)
         )
         Spacer(Modifier.width(6.dp))
+        if (icon.isNotEmpty()) {
+            Text(icon, fontSize = 12.sp, color = if (granted) TextPrimary else TextSecondary)
+            Spacer(Modifier.width(4.dp))
+        }
         Text(label, fontSize = 12.sp, color = if (granted) TextPrimary else TextSecondary)
     }
 }

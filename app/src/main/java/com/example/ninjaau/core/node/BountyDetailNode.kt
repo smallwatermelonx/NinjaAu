@@ -62,8 +62,22 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
             val screen = this.ctx.captureBitmap()
             if (screen == null) { this.ctx.delay(POST_CLICK_DELAY); continue }
             try {
-                // ═══ ② 已达上限 → 标记对应组完成 ═══
+                // ═══ ② 已达上限 → 二次确认后标记对应组完成 ═══
                 if (this.ctx.detector.matchTemplate(screen, ScreenState.DAILY_LIMIT) != null) {
+                    this.ctx.delay(500)
+                    val recheckScreen = this.ctx.captureBitmap()
+                    if (recheckScreen != null) {
+                        try {
+                            if (this.ctx.detector.matchTemplate(recheckScreen, ScreenState.DAILY_LIMIT) == null) {
+                                this.ctx.log("DAILY_LIMIT 二次确认未命中，忽略")
+                                lastMatchMs = System.currentTimeMillis()
+                                continue
+                            }
+                        } finally {
+                            recheckScreen.recycle()
+                        }
+                    }
+
                     val levelMatch = this.ctx.detector.matchAnyLevelIcon(screen, ctx.activeGrades)
                     if (levelMatch != null) {
                         val (limitGrade, _) = levelMatch
@@ -74,7 +88,15 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                         ctx.activeGrades = ctx.activeGrades.filter { it.group != group }
                         this.ctx.log("${group.name}已达今日上限，标记为完成")
                     } else {
-                        this.ctx.log("已达上限，但无法识别等级")
+                        this.ctx.log("已达上限，但无法识别等级，使用 currentBounty 兜底")
+                        val fallbackGroup = ctx.currentBounty?.group
+                        if (fallbackGroup != null) {
+                            for (member in fallbackGroup.members()) {
+                                ctx.runCounts[member] = fallbackGroup.defaultRuns
+                            }
+                            ctx.activeGrades = ctx.activeGrades.filter { it.group != fallbackGroup }
+                            this.ctx.log("${fallbackGroup.name} 根据 currentBounty 标记为完成")
+                        }
                     }
                     exitTeam()
                     ctx.currentBounty = null
@@ -82,16 +104,17 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                     return GamePhase.LOBBY
                 }
 
-                // ═══ ③ 准备按钮 + 等级校验 ═══
+                // ═══ ③ 准备按钮 + 等级校验（必须识别等级才能准备） ═══
                 if (battleWaitStart == 0L) {
                     val readyCoord = this.ctx.detector.matchTemplate(screen, ScreenState.READY_BUTTON)
                     if (readyCoord != null) {
                         val levelMatch = this.ctx.detector.matchAnyLevelIcon(screen, ctx.activeGrades)
                         if (levelMatch == null) {
-                            this.ctx.log("队伍级别不在勾选范围内，退出")
+                            this.ctx.log("⚠ 等级识别失败，队伍级别不在勾选范围内，退出队伍")
                             exitTeam()
                             ctx.currentBounty = null
-                            continue
+                            ctx.actualGrade = null
+                            return GamePhase.LOBBY
                         }
                         val (actualGrade, _) = levelMatch
                         ctx.actualGrade = actualGrade

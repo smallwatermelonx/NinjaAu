@@ -10,6 +10,7 @@ import android.os.*
 import android.util.DisplayMetrics
 import android.view.*
 import android.view.animation.AccelerateInterpolator
+import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.*
 import androidx.core.content.ContextCompat
@@ -20,6 +21,7 @@ import com.example.ninjaau.core.util.Constant
 import com.example.ninjaau.core.util.LogUtil
 import com.example.ninjaau.core.util.PermissionManager
 import com.example.ninjaau.core.util.ToastUtil
+import com.example.ninjaau.core.recognition.SceneDetector
 import com.example.ninjaau.model.BountyConfig
 import com.example.ninjaau.model.BountyGrade
 import kotlinx.coroutines.*
@@ -80,7 +82,8 @@ class FloatingWindowService : Service() {
 
     private var isExpanded = false
     private var isSideHidden = false
-    private var isOnRecruitList = false
+    private var isOnGameDataPage = false // 大厅或招募列表
+    private var isReceiverRegistered = false
     private var screenWidth = 0
     private var screenHeight = 0
     private var ballWidth = 0
@@ -88,6 +91,7 @@ class FloatingWindowService : Service() {
     private val sideHideRunnable = Runnable { sideHide() }
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
+    private lateinit var detector: SceneDetector
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -107,19 +111,22 @@ class FloatingWindowService : Service() {
         PermissionManager.restoreProjectionPermission(this)
         val initSuccess = PermissionManager.initMediaProjection(this)
         if (!initSuccess) {
-            LogUtil.e("FloatingWindowService", "MediaProjection初始化失败")
+            LogUtil.e("FloatingWindowService", "MediaProjection初始化失败，清除旧授权数据")
+            PermissionManager.clearProjectionPermission()
             Toast.makeText(this, "截图权限初始化失败，请重新点击Link Start授权", Toast.LENGTH_LONG).show()
             stopSelf()
             return
         }
 
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        detector = SceneDetector(this)
 
         val filter = IntentFilter().apply {
             addAction(Constant.HIDE_FLOATING_WINDOW)
             addAction(Constant.SHOW_FLOATING_WINDOW)
         }
         ContextCompat.registerReceiver(this, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        isReceiverRegistered = true
 
         calcScreenBounds()
         initFloatingView()
@@ -167,7 +174,11 @@ class FloatingWindowService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
         }
-        startForeground(NOTIFICATION_ID, builder.build())
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, builder.build(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+        } else {
+            startForeground(NOTIFICATION_ID, builder.build())
+        }
     }
 
     private fun observeScriptState() {
@@ -211,98 +222,53 @@ class FloatingWindowService : Service() {
         serviceScope.launch {
             GameManager.pageEvents.collectLatest { event ->
                 showPageToast(event)
-                isOnRecruitList = event == "进入招募列表"
+                isOnGameDataPage = event == "进入大厅" || event == "进入招募列表"
                 updatePanelVisibility()
             }
         }
     }
 
     // ══════════════════════════════════════════
-    //  独立信息面板（右侧悬浮层）
+    //  独立信息面板（纯日志面板）
     // ══════════════════════════════════════════
 
     private fun initInfoPanel() {
         val density = resources.displayMetrics.density
-        val panelWidth = (screenWidth * 0.7).toInt()
-        val panelHeight = (screenHeight * 0.35).toInt()
-        val startX = (screenWidth * 0.58).toInt()
-        var topMargin = minY + (10 * density).toInt()
+        val panelWidth = (screenWidth * 0.38).toInt()
+        val panelHeight = (screenHeight * 0.22).toInt()
+        // HUD 位于 y=minY+50，高度约 60-80dp，infoPanel 放在 HUD 下方留 12dp 间距
+        val panelY = minY + (130 * density).toInt()
 
         val root = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
+            orientation = LinearLayout.VERTICAL
             val bg = GradientDrawable().apply {
-                setColor(0xF5000000.toInt())
-                cornerRadius = 12f * density
+                setColor(0x991A1A2E.toInt())
+                cornerRadius = 10f * density
             }
             background = bg
         }
 
-        // ── 左侧：悬赏进度 ──
-        val taskSection = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply {
-                setMargins((10 * density).toInt(), (8 * density).toInt(),
-                    (5 * density).toInt(), (8 * density).toInt())
-            }
-        }
-        taskSection.addView(TextView(this).apply {
-            text = "◆ 悬赏进度"
+        // ── 标题行 ──
+        root.addView(TextView(this).apply {
+            text = "运行日志"
             setTextColor(0xFFB388FF.toInt())
-            textSize = 12f
+            textSize = 11f
             setTypeface(null, Typeface.BOLD)
-        })
-        val grid = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-        progressGrid = grid
-        val gridLp = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, 0
-        )
-        gridLp.weight = 1f
-        gridLp.topMargin = (4 * density).toInt()
-        taskSection.addView(grid, gridLp)
-        root.addView(taskSection)
-
-        // 垂直分割线
-        root.addView(View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(1, ViewGroup.LayoutParams.MATCH_PARENT).apply {
-                topMargin = (8 * density).toInt()
-                bottomMargin = (8 * density).toInt()
-            }
-            setBackgroundColor(0x664A4A6A.toInt())
+            setPadding((10 * density).toInt(), (6 * density).toInt(),
+                (10 * density).toInt(), (2 * density).toInt())
         })
 
-        // ── 右侧：运行日志 ──
-        val logSection = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply {
-                setMargins((5 * density).toInt(), (8 * density).toInt(),
-                    (10 * density).toInt(), (8 * density).toInt())
-            }
-        }
-        logSection.addView(TextView(this).apply {
-            text = "◆ 运行日志"
-            setTextColor(0xFFB388FF.toInt())
-            textSize = 12f
-            setTypeface(null, Typeface.BOLD)
-        })
+        // ── 日志区域（全宽） ──
         val scroll = ScrollView(this).apply {
             layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
+                ViewGroup.LayoutParams.MATCH_PARENT, 0
+            ).apply { weight = 1f }
         }
         logScroll = scroll
         val inner = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         logContainer = inner
         scroll.addView(inner)
-        val logLp = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, 0
-        )
-        logLp.weight = 1f
-        logLp.topMargin = (4 * density).toInt()
-        logSection.addView(scroll, logLp)
-        root.addView(logSection)
+        root.addView(scroll)
 
         infoPanelRoot = root
 
@@ -315,9 +281,9 @@ class FloatingWindowService : Service() {
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = startX
-            y = topMargin
+            gravity = Gravity.TOP or Gravity.END
+            x = 12
+            y = panelY
         }
     }
 
@@ -346,8 +312,8 @@ class FloatingWindowService : Service() {
     }
 
     private fun updatePanelVisibility() {
-        if (isOnRecruitList && GameManager.state.value == ScriptState.RUNNING) {
-            if (isExpanded) showInfoPanel()
+        if (GameManager.state.value == ScriptState.RUNNING && isOnGameDataPage) {
+            showInfoPanel()
         } else {
             hideInfoPanel()
         }
@@ -416,7 +382,7 @@ class FloatingWindowService : Service() {
             setPadding(0, 2, 0, 2)
         }
         container.addView(tv)
-        while (container.childCount > 20) {
+        while (container.childCount > 30) {
             container.removeViewAt(0)
         }
         logScroll?.post { logScroll?.fullScroll(View.FOCUS_DOWN) }
@@ -695,6 +661,10 @@ class FloatingWindowService : Service() {
             GameManager.stopScript()
             stopSelf()
         }
+        floatingView.findViewById<View>(R.id.btn_test).setOnClickListener {
+            resetHideTimer()
+            showNodeTestDialog()
+        }
     }
 
     private fun showBountySelectionDialog() {
@@ -718,6 +688,98 @@ class FloatingWindowService : Service() {
                 ToastUtil.show(this, "已选择: $enabledNames")
             }
             .setNegativeButton("取消", null)
+            .create().apply {
+                window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+                show()
+            }
+    }
+
+    // ── 模板测试 ──
+
+    private fun showNodeTestDialog() {
+        val groups = SceneDetector.NodeTemplateGroup.entries
+        val names = groups.map { it.displayName }.toTypedArray()
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("选择当前页面节点")
+            .setSingleChoiceItems(names, -1) { dialog, which ->
+                dialog.dismiss()
+                runNodeTest(groups[which])
+            }
+            .setNegativeButton("取消", null)
+            .create().apply {
+                window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+                show()
+            }
+    }
+
+    private fun runNodeTest(group: SceneDetector.NodeTemplateGroup) {
+        val screen = com.example.ninjaau.core.capture.ScreenCapture.getInstance(this).capture()
+        if (screen == null) {
+            ToastUtil.show(this, "截图失败，请确认截图权限已开启")
+            return
+        }
+        try {
+            val results = detector.testNodeTemplates(screen, group)
+            showTestResultDialog(group.displayName, results)
+        } finally {
+            screen.recycle()
+        }
+    }
+
+    private fun showTestResultDialog(nodeName: String, results: List<SceneDetector.TemplateTestResult>) {
+        val density = resources.displayMetrics.density
+        val scrollView = ScrollView(this).apply {
+            setPadding((16 * density).toInt(), (12 * density).toInt(),
+                (16 * density).toInt(), (8 * density).toInt())
+        }
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        // 汇总行
+        val passed = results.count { it.passed }
+        val total = results.size
+        container.addView(TextView(this).apply {
+            text = "通过 $passed / $total"
+            setTextColor(if (passed == total) 0xFF4CAF50.toInt() else 0xFFFFB74D.toInt())
+            textSize = 13f
+            setTypeface(null, Typeface.BOLD)
+            setPadding(0, 0, 0, (8 * density).toInt())
+        })
+
+        // 分隔线
+        container.addView(View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, (1 * density).toInt()
+            ).apply { bottomMargin = (8 * density).toInt() }
+            setBackgroundColor(0x33FFFFFF)
+        })
+
+        // 每条结果
+        for (r in results) {
+            val icon = if (r.passed) "✅" else "❌"
+            val color = when {
+                r.passed -> 0xFF4CAF50.toInt()
+                r.threshold - r.similarity < 0.05f -> 0xFFFFB74D.toInt()
+                else -> 0xFF888888.toInt()
+            }
+            val coordStr = if (r.centerX != null && r.centerY != null)
+                "  (${String.format("%.0f", r.centerX)}, ${String.format("%.0f", r.centerY)})" else ""
+
+            container.addView(TextView(this).apply {
+                text = "$icon ${r.name}  ${String.format("%.3f", r.similarity)} / ${r.threshold}$coordStr"
+                setTextColor(color)
+                textSize = 12f
+                setPadding(0, (3 * density).toInt(), 0, (3 * density).toInt())
+                typeface = Typeface.MONOSPACE
+            })
+        }
+
+        scrollView.addView(container)
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("模板测试 — $nodeName")
+            .setView(scrollView)
+            .setPositiveButton("关闭", null)
             .create().apply {
                 window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
                 show()
@@ -752,54 +814,79 @@ class FloatingWindowService : Service() {
         windowManager.updateViewLayout(floatingView, layoutParams)
     }
 
-    // ── 菜单动画（ViewPropertyAnimator） ──
+    // ── 菜单动画（滚动式逐个出现） ──
 
     private fun showMenu() {
         llMenu.visibility = View.VISIBLE
-        llMenu.alpha = 0f
+        llMenu.alpha = 1f
         val density = resources.displayMetrics.density
-        val slidePx = 200f * density
+        val slidePx = 180f * density
+        val isOnRight = layoutParams.x + ballWidth / 2 > screenWidth / 2
 
-        val isOnRight = layoutParams.x > screenWidth / 2
-        val startX: Float
-        val endX: Float
+        // 动态测量实际菜单宽度
+        llMenu.measure(
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        )
+        val measuredWidth = llMenu.measuredWidth
 
-        if (isOnRight) {
-            // 球在右侧：菜单向左展开（仅 menu 移动，球保持在右边缘）
-            val menuWidthPx = 330f * density
-            val ballWidthPx = 80f * density
-            endX = -(menuWidthPx - ballWidthPx)
-            startX = endX + slidePx
-        } else {
-            // 球在左侧：菜单向右展开（默认行为）
-            endX = 0f
-            startX = -slidePx
+        // 逐个按钮滚动出现
+        val childCount = llMenu.childCount
+        for (i in 0 until childCount) {
+            val child = llMenu.getChildAt(i)
+            child.translationX = if (isOnRight) slidePx else -slidePx
+            child.alpha = 0f
+            child.animate()
+                .translationX(0f)
+                .alpha(1f)
+                .setDuration(ANIM_DURATION)
+                .setStartDelay(i * 50L)
+                .setInterpolator(DecelerateInterpolator(2f))
+                .start()
         }
 
-        llMenu.translationX = startX
-        llMenu.animate()
-            .translationX(endX)
-            .alpha(1f)
-            .setDuration(ANIM_DURATION)
-            .setInterpolator(OvershootInterpolator(1.1f))
-            .start()
+        // 整体菜单位移（右侧时移到球左侧）
+        if (isOnRight) {
+            llMenu.translationX = 0f
+            llMenu.animate()
+                .translationX(-(measuredWidth - ballWidth).toFloat())
+                .setDuration(ANIM_DURATION)
+                .setInterpolator(DecelerateInterpolator(2f))
+                .start()
+        } else {
+            llMenu.translationX = 0f
+        }
     }
 
     private fun hideMenu() {
         val density = resources.displayMetrics.density
-        val slidePx = 200f * density
-        val isOnRight = layoutParams.x > screenWidth / 2
+        val slidePx = 180f * density
+        val isOnRight = layoutParams.x + ballWidth / 2 > screenWidth / 2
 
-        val hideTargetX = if (isOnRight) 0f else -slidePx
+        // 所有按钮同时收起
+        for (i in 0 until llMenu.childCount) {
+            val child = llMenu.getChildAt(i)
+            child.animate()
+                .translationX(if (isOnRight) slidePx else -slidePx)
+                .alpha(0f)
+                .setDuration(ANIM_DURATION / 2)
+                .setInterpolator(AccelerateInterpolator())
+                .start()
+        }
 
+        // 菜单整体归位
         llMenu.animate()
-            .translationX(hideTargetX)
+            .translationX(0f)
             .alpha(0f)
-            .setDuration(ANIM_DURATION)
-            .setInterpolator(AccelerateInterpolator())
+            .setDuration(ANIM_DURATION / 2)
             .withEndAction {
                 llMenu.visibility = View.GONE
                 llMenu.translationX = 0f
+                // 重置子 view 状态
+                for (i in 0 until llMenu.childCount) {
+                    llMenu.getChildAt(i).translationX = 0f
+                    llMenu.getChildAt(i).alpha = 1f
+                }
             }
             .start()
     }
@@ -927,7 +1014,12 @@ class FloatingWindowService : Service() {
         super.onDestroy()
         serviceScope.cancel()
         handler.removeCallbacks(sideHideRunnable)
-        unregisterReceiver(receiver)
+        if (isReceiverRegistered) {
+            try {
+                unregisterReceiver(receiver)
+            } catch (_: Exception) {}
+            isReceiverRegistered = false
+        }
         removeAllViews()
     }
 }

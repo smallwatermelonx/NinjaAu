@@ -81,19 +81,17 @@ object GameManager {
             // 进程重启后尝试从本地恢复授权数据
             PermissionManager.restoreProjectionPermission(appContext)
 
+            // 等待 FloatingWindowService 启动并初始化 MediaProjection
+            // （MediaProjection 必须在前台 Service 中创建，不能用 Application context）
             var waited = 0
             while (PermissionManager.mediaProjection == null && waited < 20) {
-                // 权限数据存在但实例被释放 → 尝试重新初始化
-                if (PermissionManager.hasProjectionPermission()) {
-                    PermissionManager.initMediaProjection(appContext)
-                }
-                if (PermissionManager.mediaProjection != null) break
                 delay(500)
                 waited++
             }
             if (PermissionManager.mediaProjection == null) {
-                postLog("❌ 截图授权超时(10s)")
-                Toast.makeText(appContext, "截图授权失败，请重试", Toast.LENGTH_SHORT).show()
+                postLog("❌ 截图授权超时(10s)，清除旧授权数据，请重新点击Link Start")
+                PermissionManager.clearProjectionPermission()
+                Toast.makeText(appContext, "截图授权失败，请重新启动", Toast.LENGTH_SHORT).show()
                 _state.value = ScriptState.IDLE
                 return@launch
             }

@@ -118,6 +118,19 @@
                     android:layout_gravity="center"
                     android:src="@android:drawable/ic_lock_power_off" />
             </FrameLayout>
+
+            <FrameLayout
+                android:id="@+id/btn_test"
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+                android:layout_margin="10dp"
+                android:background="@drawable/float_btn_bg">
+                <ImageView
+                    android:layout_width="30dp"
+                    android:layout_height="30dp"
+                    android:layout_gravity="center"
+                    android:src="@android:drawable/ic_menu_search" />
+            </FrameLayout>
         </LinearLayout>
 
         <!-- 主球 -->
