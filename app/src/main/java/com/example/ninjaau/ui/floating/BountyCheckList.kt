@@ -22,11 +22,30 @@ fun BountyCheckList(
 ) {
     var editableConfigs by remember(configs) { mutableStateOf(configs) }
     val context = LocalContext.current
+    var inviteCheckEnabled by remember { mutableStateOf(GameManager.inviteCheckEnabled.value) }
 
     LazyColumn(
         modifier = Modifier.fillMaxWidth().padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
+        // 组队邀请检测开关
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = inviteCheckEnabled,
+                    onCheckedChange = { checked ->
+                        inviteCheckEnabled = checked
+                        GameManager.setInviteCheckEnabled(context, checked)
+                    }
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("拒绝组队邀请", fontSize = 12.sp)
+            }
+        }
+
         items(editableConfigs) { config ->
             Row(
                 modifier = Modifier.fillMaxWidth(),

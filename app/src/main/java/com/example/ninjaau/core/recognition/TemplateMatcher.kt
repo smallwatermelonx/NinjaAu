@@ -44,6 +44,41 @@ object TemplateMatcher {
         }
     }
 
+    /**
+     * 使用预转换的 screen Mat 进行匹配 — 避免重复 Bitmap→Mat 转换。
+     * 调用方负责 screenMat 的生命周期（不要在此方法内 release）。
+     */
+    fun matchWithMat(screenMat: Mat, templateBitmap: Bitmap, threshold: Float): MatchResult {
+        if (!OpenCVUtil.initOpenCV()) {
+            return MatchResult(false, 0f, 0f, 0f, 0f, 0f)
+        }
+        var templateMat: Mat? = null
+        var resultMat: Mat? = null
+        try {
+            templateMat = OpenCVUtil.bitmapToMat(templateBitmap)
+            if (templateMat.cols() > screenMat.cols() || templateMat.rows() > screenMat.rows()) {
+                return MatchResult(false, 0f, 0f, 0f, 0f, 0f)
+            }
+            resultMat = Mat()
+            Imgproc.matchTemplate(screenMat, templateMat, resultMat, Imgproc.TM_CCOEFF_NORMED)
+            val minMaxLoc = Core.minMaxLoc(resultMat)
+            val similarity = minMaxLoc.maxVal.toFloat()
+            val isMatched = similarity >= threshold
+            val matchX = minMaxLoc.maxLoc.x.toFloat()
+            val matchY = minMaxLoc.maxLoc.y.toFloat()
+            return MatchResult(
+                isMatched, similarity, matchX, matchY,
+                matchX + templateBitmap.width / 2f,
+                matchY + templateBitmap.height / 2f
+            )
+        } catch (e: Exception) {
+            LogUtil.e(TAG, "模板匹配异常: ${e.message}", e)
+            return MatchResult(false, 0f, 0f, 0f, 0f, 0f)
+        } finally {
+            OpenCVUtil.releaseMats(templateMat, resultMat)
+        }
+    }
+
     data class MatchResult(
         val isMatched: Boolean,
         val similarity: Float,

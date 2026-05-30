@@ -48,6 +48,24 @@ object GameManager {
     private val _pageEvents = MutableSharedFlow<String>(extraBufferCapacity = 64)
     val pageEvents: SharedFlow<String> = _pageEvents
 
+    /** 组队邀请检测开关（默认关闭，UI 可配置） */
+    private val _inviteCheckEnabled = MutableStateFlow(false)
+    val inviteCheckEnabled: StateFlow<Boolean> = _inviteCheckEnabled
+
+    private const val PREFS_NAME = "script_prefs"
+    private const val KEY_INVITE_CHECK = "invite_check_enabled"
+
+    fun loadInviteCheckSetting(context: Context) {
+        val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        _inviteCheckEnabled.value = prefs.getBoolean(KEY_INVITE_CHECK, false)
+    }
+
+    fun setInviteCheckEnabled(context: Context, enabled: Boolean) {
+        _inviteCheckEnabled.value = enabled
+        context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_INVITE_CHECK, enabled).apply()
+    }
+
     private fun postLog(msg: String) {
         LogUtil.i(TAG, msg)
         _logEvents.tryEmit(msg)

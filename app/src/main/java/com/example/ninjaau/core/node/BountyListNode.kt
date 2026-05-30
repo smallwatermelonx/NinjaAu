@@ -8,6 +8,7 @@ import com.example.ninjaau.core.checkNodeTimeout
 import com.example.ninjaau.model.BountyGrade
 import com.example.ninjaau.model.GameContext
 import com.example.ninjaau.model.GamePhase
+import com.example.ninjaau.core.GameManager
 import com.example.ninjaau.model.ScreenState
 import kotlinx.coroutines.isActive
 import kotlin.coroutines.coroutineContext
@@ -51,38 +52,60 @@ class BountyListNode(private val ctx: NodeContext) : GameNode {
         this.ctx.log("招募列表 — 进入扫描循环")
 
         var lastMatchMs = System.currentTimeMillis()
+        var loopCount = 0
 
         while (coroutineContext.isActive) {
+            val loopStart = System.currentTimeMillis()
+
             val screen = this.ctx.captureBitmap()
             if (screen == null) {
                 this.ctx.delay(FAST_INTERVAL_MS);
                 continue
             }
+            val tCapture = System.currentTimeMillis()
+
+            // screen Bitmap → Mat（一次转换，所有匹配复用）
+            var screenMat: org.opencv.core.Mat? = null
+            var rangeMat: org.opencv.core.Mat? = null
+            var gradeMat: org.opencv.core.Mat? = null
             try {
-                // ═══ 0. 组队邀请拦截 ═══
-                val inviteCoord = this.ctx.detector.matchTemplate(screen, ScreenState.TEAM_INVITATION)
-                if (inviteCoord != null) {
-                    this.ctx.log("检测到组队邀请弹窗，拒绝")
-                    val rejectCoord = this.ctx.detector.matchTemplate(screen, ScreenState.INVITE_REJECT)
-                    if (rejectCoord != null) {
-                        this.ctx.click(rejectCoord)
-                        this.ctx.delay(500)
+                screenMat = this.ctx.detector.screenToMat(screen)
+                val tMat = System.currentTimeMillis()
+
+                // ═══ 0. 组队邀请拦截（全屏检测，弹窗可能出现在任意位置） ═══
+                if (GameManager.inviteCheckEnabled.value) {
+                    val inviteCoord = this.ctx.detector.matchTemplateMat(screenMat, ScreenState.TEAM_INVITATION)
+                    if (inviteCoord != null) {
+                        this.ctx.log("检测到组队邀请弹窗，拒绝")
+                        val rejectCoord = this.ctx.detector.matchTemplateMat(screenMat, ScreenState.INVITE_REJECT)
+                        if (rejectCoord != null) {
+                            this.ctx.click(rejectCoord)
+                            this.ctx.delay(500)
+                        }
+                        lastMatchMs = System.currentTimeMillis()
+                        continue
                     }
+                }
+
+                // ═══ ① 刷新检测（左下角 1/3 ROI） ═══
+                rangeMat = this.ctx.detector.cropBottomLeft(screenMat)
+                val rangeCoord =
+                    this.ctx.detector.matchTemplateMat(rangeMat, ScreenState.OUT_OF_RANGE_RECRUIT)
+                if (rangeCoord != null) {
+                    // ROI 裁剪坐标 → 全屏坐标：x 不偏移，y 加上裁剪起始偏移
+                    val roiY = screenMat.rows() * 2 / 3
+                    val fullCoord = Pair(rangeCoord.first, rangeCoord.second + roiY)
+                    this.ctx.log("超出范围悬赏，点击刷新列表 (全屏: $fullCoord)")
+                    this.ctx.click(fullCoord)
                     lastMatchMs = System.currentTimeMillis()
                     continue
                 }
 
-                // ═══ ① 刷新检测 ═══
-                val rangeCoord =
-                    this.ctx.detector.matchTemplate(screen, ScreenState.OUT_OF_RANGE_RECRUIT)
-                if (rangeCoord != null) {
-                    this.ctx.log("超出范围悬赏，点击刷新列表")
-                    this.ctx.click(rangeCoord)
-                    lastMatchMs = System.currentTimeMillis()
-                    continue
-                }
-                // ═══ ② 等级匹配 → 固定偏移点击 ═══
-                val match = this.ctx.detector.matchAnyGrade(screen, remaining)
+                val tRange = System.currentTimeMillis()
+
+                // ═══ ② 等级匹配 → 偏移点击（左侧 1/4 ROI，起点(0,0)无ROI偏移） ═══
+                gradeMat = this.ctx.detector.cropLeftQuarter(screenMat)
+                val match = this.ctx.detector.matchAnyGradeMat(gradeMat, remaining)
                 if (match != null) {
                     val (grade, coord) = match
                     ctx.currentBounty = grade
@@ -95,19 +118,33 @@ class BountyListNode(private val ctx: NodeContext) : GameNode {
                     continue
                 }
 
+                val tGrade = System.currentTimeMillis()
+
                 // ═══ ③ 页面切换检测 ═══
                 if (ctx.currentBounty != null) {
                     val readyCoord =
-                        this.ctx.detector.matchTemplate(screen, ScreenState.READY_BUTTON)
+                        this.ctx.detector.matchTemplateMat(screenMat, ScreenState.READY_BUTTON)
                     if (readyCoord != null) {
                         this.ctx.log("检测到准备按钮，切换至悬赏详情")
                         return GamePhase.BOUNTY_DETAIL
                     }
                 }
 
+                val tReady = System.currentTimeMillis()
+
                 // ═══ ④ 无匹配 → 超时检测 ═══
                 checkNodeTimeout(lastMatchMs)
+
+                // 每 10 轮输出一次耗时统计
+                loopCount++
+                if (loopCount % 10 == 0) {
+                    val total = tReady - loopStart
+                    this.ctx.log("[性能] 第${loopCount}轮 | 截图${tCapture - loopStart}ms | 转Mat${tMat - tCapture}ms | 邀请${tRange - tMat}ms | 等级${tGrade - tRange}ms | 合计${total}ms")
+                }
             } finally {
+                gradeMat?.release()
+                rangeMat?.release()
+                screenMat?.release()
                 screen.recycle()
             }
             this.ctx.delay(FAST_INTERVAL_MS)

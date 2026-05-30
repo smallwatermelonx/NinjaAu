@@ -228,6 +228,7 @@ class WorkflowEngine(
      * @return true 表示检测到邀请并已处理，调用方应 continue 跳过本轮正常逻辑
      */
     private suspend fun handleInvitation(): Boolean {
+        if (!GameManager.inviteCheckEnabled.value) return false
         val screen = captureBitmap() ?: return false
         try {
             val inviteCoord = detector.matchTemplate(screen, ScreenState.TEAM_INVITATION)

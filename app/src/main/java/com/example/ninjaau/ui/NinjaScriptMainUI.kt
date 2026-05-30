@@ -62,6 +62,7 @@ fun NinjaScriptMainUI() {
 
     // 用户勾选配置
     var bountyConfigs by remember { mutableStateOf(BountyConfigStorage.load(context)) }
+    var inviteCheckEnabled by remember { mutableStateOf(GameManager.inviteCheckEnabled.value) }
     // 运行日志 (timestamp, message)
     val timeFormatter = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
     var logEntries by remember { mutableStateOf(listOf(System.currentTimeMillis() to "就绪，等待启动...")) }
@@ -297,7 +298,24 @@ fun NinjaScriptMainUI() {
                                 }) { Text("清空", fontSize = 13.sp, color = TextSecondary) }
                             }
                         }
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(8.dp))
+
+                        // 组队邀请检测开关
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = inviteCheckEnabled,
+                                onCheckedChange = { checked ->
+                                    inviteCheckEnabled = checked
+                                    GameManager.setInviteCheckEnabled(context, checked)
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("检测组队邀请并自动拒绝", fontSize = 13.sp, color = TextSecondary)
+                        }
+                        Spacer(Modifier.height(8.dp))
 
                         // 日常悬赏
                         Text("日常悬赏", fontSize = 13.sp, color = TextSecondary, fontWeight = FontWeight.Bold)

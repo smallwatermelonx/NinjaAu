@@ -1,6 +1,7 @@
 package com.example.ninjaau
 
 import android.app.Application
+import com.example.ninjaau.core.GameManager
 import com.example.ninjaau.core.util.LogUtil
 import com.example.ninjaau.core.util.PermissionManager
 
@@ -15,6 +16,7 @@ class NinjaApp : Application() {
         LogUtil.init(this)
         // 清理旧版本 SharedPreferences 中残留的失效 MediaProjection 数据
         PermissionManager.cleanStaleData(this)
+        GameManager.loadInviteCheckSetting(this)
         LogUtil.i("NinjaApp", "NinjaApp 初始化完成")
     }
 }

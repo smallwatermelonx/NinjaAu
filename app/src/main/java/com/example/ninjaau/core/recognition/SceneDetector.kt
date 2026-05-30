@@ -4,8 +4,10 @@ import android.content.Context
 import android.graphics.Bitmap
 import com.example.ninjaau.core.util.AssetUtil
 import com.example.ninjaau.core.util.LogUtil
+import com.example.ninjaau.core.util.OpenCVUtil
 import com.example.ninjaau.model.BountyGrade
 import com.example.ninjaau.model.ScreenState
+import org.opencv.core.Mat
 
 /**
  * 场景识别层 — 将 Bitmap 映射为 ScreenState + 坐标
@@ -296,6 +298,71 @@ class SceneDetector(private val context: Context) {
             return GradeMatch(grade, result.similarity, result.centerX, result.centerY)
         }
         return null
+    }
+
+    // ── Mat 预转换方法（避免重复 Bitmap→Mat） ──
+
+    /** 将 screen Bitmap 转为 Mat，调用方用完需 release */
+    fun screenToMat(screen: Bitmap): Mat = OpenCVUtil.bitmapToMat(screen)
+
+    /** 裁剪 Mat 左下角 1/3 区域（超出范围标识所在区域），调用方用完需 release */
+    fun cropBottomLeft(mat: Mat): Mat {
+        val w = mat.cols() / 3
+        val h = mat.rows() / 3
+        val y = mat.rows() - h
+        return Mat(mat, org.opencv.core.Rect(0, y, w, h))
+    }
+
+    /** 裁剪 Mat 左侧 1/4 区域（等级图标所在区域），高度不动，调用方用完需 release */
+    fun cropLeftQuarter(mat: Mat): Mat {
+        val w = mat.cols() / 4
+        return Mat(mat, org.opencv.core.Rect(0, 0, w, mat.rows()))
+    }
+
+    /** 使用预转换的 screen Mat 匹配指定状态，返回命中坐标或 null */
+    fun matchTemplateMat(screenMat: Mat, state: ScreenState): Pair<Float, Float>? {
+        if (state == ScreenState.UNKNOWN) return null
+        val entry = templates[state] ?: return null
+        val template = getTemplate(state) ?: return null
+        val result = TemplateMatcher.matchWithMat(screenMat, template, entry.threshold)
+        if (result.isMatched) {
+            LogUtil.i(TAG, "$state: 相似度 ${String.format("%.2f", result.similarity)} ≥ ${entry.threshold}")
+            return Pair(result.centerX, result.centerY)
+        }
+        return null
+    }
+
+    /** 使用预转换的 screen Mat 搜索多个等级图标 — 最佳匹配策略 */
+    fun matchAnyGradeMat(screenMat: Mat, grades: List<BountyGrade>): Pair<BountyGrade, Pair<Float, Float>>? {
+        val matches = mutableListOf<GradeMatch>()
+        for (grade in grades) {
+            val cached = gradeIconCache[grade]
+            val template = if (cached != null && !cached.isRecycled) cached else {
+                val loaded = AssetUtil.loadBitmapFromAssets(context, grade.gradeIconPath()) ?: continue
+                gradeIconCache[grade] = loaded
+                loaded
+            }
+            val result = TemplateMatcher.matchWithMat(screenMat, template, 0.85f)
+            if (result.isMatched) {
+                matches.add(GradeMatch(grade, result.similarity, result.centerX, result.centerY))
+            }
+        }
+
+        if (matches.isEmpty()) {
+            LogUtil.d(TAG, "matchAnyGradeMat: ${grades.size}个等级均未匹配")
+            return null
+        }
+
+        matches.sortByDescending { it.similarity }
+        val best = matches.first()
+
+        if (matches.size > 1) {
+            val matchSummary = matches.joinToString { "${it.grade.displayName}=${String.format("%.2f", it.similarity)}" }
+            LogUtil.w(TAG, "matchAnyGradeMat: 多个等级匹配 - $matchSummary，最佳=${best.grade.displayName}")
+        }
+
+        LogUtil.i(TAG, "matchAnyGradeMat → 选中 ${best.grade.displayName} (相似度=${String.format("%.2f", best.similarity)})")
+        return Pair(best.grade, Pair(best.centerX, best.centerY))
     }
 
     /** 在截图中匹配队伍房间内的建议等级标识（lv30 / lv40 / lv60 / lv80 / lv90 / lv100 / lv125） */
