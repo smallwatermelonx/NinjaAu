@@ -113,7 +113,6 @@ class BountyListNode(private val ctx: NodeContext) : GameNode {
                     val clickY = coord.second + 300f
                     this.ctx.click(Pair(clickX, clickY))
                     this.ctx.log("${grade.displayName}悬赏，点击加入 ($clickX, $clickY)")
-                    this.ctx.onPageEvent?.invoke("匹配到 ${grade.displayName} 悬赏，加入队伍")
                     lastMatchMs = System.currentTimeMillis()
                     continue
                 }

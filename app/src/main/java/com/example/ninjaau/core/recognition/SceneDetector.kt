@@ -110,7 +110,7 @@ class SceneDetector(private val context: Context) {
                     levelIconCache[grade] = loaded
                     loaded
                 }
-                val result = TemplateMatcher.match(screen, template, 0.95f)
+                val result = TemplateMatcher.match(screen, template, 0.92f)
                 results.add(TemplateTestResult(
                     name = "等级 ${grade.displayName}(lv${grade.level})",
                     similarity = result.similarity,
@@ -319,6 +319,20 @@ class SceneDetector(private val context: Context) {
         return Mat(mat, org.opencv.core.Rect(0, 0, w, mat.rows()))
     }
 
+    /** 裁剪 Mat 下方 1/3 区域（跳跃/上翻按钮所在区域），全宽，调用方用完需 release */
+    fun cropBottomThird(mat: Mat): Mat {
+        val h = mat.rows() / 3
+        val y = mat.rows() - h
+        return Mat(mat, org.opencv.core.Rect(0, y, mat.cols(), h))
+    }
+
+    /** 裁剪 Mat 左上角指定比例区域（Lv等级标识所在区域），调用方用完需 release */
+    fun cropTopLeftRegion(mat: Mat, topFraction: Float = 0.2f, leftFraction: Float = 1f): Mat {
+        val h = (mat.rows() * topFraction).toInt()
+        val w = (mat.cols() * leftFraction).toInt()
+        return Mat(mat, org.opencv.core.Rect(0, 0, w, h))
+    }
+
     /** 使用预转换的 screen Mat 匹配指定状态，返回命中坐标或 null */
     fun matchTemplateMat(screenMat: Mat, state: ScreenState): Pair<Float, Float>? {
         if (state == ScreenState.UNKNOWN) return null
@@ -374,12 +388,12 @@ class SceneDetector(private val context: Context) {
                 return null
             }
         }
-        val result = TemplateMatcher.match(screen, template, 0.95f)
+        val result = TemplateMatcher.match(screen, template, 0.92f)
         if (result.isMatched) {
             LogUtil.i(TAG, "建议等级图标 ${grade.displayName}(lv${grade.level}): 匹配度 ${String.format("%.2f", result.similarity)}")
             return GradeMatch(grade, result.similarity, result.centerX, result.centerY)
         }
-        LogUtil.d(TAG, "等级图标 ${grade.displayName}(lv${grade.level}): 最高 ${String.format("%.2f", result.similarity)} < 0.95")
+        LogUtil.d(TAG, "等级图标 ${grade.displayName}(lv${grade.level}): 最高 ${String.format("%.2f", result.similarity)} < 0.92")
         return null
     }
 
@@ -412,6 +426,47 @@ class SceneDetector(private val context: Context) {
         }
 
         LogUtil.i(TAG, "matchAnyLevelIcon → 最佳匹配 ${best.grade.displayName}(lv${best.grade.level}) 相似度=${String.format("%.2f", best.similarity)}")
+        return Pair(best.grade, Pair(best.centerX, best.centerY))
+    }
+
+    /** 使用预转换的 screen Mat 搜索多个等级的建议等级标识 — 最佳匹配策略 */
+    fun matchAnyLevelIconMat(screenMat: Mat, grades: List<BountyGrade>): Pair<BountyGrade, Pair<Float, Float>>? {
+        LogUtil.i(TAG, "matchAnyLevelIconMat: 检查 ${grades.joinToString { "${it.displayName}(lv${it.level})" }}")
+
+        val matches = mutableListOf<GradeMatch>()
+        for (grade in grades) {
+            val path = grade.levelIconPath() ?: continue
+            val cached = levelIconCache[grade]
+            val template = if (cached != null && !cached.isRecycled) cached else {
+                val loaded = AssetUtil.loadBitmapFromAssets(context, path) ?: continue
+                levelIconCache[grade] = loaded
+                loaded
+            }
+            val result = TemplateMatcher.matchWithMat(screenMat, template, 0.92f)
+            if (result.isMatched) {
+                matches.add(GradeMatch(grade, result.similarity, result.centerX, result.centerY))
+            }
+        }
+
+        if (matches.isEmpty()) {
+            LogUtil.w(TAG, "matchAnyLevelIconMat: ${grades.size}个等级均未匹配")
+            return null
+        }
+
+        matches.sortByDescending { it.similarity }
+        val best = matches.first()
+
+        if (matches.size > 1) {
+            val matchSummary = matches.joinToString { "${it.grade.displayName}=${String.format("%.2f", it.similarity)}" }
+            val second = matches[1]
+            val gap = best.similarity - second.similarity
+            LogUtil.w(TAG, "matchAnyLevelIconMat: 多个等级匹配 - $matchSummary，最佳=${best.grade.displayName}，差距=${String.format("%.3f", gap)}")
+            if (gap < 0.02f) {
+                LogUtil.w(TAG, "matchAnyLevelIconMat: 警告! 最佳与次佳差距仅 ${String.format("%.3f", gap)}，匹配可能不可靠")
+            }
+        }
+
+        LogUtil.i(TAG, "matchAnyLevelIconMat → 最佳匹配 ${best.grade.displayName}(lv${best.grade.level}) 相似度=${String.format("%.2f", best.similarity)}")
         return Pair(best.grade, Pair(best.centerX, best.centerY))
     }
 
