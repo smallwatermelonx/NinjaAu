@@ -39,5 +39,15 @@ enum class ScreenState(val description: String) {
     BACK_BUTTON("返回按钮"),
     /** 私聊页签（用于招募列表TAB刷新） */
     CHAT_TAB("私聊页签"),
+    // === 组队邀请弹窗 ===
+    /** 组队邀请弹窗整体标识（任意节点都可能弹出） */
+    TEAM_INVITATION("组队邀请弹窗"),
+    /** 组队邀请 — 拒绝按钮 */
+    INVITE_REJECT("邀请拒绝按钮"),
+    /** 组队邀请 — 勾选框 */
+    INVITE_CHECKBOX("邀请勾选框"),
+    /** 组队邀请 — 同意按钮 */
+    INVITE_AGREE("邀请同意按钮"),
+
     UNKNOWN("未知界面");
 }

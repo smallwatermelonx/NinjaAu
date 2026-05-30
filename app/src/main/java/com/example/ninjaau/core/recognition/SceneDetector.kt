@@ -64,6 +64,10 @@ class SceneDetector(private val context: Context) {
         ), false, false),
         DEFEAT("战斗失败", listOf(ScreenState.DEFEAT_POPUP), false, false),
         RECRUIT_INVITE("招募邀请弹窗", listOf(ScreenState.RECRUIT_INVITE), false, false),
+        INVITATION("组队邀请弹窗", listOf(
+            ScreenState.TEAM_INVITATION, ScreenState.INVITE_REJECT,
+            ScreenState.INVITE_CHECKBOX, ScreenState.INVITE_AGREE
+        ), false, false),
     }
 
     /**
@@ -146,9 +150,9 @@ class SceneDetector(private val context: Context) {
         // ── 聊天/招募 ──
         ScreenState.RECRUIT_TAB to TemplateEntry("templates/chat/team_recruit.png"),
         ScreenState.RECRUIT_TAB_BLACK to TemplateEntry("templates/chat/team_recruit_black.png", 0.75f),
-        ScreenState.OUT_OF_RANGE_RECRUIT to TemplateEntry("templates/recruit_list/out_of_range.png", 0.7f),
-        ScreenState.RECRUIT_LIST_SCREEN to TemplateEntry("templates/recruit_list/team_recruit_black.png", 0.75f),
-        ScreenState.RECRUIT_INVITE to TemplateEntry("templates/recruit_list/recruit_invite.png"),
+        ScreenState.OUT_OF_RANGE_RECRUIT to TemplateEntry("templates/bounty_list/out_of_range.png", 0.7f),
+        ScreenState.RECRUIT_LIST_SCREEN to TemplateEntry("templates/bounty_list/team_recruit_black.png", 0.75f),
+        ScreenState.RECRUIT_INVITE to TemplateEntry("templates/bounty_list/recruit_invite.png"),
         // ── 入队 ──
         ScreenState.READY_BUTTON to TemplateEntry("templates/team_room/prepare.png"),
         ScreenState.EXIT_CONFIRM to TemplateEntry("templates/team_room/confirm.png"),
@@ -170,6 +174,11 @@ class SceneDetector(private val context: Context) {
         ScreenState.BACK_BUTTON to TemplateEntry("templates/other/backward.png"),
         // ── TAB刷新（私聊页签） ──
         ScreenState.CHAT_TAB to TemplateEntry("templates/chat/private_chat.png"),
+        // ── 组队邀请弹窗（任意节点可触发） ──
+        ScreenState.TEAM_INVITATION to TemplateEntry("templates/invitation/team_invitation.png", 0.75f),
+        ScreenState.INVITE_REJECT to TemplateEntry("templates/invitation/reject_btn.png", 0.75f),
+        ScreenState.INVITE_CHECKBOX to TemplateEntry("templates/invitation/checkbox.png", 0.75f),
+        ScreenState.INVITE_AGREE to TemplateEntry("templates/invitation/agree_btn.png", 0.75f),
     )
 
     companion object {
@@ -366,6 +375,7 @@ class SceneDetector(private val context: Context) {
 
     // ── 全量检测顺序（兜底用） ──
     private val detectionOrder = listOf(
+        ScreenState.TEAM_INVITATION,
         ScreenState.CONFIRM_BUTTON,
         ScreenState.SETTLEMENT_POPUP,
         ScreenState.DEFEAT_POPUP,

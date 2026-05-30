@@ -82,6 +82,12 @@ object GameManager {
             // （MediaProjection 必须在前台 Service 中创建，不能用 Application context）
             var waited = 0
             while (PermissionManager.mediaProjection == null && waited < 20) {
+                if (PermissionManager.isProjectionLost) {
+                    postLog("⚠ 截图权限已被系统回收")
+                    PermissionManager.clearProjectionPermission(appContext)
+                    _state.value = ScriptState.IDLE
+                    return@launch
+                }
                 delay(500)
                 waited++
             }

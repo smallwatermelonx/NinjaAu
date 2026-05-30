@@ -32,6 +32,11 @@ object PermissionManager {
     private var _mediaProjection: MediaProjection? = null
     val mediaProjection: MediaProjection? get() = _mediaProjection
 
+    /** 系统回收 MediaProjection 时置 true，脚本应立即暂停 */
+    @Volatile
+    var isProjectionLost = false
+        private set
+
     // SharedPreferences 键名（仅用于清理旧数据）
     private const val PREFS_NAME = "ninja_au_prefs"
     private const val KEY_RESULT_CODE = "media_projection_result_code"
@@ -57,8 +62,14 @@ object PermissionManager {
     fun pauseMediaProjection() {
         synchronized(lock) {
             _mediaProjection = null
+            isProjectionLost = false
             LogUtil.i("PermissionManager", "MediaProjection暂停（未释放权限）")
         }
+    }
+
+    /** 手动暂停时清除失效标记（与系统回收区分） */
+    fun clearProjectionLost() {
+        isProjectionLost = false
     }
 
     // 恢复时重新初始化（复用权限）
@@ -148,6 +159,7 @@ object PermissionManager {
                         synchronized(lock) {
                             _mediaProjection = null
                         }
+                        isProjectionLost = true
                     }
                 }, null)
 
@@ -184,6 +196,7 @@ object PermissionManager {
     fun clearProjectionPermission(context: Context? = null) {
         mResultCode = -1
         mProjectionIntent = null
+        isProjectionLost = false
         // 同时清理 SharedPreferences 防止下次启动读到脏数据
         if (context != null) {
             try {

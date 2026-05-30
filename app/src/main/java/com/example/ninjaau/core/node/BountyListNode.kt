@@ -24,7 +24,7 @@ import kotlin.coroutines.coroutineContext
  * - 点击加入后检测页面切换 → 进入 [BountyDetailNode]
  * - 30秒无匹配 → 抛 NodeTimeoutException 回到主流程
  */
-class RecruitListNode(private val ctx: NodeContext) : GameNode {
+class BountyListNode(private val ctx: NodeContext) : GameNode {
 
     companion object {
         private const val FAST_INTERVAL_MS = 1L
@@ -59,6 +59,19 @@ class RecruitListNode(private val ctx: NodeContext) : GameNode {
                 continue
             }
             try {
+                // ═══ 0. 组队邀请拦截 ═══
+                val inviteCoord = this.ctx.detector.matchTemplate(screen, ScreenState.TEAM_INVITATION)
+                if (inviteCoord != null) {
+                    this.ctx.log("检测到组队邀请弹窗，拒绝")
+                    val rejectCoord = this.ctx.detector.matchTemplate(screen, ScreenState.INVITE_REJECT)
+                    if (rejectCoord != null) {
+                        this.ctx.click(rejectCoord)
+                        this.ctx.delay(500)
+                    }
+                    lastMatchMs = System.currentTimeMillis()
+                    continue
+                }
+
                 // ═══ ① 刷新检测 ═══
                 val rangeCoord =
                     this.ctx.detector.matchTemplate(screen, ScreenState.OUT_OF_RANGE_RECRUIT)

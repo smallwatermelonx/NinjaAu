@@ -7,6 +7,7 @@ import com.example.ninjaau.core.capture.ScreenCapture
 import com.example.ninjaau.core.node.*
 import com.example.ninjaau.core.recognition.SceneDetector
 import com.example.ninjaau.core.util.LogUtil
+import com.example.ninjaau.core.util.PermissionManager
 import com.example.ninjaau.model.BountyConfig
 import com.example.ninjaau.model.BountyGrade
 import com.example.ninjaau.model.GameContext
@@ -29,7 +30,7 @@ import kotlin.coroutines.coroutineContext
  * 参考 MAA (MeoAssistanceArknights) 的节点模式设计。
  *
  * 页面 → 节点映射:
- *   大厅/聊天 → [HallNode] → 招募列表 → [RecruitListNode] → 悬赏详情 → [BountyDetailNode]
+ *   大厅/聊天 → [HallNode] → 招募列表 → [BountyListNode] → 悬赏详情 → [BountyDetailNode]
  *   → 战斗 → [BattleNode] → 结算 → [SettlementNode] → 大厅 → ...
  *
  * 异常兜底: 3次连续失败 → 整体判定 → 3次整体判定失败 → 停止脚本并写日志
@@ -48,7 +49,7 @@ class WorkflowEngine(
 
     // ── 节点实例（每个游戏页面对应一个节点） ──
     private val hallNode: HallNode
-    private val recruitListNode: RecruitListNode
+    private val bountyListNode: BountyListNode
     private val bountyDetailNode: BountyDetailNode
     private val battleLoadingNode: BattleLoadingNode
     private val battleNode: FightNode
@@ -67,7 +68,7 @@ class WorkflowEngine(
             delay = { delay(it) }
         )
         hallNode = HallNode(nodeCtx)
-        recruitListNode = RecruitListNode(nodeCtx)
+        bountyListNode = BountyListNode(nodeCtx)
         bountyDetailNode = BountyDetailNode(nodeCtx)
         battleLoadingNode = BattleLoadingNode(nodeCtx)
         battleNode = FightNode(nodeCtx)
@@ -100,6 +101,15 @@ class WorkflowEngine(
             try {
                 val phaseName = ctx.currentPhase.name
                 log("Phase: $phaseName")
+
+                // ═══ 全局组队邀请拦截（任意节点都可能弹出） ═══
+                if (handleInvitation()) continue
+
+                // ═══ 截图权限被系统回收 → 立即停止 ═══
+                if (PermissionManager.isProjectionLost) {
+                    log("⚠ 截图权限已被系统回收，脚本停止")
+                    break
+                }
 
                 val nextPhase = dispatchPhase(ctx)
                 if (nextPhase != null) {
@@ -138,7 +148,7 @@ class WorkflowEngine(
     private suspend fun dispatchPhase(ctx: GameContext): GamePhase? {
         return when (ctx.currentPhase) {
             GamePhase.IDLE, GamePhase.LOBBY, GamePhase.CHAT -> hallNode.execute(ctx)
-            GamePhase.RECRUIT_LIST -> recruitListNode.execute(ctx)
+            GamePhase.RECRUIT_LIST -> bountyListNode.execute(ctx)
             GamePhase.RECRUIT_INVITE -> recruitInviteNode.execute(ctx)
             GamePhase.BOUNTY_DETAIL -> bountyDetailNode.execute(ctx)
             GamePhase.BATTLE_LOADING -> battleLoadingNode.execute(ctx)
@@ -189,6 +199,10 @@ class WorkflowEngine(
     }
 
     private suspend fun captureBitmap(): Bitmap? {
+        if (PermissionManager.isProjectionLost) {
+            log("⚠ 截图权限已被系统回收，脚本暂停")
+            return null
+        }
         repeat(3) {
             val bmp = capture.capture()
             if (bmp != null) return bmp
@@ -205,6 +219,29 @@ class WorkflowEngine(
     private fun log(msg: String) {
         LogUtil.i(TAG, msg)
         postLog?.invoke(msg)
+    }
+
+    /**
+     * 全局组队邀请拦截 — 截屏检测邀请弹窗，命中则点击拒绝。
+     * @return true 表示检测到邀请并已处理，调用方应 continue 跳过本轮正常逻辑
+     */
+    private suspend fun handleInvitation(): Boolean {
+        val screen = captureBitmap() ?: return false
+        try {
+            val inviteCoord = detector.matchTemplate(screen, ScreenState.TEAM_INVITATION)
+            if (inviteCoord != null) {
+                log("检测到组队邀请弹窗，拒绝")
+                val rejectCoord = detector.matchTemplate(screen, ScreenState.INVITE_REJECT)
+                if (rejectCoord != null) {
+                    click(rejectCoord)
+                    delay(500)
+                }
+                return true
+            }
+        } finally {
+            screen.recycle()
+        }
+        return false
     }
 
     private fun writeCrashLog(ctx: GameContext) {

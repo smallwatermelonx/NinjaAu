@@ -32,7 +32,7 @@ enum class GamePhase {
     LOBBY,
     /** 聊天界面 — templates/chat/ */
     CHAT,
-    /** 招募列表 — templates/recruit_list/ */
+    /** 招募列表 — templates/bounty_list/ */
     RECRUIT_LIST,
     /** 招募邀请弹窗 */
     RECRUIT_INVITE,
