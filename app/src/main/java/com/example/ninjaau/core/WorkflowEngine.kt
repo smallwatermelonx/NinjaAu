@@ -180,12 +180,14 @@ class WorkflowEngine(
     private fun buildContext(configs: List<BountyConfig>): GameContext {
         val enabled = configs.filter { it.enabled }
         val grades = enabled.map { it.grade }
+        val chaseDreamGrades = enabled.filter { it.chaseDream }.map { it.grade }.toSet()
         return GameContext(
             currentPhase = GamePhase.IDLE,
             activeGrades = grades,
             totalGrades = grades,
             runCounts = enabled.associate { it.grade to 0 }.toMutableMap(),
-            targetRuns = enabled.associate { it.grade to it.targetRuns }
+            targetRuns = enabled.associate { it.grade to it.targetRuns },
+            chaseDreamGrades = chaseDreamGrades
         )
     }
 

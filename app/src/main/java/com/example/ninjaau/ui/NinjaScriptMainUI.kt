@@ -47,6 +47,7 @@ private val DarkSurface = Color(0xFF16213E)
 private val DarkCard = Color(0xFF0F3460)
 private val GreenOn = Color(0xFF4CAF50)
 private val RedOff = Color(0xFF616161)
+private val ChaseDreamGold = Color(0xFFFFB300)
 private val Gold = Color(0xFFFFD700)
 private val TextPrimary = Color(0xFFE0E0E0)
 private val TextSecondary = Color(0xFF9E9E9E)
@@ -319,7 +320,16 @@ fun NinjaScriptMainUI() {
                                             }
                                             GameManager.updateBountyConfigs(bountyConfigs.filter { it.enabled })
                                             BountyConfigStorage.save(context, bountyConfigs)
-                                        }
+                                        },
+                                        onChaseDream = if (config.grade.canChaseDream) {
+                                            {
+                                                bountyConfigs = bountyConfigs.map {
+                                                    if (it.grade == config.grade) it.copy(chaseDream = !it.chaseDream)
+                                                    else it
+                                                }
+                                                BountyConfigStorage.save(context, bountyConfigs)
+                                            }
+                                        } else null
                                     )
                                 }
                                 repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
@@ -447,10 +457,15 @@ private fun PermChip(label: String, granted: Boolean, icon: String = "") {
 private fun BountyGradeCard(
     config: BountyConfig,
     modifier: Modifier = Modifier,
-    onToggle: () -> Unit
+    onToggle: () -> Unit,
+    onChaseDream: (() -> Unit)? = null
 ) {
     val bg = if (config.enabled) DarkCard else DarkSurface
-    val border = if (config.enabled) Purple else Color.Transparent
+    val border = when {
+        config.chaseDream && config.enabled -> ChaseDreamGold
+        config.enabled -> Purple
+        else -> Color.Transparent
+    }
 
     Card(
         modifier = modifier.clip(RoundedCornerShape(12.dp)).clickable { onToggle() },
@@ -474,6 +489,16 @@ private fun BountyGradeCard(
                 fontSize = 11.sp,
                 color = if (config.enabled) TextSecondary else TextSecondary.copy(alpha = 0.5f)
             )
+            if (config.grade.canChaseDream && config.enabled && onChaseDream != null) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = if (config.chaseDream) "追梦 ON" else "追梦",
+                    fontSize = 10.sp,
+                    fontWeight = if (config.chaseDream) FontWeight.Bold else FontWeight.Normal,
+                    color = if (config.chaseDream) ChaseDreamGold else TextSecondary.copy(alpha = 0.6f),
+                    modifier = Modifier.clickable { onChaseDream() }
+                )
+            }
         }
     }
 }

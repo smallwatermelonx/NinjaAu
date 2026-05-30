@@ -117,6 +117,8 @@ class BountyListNode(private val ctx: NodeContext) : GameNode {
 
     private fun remainingGrades(ctx: GameContext): List<BountyGrade> {
         return ctx.activeGrades.filter { g ->
+            // 追梦等级：始终保留，即使已完成目标次数也继续扫描
+            ctx.chaseDreamGrades.contains(g) ||
             (ctx.runCounts[g] ?: 0) < (ctx.targetRuns[g] ?: g.defaultRuns)
         }
     }

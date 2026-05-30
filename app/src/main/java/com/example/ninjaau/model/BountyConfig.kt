@@ -11,7 +11,9 @@ data class BountyConfig(
     val grade: BountyGrade,
     val enabled: Boolean = false,
     val targetRuns: Int = grade.defaultRuns,
-    val completedRuns: Int = 0
+    val completedRuns: Int = 0,
+    /** 追梦模式：跳过每日上限检查，只要等级匹配就继续准备 */
+    val chaseDream: Boolean = false
 ) {
     /** 是否还需要继续执行该等级 */
     val isRunsRemaining: Boolean get() = completedRuns < targetRuns

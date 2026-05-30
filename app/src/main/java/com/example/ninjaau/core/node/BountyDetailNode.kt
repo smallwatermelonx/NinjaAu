@@ -63,7 +63,9 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
             if (screen == null) { this.ctx.delay(POST_CLICK_DELAY); continue }
             try {
                 // ═══ ② 已达上限 → 二次确认后标记对应组完成 ═══
-                if (this.ctx.detector.matchTemplate(screen, ScreenState.DAILY_LIMIT) != null) {
+                // 追梦模式：跳过每日上限检查，只要等级匹配就继续准备
+                val isChaseDream = ctx.chaseDreamGrades.contains(targetGrade)
+                if (!isChaseDream && this.ctx.detector.matchTemplate(screen, ScreenState.DAILY_LIMIT) != null) {
                     this.ctx.delay(500)
                     val recheckScreen = this.ctx.captureBitmap()
                     if (recheckScreen != null) {

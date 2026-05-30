@@ -18,12 +18,17 @@ data class GameContext(
     var currentBounty: BountyGrade? = null,
     /** 队伍房间中实际检测到的等级（由 BountyDetailNode 根据Lv图标设定，比 currentBounty 准确） */
     var actualGrade: BountyGrade? = null,
+    /** 开启追梦模式的等级集合（跳过每日上限检查） */
+    val chaseDreamGrades: Set<BountyGrade> = emptySet(),
     /** 总轮次计数 */
     var totalCycles: Int = 0
 ) {
-    /** 是否所有勾选的悬赏都已完成 */
+    /** 是否所有可完成的悬赏都已完成（追梦等级不参与判定，脚本持续运行） */
     val allCompleted: Boolean
-        get() = activeGrades.isEmpty() || activeGrades.all { (runCounts[it] ?: 0) >= (targetRuns[it] ?: it.defaultRuns) }
+        get() {
+            val completable = activeGrades.filter { it !in chaseDreamGrades }
+            return completable.all { (runCounts[it] ?: 0) >= (targetRuns[it] ?: it.defaultRuns) }
+        }
 }
 
 enum class GamePhase {
