@@ -2,6 +2,7 @@ package com.example.ninjaau
 
 import android.app.Application
 import com.example.ninjaau.core.util.LogUtil
+import com.example.ninjaau.core.util.PermissionManager
 
 /**
  * 全局 Application 类
@@ -11,10 +12,9 @@ class NinjaApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        // 1. 先初始化日志工具
         LogUtil.init(this)
-
-        // 2. OpenCV 由各模块使用时按需初始化，避免冷启动耗时长
+        // 清理旧版本 SharedPreferences 中残留的失效 MediaProjection 数据
+        PermissionManager.cleanStaleData(this)
         LogUtil.i("NinjaApp", "NinjaApp 初始化完成")
     }
 }

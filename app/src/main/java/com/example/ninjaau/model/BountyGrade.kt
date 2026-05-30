@@ -33,7 +33,7 @@ enum class BountyGrade(
     val defaultRuns: Int,
     val templateName: String,
     val priority: Int,
-    val level: Int,   // 建议等级，队伍房间以此数值显示
+    val level: Int,
     val group: GradeGroup
 ) {
     NSS_PLUS("nss_plus", "NSS+", 1, "nss_plus.png", 12, 125, GradeGroup.NSS_PLUS),

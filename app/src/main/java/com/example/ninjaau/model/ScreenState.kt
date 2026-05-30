@@ -9,6 +9,8 @@ enum class ScreenState(val description: String) {
     RECRUIT_TAB("组队招募页签"),
     RECRUIT_TAB_BLACK("组队招募页签-黑色字体"),
     OUT_OF_RANGE_RECRUIT("超出范围的悬赏"),
+    /** 招募列表页面专属标识（区别于 RECRUIT_TAB 页签） */
+    RECRUIT_LIST_SCREEN("招募列表页面"),
     /** 列表过期时的"悬赏令组队的邀请"标识 */
     RECRUIT_INVITE("招募邀请标识"),
 

@@ -78,9 +78,6 @@ object GameManager {
         mainJob = scope.launch {
             postLog("⏳ 等待截图授权...")
 
-            // 进程重启后尝试从本地恢复授权数据
-            PermissionManager.restoreProjectionPermission(appContext)
-
             // 等待 FloatingWindowService 启动并初始化 MediaProjection
             // （MediaProjection 必须在前台 Service 中创建，不能用 Application context）
             var waited = 0
@@ -89,8 +86,8 @@ object GameManager {
                 waited++
             }
             if (PermissionManager.mediaProjection == null) {
-                postLog("❌ 截图授权超时(10s)，清除旧授权数据，请重新点击Link Start")
-                PermissionManager.clearProjectionPermission()
+                postLog("❌ 截图授权超时(10s)，请重新点击Link Start")
+                PermissionManager.clearProjectionPermission(appContext)
                 Toast.makeText(appContext, "截图授权失败，请重新启动", Toast.LENGTH_SHORT).show()
                 _state.value = ScriptState.IDLE
                 return@launch

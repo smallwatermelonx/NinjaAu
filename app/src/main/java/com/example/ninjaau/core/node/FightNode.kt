@@ -8,8 +8,8 @@ import com.example.ninjaau.core.checkNodeTimeout
 import com.example.ninjaau.model.GameContext
 import com.example.ninjaau.model.GamePhase
 import com.example.ninjaau.model.ScreenState
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
-import kotlin.coroutines.coroutineContext
 
 /**
  * 战斗节点 — 下滑 → Boss战 → 结算。
@@ -26,11 +26,11 @@ class FightNode(private val ctx: NodeContext) : GameNode {
 
     companion object {
         private const val SLIDE_INTERVAL_MS = 500L
-        private const val BOSS_DETECT_INTERVAL_MS = 300L
+        private const val BOSS_DETECT_INTERVAL_MS = 100L
         private const val BOSS_LOOP_INTERVAL_MS = 1000L
         private const val MAX_SLIDE_MISS = 3
         private const val MAX_JUMP_MISS = 3
-        private const val MAX_SKILL_ATTEMPTS = 5
+        private const val MAX_SKILL_ATTEMPTS = 10
         private const val MAX_WEAPON_ATTEMPTS = 1
     }
 
@@ -49,7 +49,7 @@ class FightNode(private val ctx: NodeContext) : GameNode {
         //  ① 下滑阶段
         // ═════════════════════════════════════
         var slideMissCount = 0
-        while (coroutineContext.isActive && slideMissCount < MAX_SLIDE_MISS) {
+        while (currentCoroutineContext().isActive && slideMissCount < MAX_SLIDE_MISS) {
             val screen = this.ctx.captureBitmap()
             if (screen == null) { this.ctx.delay(SLIDE_INTERVAL_MS); continue }
             try {
@@ -67,13 +67,13 @@ class FightNode(private val ctx: NodeContext) : GameNode {
             this.ctx.delay(SLIDE_INTERVAL_MS)
         }
 
-        if (!coroutineContext.isActive) return null
+        if (!currentCoroutineContext().isActive) return null
         this.ctx.log("下滑结束，进入Boss检测")
 
         // ═════════════════════════════════════
         //  ② Boss检测（Lv图标）
         // ═════════════════════════════════════
-        while (coroutineContext.isActive) {
+        while (currentCoroutineContext().isActive) {
             val screen = this.ctx.captureBitmap()
             if (screen == null) { this.ctx.delay(BOSS_DETECT_INTERVAL_MS); continue }
             try {
@@ -88,7 +88,7 @@ class FightNode(private val ctx: NodeContext) : GameNode {
             this.ctx.delay(BOSS_DETECT_INTERVAL_MS)
         }
 
-        if (!coroutineContext.isActive) return null
+        if (!currentCoroutineContext().isActive) return null
         this.ctx.log("Boss战斗阶段")
 
         // ═════════════════════════════════════
@@ -99,7 +99,7 @@ class FightNode(private val ctx: NodeContext) : GameNode {
         var jumpMissCount = 0
         var lastMatchMs = System.currentTimeMillis()
 
-        while (coroutineContext.isActive) {
+        while (currentCoroutineContext().isActive) {
             val screen = this.ctx.captureBitmap()
             if (screen == null) { this.ctx.delay(BOSS_LOOP_INTERVAL_MS); continue }
             try {
@@ -140,7 +140,7 @@ class FightNode(private val ctx: NodeContext) : GameNode {
                     }
                 }
 
-                // ── 大招（最多5次） ──
+                // ── 大招 ──
                 if (ultimateCount < MAX_SKILL_ATTEMPTS) {
                     val ultCoord = this.ctx.detector.matchTemplate(screen, ScreenState.ULTIMATE_SKILL)
                     if (ultCoord != null) {
@@ -148,7 +148,7 @@ class FightNode(private val ctx: NodeContext) : GameNode {
                         this.ctx.log("大招 (${ultimateCount + 1}/$MAX_SKILL_ATTEMPTS)")
                         ultimateCount++
                         lastMatchMs = System.currentTimeMillis()
-                        this.ctx.delay(200)
+                        this.ctx.delay(100)
                         continue
                     }
                 }

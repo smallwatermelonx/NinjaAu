@@ -25,9 +25,7 @@ class CapturePermissionActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQUEST_CODE_SCREEN_CAPTURE && resultCode == RESULT_OK && data != null) {
-            PermissionManager.mResultCode = resultCode
-            PermissionManager.mProjectionIntent = data
-            PermissionManager.saveProjectionPermission(this) // 持久化授权数据
+            PermissionManager.setProjectionPermission(resultCode, data)
             LogUtil.i("CapturePermission", "授权成功，启动悬浮窗服务")
 
             val serviceIntent = Intent(this, FloatingWindowService::class.java)

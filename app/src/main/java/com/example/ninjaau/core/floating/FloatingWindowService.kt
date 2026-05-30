@@ -21,6 +21,7 @@ import com.example.ninjaau.core.util.Constant
 import com.example.ninjaau.core.util.LogUtil
 import com.example.ninjaau.core.util.PermissionManager
 import com.example.ninjaau.core.util.ToastUtil
+import com.example.ninjaau.core.capture.ScreenCapture
 import com.example.ninjaau.core.recognition.SceneDetector
 import com.example.ninjaau.model.BountyConfig
 import com.example.ninjaau.model.BountyGrade
@@ -108,11 +109,10 @@ class FloatingWindowService : Service() {
         super.onCreate()
         startFloatingForeground()
 
-        PermissionManager.restoreProjectionPermission(this)
         val initSuccess = PermissionManager.initMediaProjection(this)
         if (!initSuccess) {
-            LogUtil.e("FloatingWindowService", "MediaProjection初始化失败，清除旧授权数据")
-            PermissionManager.clearProjectionPermission()
+            LogUtil.e("FloatingWindowService", "MediaProjection初始化失败")
+            PermissionManager.clearProjectionPermission(this)
             Toast.makeText(this, "截图权限初始化失败，请重新点击Link Start授权", Toast.LENGTH_LONG).show()
             stopSelf()
             return
@@ -1021,5 +1021,8 @@ class FloatingWindowService : Service() {
             isReceiverRegistered = false
         }
         removeAllViews()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        PermissionManager.releaseMediaProjection()
+        ScreenCapture.release()
     }
 }

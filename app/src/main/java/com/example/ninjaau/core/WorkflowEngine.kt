@@ -74,7 +74,7 @@ class WorkflowEngine(
         settlementNode = SettlementNode(nodeCtx)
         recruitInviteNode = RecruitInviteNode(nodeCtx)
         defeatNode = DefeatNode(nodeCtx)
-        recoveryNode = RecoveryNode()
+        recoveryNode = RecoveryNode(nodeCtx)
     }
 
     companion object {
@@ -104,6 +104,7 @@ class WorkflowEngine(
                 val nextPhase = dispatchPhase(ctx)
                 if (nextPhase != null) {
                     ctx.currentPhase = nextPhase
+                    globalFailCount = 0
                     emitProgress(ctx, onProgress)
                     val pageEvent = phaseToEvent(nextPhase)
                     if (pageEvent != null) onPageEvent?.invoke(pageEvent)

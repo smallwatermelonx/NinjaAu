@@ -45,7 +45,7 @@ class SceneDetector(private val context: Context) {
         val testGradeIcons: Boolean
     ) {
         HALL("大厅导航", listOf(
-            ScreenState.CHAT_ICON
+            ScreenState.CHAT_ICON, ScreenState.RECRUIT_LIST_SCREEN
         ), false, false),
         RECRUIT_LIST("悬赏列表扫描", listOf(
             ScreenState.RECRUIT_TAB
@@ -104,11 +104,11 @@ class SceneDetector(private val context: Context) {
                     levelIconCache[grade] = loaded
                     loaded
                 }
-                val result = TemplateMatcher.match(screen, template, 0.75f)
+                val result = TemplateMatcher.match(screen, template, 0.95f)
                 results.add(TemplateTestResult(
                     name = "等级 ${grade.displayName}(lv${grade.level})",
                     similarity = result.similarity,
-                    threshold = 0.75f,
+                    threshold = 0.95f,
                     passed = result.isMatched,
                     centerX = if (result.isMatched) result.centerX else null,
                     centerY = if (result.isMatched) result.centerY else null
@@ -147,6 +147,7 @@ class SceneDetector(private val context: Context) {
         ScreenState.RECRUIT_TAB to TemplateEntry("templates/chat/team_recruit.png"),
         ScreenState.RECRUIT_TAB_BLACK to TemplateEntry("templates/chat/team_recruit_black.png", 0.75f),
         ScreenState.OUT_OF_RANGE_RECRUIT to TemplateEntry("templates/recruit_list/out_of_range.png", 0.7f),
+        ScreenState.RECRUIT_LIST_SCREEN to TemplateEntry("templates/recruit_list/team_recruit_black.png", 0.75f),
         ScreenState.RECRUIT_INVITE to TemplateEntry("templates/recruit_list/recruit_invite.png"),
         // ── 入队 ──
         ScreenState.READY_BUTTON to TemplateEntry("templates/team_room/prepare.png"),
@@ -297,12 +298,12 @@ class SceneDetector(private val context: Context) {
                 return null
             }
         }
-        val result = TemplateMatcher.match(screen, template, 0.75f)
+        val result = TemplateMatcher.match(screen, template, 0.95f)
         if (result.isMatched) {
             LogUtil.i(TAG, "建议等级图标 ${grade.displayName}(lv${grade.level}): 匹配度 ${String.format("%.2f", result.similarity)}")
             return GradeMatch(grade, result.similarity, result.centerX, result.centerY)
         }
-        LogUtil.d(TAG, "等级图标 ${grade.displayName}(lv${grade.level}): 最高 ${String.format("%.2f", result.similarity)} < 0.75")
+        LogUtil.d(TAG, "等级图标 ${grade.displayName}(lv${grade.level}): 最高 ${String.format("%.2f", result.similarity)} < 0.95")
         return null
     }
 
@@ -382,6 +383,7 @@ class SceneDetector(private val context: Context) {
         ScreenState.EXIT_CONFIRM,
         ScreenState.RECRUIT_INVITE,
         ScreenState.RECRUIT_TAB,
+        ScreenState.RECRUIT_LIST_SCREEN,
         ScreenState.OUT_OF_RANGE_RECRUIT,
         ScreenState.CHAT_ICON,
         ScreenState.BACK_BUTTON,
