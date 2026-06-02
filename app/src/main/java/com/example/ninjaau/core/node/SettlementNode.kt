@@ -81,17 +81,13 @@ class SettlementNode(private val ctx: NodeContext) : GameNode {
             this.ctx.delay(NORMAL_INTERVAL_MS)
         }
 
-        // 更新完成计数（按组共享次数）
+        // 更新完成计数（仅递增实际完成的等级）
         if (grade != null) {
-            val group = grade.group
-            val groupMembers = group.members()
-            // 组内所有等级同步递增（共享次数）
-            for (member in groupMembers) {
-                val count = ctx.runCounts[member] ?: 0
-                ctx.runCounts[member] = count + 1
-            }
+            val count = ctx.runCounts[grade] ?: 0
+            ctx.runCounts[grade] = count + 1
             ctx.totalCycles++
 
+            val group = grade.group
             val groupTotal = group.totalRuns(ctx.runCounts)
             this.ctx.log("${grade.displayName} 完成 ${groupTotal}/${group.defaultRuns}")
 

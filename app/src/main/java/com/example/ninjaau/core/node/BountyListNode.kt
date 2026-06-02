@@ -97,6 +97,7 @@ class BountyListNode(private val ctx: NodeContext) : GameNode {
                     val fullCoord = Pair(rangeCoord.first, rangeCoord.second + roiY)
                     this.ctx.log("超出范围悬赏，点击刷新列表 (全屏: $fullCoord)")
                     this.ctx.click(fullCoord)
+                    this.ctx.delay(1000)
                     lastMatchMs = System.currentTimeMillis()
                     continue
                 }
