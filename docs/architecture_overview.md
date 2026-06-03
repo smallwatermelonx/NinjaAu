@@ -1,7 +1,7 @@
 # NinjaAu 项目架构文档
 
-> 最后更新: 2026-05-15  
-> 版本: v2.3
+> 最后更新: 2026-06-03
+> 版本: v2.4
 
 ---
 
@@ -102,6 +102,7 @@ com.example.ninjaau/
 ├── NinjaApp.kt              # Application 入口
 ├── MainActivity.kt          # 启动 Activity
 ├── core/
+│   ├── GameNode.kt          # 节点接口 + NodeContext + checkNodeTimeout
 │   ├── GameManager.kt       # 核心控制器（全局单例）
 │   ├── WorkflowEngine.kt    # 自动化流水线引擎
 │   ├── accessibility/
@@ -111,6 +112,19 @@ com.example.ninjaau/
 │   │   └── CapturePermissionActivity.kt  # 权限请求 Activity
 │   ├── floating/
 │   │   └── FloatingWindowService.kt      # 悬浮窗前台 Service
+│   ├── node/
+│   │   ├── HallNode.kt                   # 大厅导航
+│   │   ├── BountyListNode.kt             # 招募列表扫描
+│   │   ├── BountyDetailNode.kt           # 悬赏详情/队伍房间
+│   │   ├── BattleLoadingNode.kt          # 战斗加载
+│   │   ├── FightNode.kt                  # 战斗
+│   │   ├── SettlementNode.kt             # 结算领奖
+│   │   ├── RecruitInviteNode.kt          # 招募邀请弹窗
+│   │   ├── DefeatNode.kt                 # 战斗失败
+│   │   ├── RecoveryNode.kt               # 异常恢复
+│   │   ├── PersonalBountyCenterNode.kt   # 个人悬赏中心
+│   │   ├── PersonalBountyDetailNode.kt   # 个人悬赏详情
+│   │   └── PersonalBountyPublishNode.kt  # 发布个人悬赏
 │   ├── recognition/
 │   │   ├── SceneDetector.kt    # 场景识别（模板缓存+阶段检测）
 │   │   └── TemplateMatcher.kt  # OpenCV 模板匹配引擎
@@ -123,25 +137,20 @@ com.example.ninjaau/
 │       ├── PermissionManager.kt   # 权限管理（MediaProjection 持久化）
 │       └── ToastUtil.kt           # Toast 封装
 ├── model/
-│   ├── ActionResult.kt       # 通用结果包装（未使用）
 │   ├── BountyConfig.kt       # 悬赏配置数据类
 │   ├── BountyGrade.kt        # 悬赏等级枚举
 │   ├── GameContext.kt        # 运行时上下文 + GamePhase 枚举
 │   └── ScreenState.kt        # 屏幕状态枚举
 ├── ui/
-│   ├── NinjaScriptMainUI.kt # Compose 主 UI
-│   ├── floating/
-│   │   └── BountyCheckList.kt  # 悬赏复选框列表（未使用）
+│   ├── NinjaScriptMainUI.kt # Compose 主 UI（Theme + 配置面板）
 │   └── theme/
-│       ├── Color.kt
-│       ├── Theme.kt
-│       └── Type.kt
+│       └── Theme.kt         # NinjaAuTheme（透传）
 └── res/
     ├── layout/layout_floating_window.xml
     ├── drawable/float_ball_bg.xml, float_btn_bg.xml
     ├── xml/accessibility_service_config.xml
     ├── values/, values-zh/
-    └── assets/templates/ → 59 个模板 PNG
+    └── assets/templates/ → 模板 PNG
 ```
 
 ---
@@ -181,11 +190,14 @@ data class BountyConfig(
     val grade: BountyGrade,
     val enabled: Boolean = false,
     val targetRuns: Int = grade.defaultRuns,
-    val completedRuns: Int = 0
+    val completedRuns: Int = 0,
+    val chaseDream: Boolean = false  // 追梦模式：跳过每日上限检查
 )
 ```
 
 `defaultList()`: 生成全部 12 个等级的配置列表，日常默认 `enabled=true`，活动默认 `enabled=false`。
+
+持久化由 `BountyConfigStorage` 管理，分别存储日常、个人、逆袭三组配置到 SharedPreferences。
 
 ### 4.3 `GameContext` + `GamePhase` — 运行时上下文
 
@@ -193,10 +205,22 @@ data class BountyConfig(
 data class GameContext(
     var currentPhase: GamePhase,
     var activeGrades: List<BountyGrade>,   // 从勾选 → 随完成逐步移除
+    val totalGrades: List<BountyGrade>,    // 所有勾选等级（含已完成）
     val runCounts: MutableMap<BountyGrade, Int>,
     val targetRuns: Map<BountyGrade, Int>,
-    var currentBounty: BountyGrade?,      // 当前正在加入的悬赏
-    var totalCycles: Int
+    val chaseDreamGrades: Set<BountyGrade>, // 追梦模式等级集合
+    var currentBounty: BountyGrade?,       // 当前正在加入的悬赏
+    var actualGrade: BountyGrade?,         // 实际匹配到的等级
+    var totalCycles: Int,
+    var businessLine: BusinessLine,        // DAILY / PERSONAL
+    val personalActiveGrades: List<BountyGrade>,
+    val personalTargetRuns: Map<BountyGrade, Int>,
+    val personalBountyEnabled: Boolean,
+    var personalBountyCompleted: Boolean
+)
+```
+
+`GamePhase` 包含 15 个阶段，含个人悬赏阶段（PERSONAL_BOUNTY_CENTER/DETAIL/PUBLISH）。
 }
 ```
 

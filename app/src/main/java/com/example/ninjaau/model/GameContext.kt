@@ -1,5 +1,7 @@
 package com.example.ninjaau.model
 
+enum class BusinessLine { DAILY, PERSONAL }
+
 /**
  * 运行时上下文 — 贯穿一次脚本执行的生命周期
  */
@@ -21,7 +23,18 @@ data class GameContext(
     /** 开启追梦模式的等级集合（跳过每日上限检查） */
     val chaseDreamGrades: Set<BountyGrade> = emptySet(),
     /** 总轮次计数 */
-    var totalCycles: Int = 0
+    var totalCycles: Int = 0,
+    // ═══ 个人悬赏相关 ═══
+    /** 当前业务线 */
+    var businessLine: BusinessLine = BusinessLine.DAILY,
+    /** 个人悬赏是否启用 */
+    var personalBountyEnabled: Boolean = false,
+    /** 个人悬赏是否全部完成 */
+    var personalBountyCompleted: Boolean = false,
+    /** 个人悬赏用户勾选的等级列表 */
+    var personalActiveGrades: List<BountyGrade> = emptyList(),
+    /** 个人悬赏各等级目标次数 */
+    val personalTargetRuns: Map<BountyGrade, Int> = emptyMap()
 ) {
     /** 是否所有可完成的悬赏都已完成（追梦等级不参与判定，脚本持续运行） */
     val allCompleted: Boolean
@@ -53,5 +66,12 @@ enum class GamePhase {
     SETTLEMENT,
     /** 异常恢复 */
     RECOVERY,
-    DONE
+    DONE,
+    // ═══ 个人悬赏 ═══
+    /** 个人悬赏中心 */
+    PERSONAL_BOUNTY_CENTER,
+    /** 个人悬赏详情 */
+    PERSONAL_BOUNTY_DETAIL,
+    /** 悬赏发布 */
+    PERSONAL_BOUNTY_PUBLISH
 }

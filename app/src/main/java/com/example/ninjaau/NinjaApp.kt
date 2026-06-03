@@ -17,6 +17,7 @@ class NinjaApp : Application() {
         // 清理旧版本 SharedPreferences 中残留的失效 MediaProjection 数据
         PermissionManager.cleanStaleData(this)
         GameManager.loadInviteCheckSetting(this)
+        GameManager.loadPersonalBountySetting(this)
         LogUtil.i("NinjaApp", "NinjaApp 初始化完成")
     }
 }

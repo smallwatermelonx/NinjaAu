@@ -70,6 +70,13 @@ class SceneDetector(private val context: Context) {
             ScreenState.TEAM_INVITATION, ScreenState.INVITE_REJECT,
             ScreenState.INVITE_CHECKBOX, ScreenState.INVITE_AGREE
         ), false, false),
+        PERSONAL_BOUNTY_CENTER("个人悬赏中心", listOf(
+            ScreenState.PERSONAL_BOUNTY_CENTER_SCREEN, ScreenState.BACK_BUTTON
+        ), false, false),
+        PERSONAL_BOUNTY_DETAIL("个人悬赏详情", listOf(
+            ScreenState.PERSONAL_BOUNTY_DETAIL_SCREEN, ScreenState.PERSONAL_BOUNTY_PUBLISH_BTN,
+            ScreenState.BATTLE_LOADING, ScreenState.CHAT_ICON, ScreenState.BACK_BUTTON
+        ), false, false),
     }
 
     /**
@@ -181,11 +188,13 @@ class SceneDetector(private val context: Context) {
         ScreenState.INVITE_REJECT to TemplateEntry("templates/invitation/reject_btn.png", 0.75f),
         ScreenState.INVITE_CHECKBOX to TemplateEntry("templates/invitation/checkbox.png", 0.75f),
         ScreenState.INVITE_AGREE to TemplateEntry("templates/invitation/agree_btn.png", 0.75f),
+        // ── 个人悬赏 ──
+        ScreenState.PERSONAL_BOUNTY_CENTER_SCREEN to TemplateEntry("templates/bounty_list_personal/treasure_chest.png", 0.75f),
+        ScreenState.PERSONAL_BOUNTY_DETAIL_SCREEN to TemplateEntry("templates/bounty_list_personal/treasure_chest_detail.png", 0.75f),
+        ScreenState.PERSONAL_BOUNTY_PUBLISH_BTN to TemplateEntry("templates/bounty_list_personal/divine_dragon.png", 0.75f),
     )
 
     companion object {
-        /** 整体判定（全量兜底） */
-        val SCOPE_ALL = ScreenState.values().toList()
     }
 
     // ── 模板缓存 ──
@@ -202,30 +211,7 @@ class SceneDetector(private val context: Context) {
         return loaded
     }
 
-    fun release() {
-        templateCache.values.forEach { if (!it.isRecycled) it.recycle() }
-        templateCache.clear()
-        gradeIconCache.values.forEach { if (!it.isRecycled) it.recycle() }
-        gradeIconCache.clear()
-        levelIconCache.values.forEach { if (!it.isRecycled) it.recycle() }
-        levelIconCache.clear()
-    }
-
     // ── 公开检测方法 ──
-
-    /** 全量扫描（用于整体判定兜底） */
-    fun detect(screenBitmap: Bitmap): ScreenState {
-        return detectWithCoord(screenBitmap).first
-    }
-
-    /** 全量扫描含坐标 */
-    fun detectWithCoord(screenBitmap: Bitmap): Pair<ScreenState, Pair<Float, Float>?> {
-        for (state in detectionOrder) {
-            val coord = matchTemplate(screenBitmap, state)
-            if (coord != null) return Pair(state, coord)
-        }
-        return Pair(ScreenState.UNKNOWN, null)
-    }
 
     /** 对指定状态做模板匹配，返回命中坐标（中心点）或 null */
     fun matchTemplate(screen: Bitmap, state: ScreenState): Pair<Float, Float>? {
@@ -246,56 +232,6 @@ class SceneDetector(private val context: Context) {
             return Pair(result.centerX, result.centerY)
         }else {
             LogUtil.d(TAG, "$state: 最高相似度 = ${String.format("%.2f", result.similarity)} (阈值=${entry.threshold})")
-        }
-        return null
-    }
-
-    /**
-     * 在指定坐标附近搜索模板（邻近扩散匹配）
-     * 用于等级图标→同一悬赏块的加入按钮匹配。
-     * 从 nearX,nearY 向右下矩形区域搜索，避免匹配到其他悬赏块的按钮。
-     */
-    fun matchTemplateNear(
-        screen: Bitmap,
-        state: ScreenState,
-        nearX: Float,
-        nearY: Float,
-        rangeRight: Int = 350,
-        rangeDown: Int = 300
-    ): Pair<Float, Float>? {
-        val entry = templates[state] ?: return null
-        val template = getTemplate(state) ?: return null
-
-        val left = maxOf(0, nearX.toInt())
-        val top = maxOf(0, nearY.toInt())
-        val right = minOf(screen.width, nearX.toInt() + rangeRight)
-        val bottom = minOf(screen.height, nearY.toInt() + rangeDown)
-
-        if (right - left < template.width || bottom - top < template.height) return null
-
-        val cropped = Bitmap.createBitmap(screen, left, top, right - left, bottom - top)
-        val result = TemplateMatcher.match(cropped, template, entry.threshold)
-        cropped.recycle()
-
-        if (result.isMatched) {
-            val ax = left + result.centerX
-            val ay = top + result.centerY
-            LogUtil.i(TAG, "邻近匹配 $state: 局部(${result.centerX}, ${result.centerY}) → 全局($ax, $ay)")
-            return Pair(ax, ay)
-        }
-        LogUtil.d(TAG, "❌ 邻近匹配 $state: 等级图标($nearX,$nearY) 附近未找到")
-        return null
-    }
-
-    /** 在截图中匹配指定悬赏等级的图标（用于节点3扫描） */
-    fun matchGradeIcon(screen: Bitmap, grade: BountyGrade): GradeMatch? {
-        val template = gradeIconCache.getOrPut(grade) {
-            AssetUtil.loadBitmapFromAssets(context, grade.gradeIconPath()) ?: return null
-        }
-        val result = TemplateMatcher.match(screen, template, 0.85f)
-        if (result.isMatched) {
-            LogUtil.i(TAG, "等级图标 ${grade.displayName}: 匹配度 ${String.format("%.2f", result.similarity)}")
-            return GradeMatch(grade, result.similarity, result.centerX, result.centerY)
         }
         return null
     }
@@ -429,96 +365,4 @@ class SceneDetector(private val context: Context) {
         return Pair(best.grade, Pair(best.centerX, best.centerY))
     }
 
-    /** 使用预转换的 screen Mat 搜索多个等级的建议等级标识 — 最佳匹配策略 */
-    fun matchAnyLevelIconMat(screenMat: Mat, grades: List<BountyGrade>): Pair<BountyGrade, Pair<Float, Float>>? {
-        LogUtil.i(TAG, "matchAnyLevelIconMat: 检查 ${grades.joinToString { "${it.displayName}(lv${it.level})" }}")
-
-        val matches = mutableListOf<GradeMatch>()
-        for (grade in grades) {
-            val path = grade.levelIconPath() ?: continue
-            val cached = levelIconCache[grade]
-            val template = if (cached != null && !cached.isRecycled) cached else {
-                val loaded = AssetUtil.loadBitmapFromAssets(context, path) ?: continue
-                levelIconCache[grade] = loaded
-                loaded
-            }
-            val result = TemplateMatcher.matchWithMat(screenMat, template, 0.92f)
-            if (result.isMatched) {
-                matches.add(GradeMatch(grade, result.similarity, result.centerX, result.centerY))
-            }
-        }
-
-        if (matches.isEmpty()) {
-            LogUtil.w(TAG, "matchAnyLevelIconMat: ${grades.size}个等级均未匹配")
-            return null
-        }
-
-        matches.sortByDescending { it.similarity }
-        val best = matches.first()
-
-        if (matches.size > 1) {
-            val matchSummary = matches.joinToString { "${it.grade.displayName}=${String.format("%.2f", it.similarity)}" }
-            val second = matches[1]
-            val gap = best.similarity - second.similarity
-            LogUtil.w(TAG, "matchAnyLevelIconMat: 多个等级匹配 - $matchSummary，最佳=${best.grade.displayName}，差距=${String.format("%.3f", gap)}")
-            if (gap < 0.02f) {
-                LogUtil.w(TAG, "matchAnyLevelIconMat: 警告! 最佳与次佳差距仅 ${String.format("%.3f", gap)}，匹配可能不可靠")
-            }
-        }
-
-        LogUtil.i(TAG, "matchAnyLevelIconMat → 最佳匹配 ${best.grade.displayName}(lv${best.grade.level}) 相似度=${String.format("%.2f", best.similarity)}")
-        return Pair(best.grade, Pair(best.centerX, best.centerY))
-    }
-
-    /** 在截图中搜索多个悬赏等级图标 — 最佳匹配策略 */
-    fun matchAnyGrade(screen: Bitmap, grades: List<BountyGrade>): Pair<BountyGrade, Pair<Float, Float>>? {
-        val matches = mutableListOf<GradeMatch>()
-        for (grade in grades) {
-            val match = matchGradeIcon(screen, grade) ?: continue
-            matches.add(match)
-        }
-
-        if (matches.isEmpty()) {
-            LogUtil.d(TAG, "matchAnyGrade: ${grades.size}个等级均未匹配")
-            return null
-        }
-
-        matches.sortByDescending { it.similarity }
-        val best = matches.first()
-
-        if (matches.size > 1) {
-            val matchSummary = matches.joinToString { "${it.grade.displayName}=${String.format("%.2f", it.similarity)}" }
-            LogUtil.w(TAG, "matchAnyGrade: 多个等级匹配 - $matchSummary，最佳=${best.grade.displayName}")
-        }
-
-        LogUtil.i(TAG, "matchAnyGrade → 选中 ${best.grade.displayName} (相似度=${String.format("%.2f", best.similarity)})")
-        return Pair(best.grade, Pair(best.centerX, best.centerY))
-    }
-
-    // ── 全量检测顺序（兜底用） ──
-    private val detectionOrder = listOf(
-        ScreenState.TEAM_INVITATION,
-        ScreenState.CONFIRM_BUTTON,
-        ScreenState.SETTLEMENT_POPUP,
-        ScreenState.DEFEAT_POPUP,
-        ScreenState.BATTLE_LOADING,
-        ScreenState.WARNING,
-        ScreenState.SLIDE_BUTTON,
-        ScreenState.LV_ICON,
-        ScreenState.JUMP_BUTTON,
-        ScreenState.SCROLL_UP,
-        ScreenState.ULTIMATE_SKILL,
-        ScreenState.WEAPON_SKILL,
-        ScreenState.DEFEAT_POPUP,
-        ScreenState.READY_BUTTON,
-        ScreenState.DAILY_LIMIT,
-        ScreenState.EXIT_CONFIRM,
-        ScreenState.RECRUIT_INVITE,
-        ScreenState.RECRUIT_TAB,
-        ScreenState.RECRUIT_LIST_SCREEN,
-        ScreenState.OUT_OF_RANGE_RECRUIT,
-        ScreenState.CHAT_ICON,
-        ScreenState.BACK_BUTTON,
-        ScreenState.CHAT_TAB,
-    )
 }

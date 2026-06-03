@@ -67,8 +67,8 @@ enum class BountyGrade(
     /** 是否为活动悬赏（N 系列），非日常悬赏 */
     val isEvent: Boolean get() = this in setOf(NSS_PLUS, NS, NA)
 
-    /** 是否支持追梦模式（S、S+、SS+） */
-    val canChaseDream: Boolean get() = this in setOf(S, S_PLUS, SS_PLUS)
+    /** 是否支持追梦模式（S、S+、SS+、NSS+、NS、NA） */
+    val canChaseDream: Boolean get() = this in setOf(S, S_PLUS, SS_PLUS, NSS_PLUS, NS, NA)
 
     companion object {
         /** 按 priority 排序返回所有等级 */

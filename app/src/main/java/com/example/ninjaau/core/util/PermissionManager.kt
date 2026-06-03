@@ -67,11 +67,6 @@ object PermissionManager {
         }
     }
 
-    /** 手动暂停时清除失效标记（与系统回收区分） */
-    fun clearProjectionLost() {
-        isProjectionLost = false
-    }
-
     // 恢复时重新初始化（复用权限）
     fun resumeMediaProjection(context: Context): Boolean {
         synchronized(lock) {
@@ -226,14 +221,4 @@ object PermissionManager {
         return isEnabled
     }
 
-    /**
-     * 检查悬浮窗权限
-     */
-    fun hasOverlayPermission(context: Context): Boolean {
-        val hasPermission = Settings.canDrawOverlays(context)
-        if (!hasPermission) {
-            LogUtil.e("PermissionManager", "悬浮窗权限未开启")
-        }
-        return hasPermission
-    }
 }

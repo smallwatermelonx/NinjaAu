@@ -52,6 +52,10 @@ object GameManager {
     private val _inviteCheckEnabled = MutableStateFlow(false)
     val inviteCheckEnabled: StateFlow<Boolean> = _inviteCheckEnabled
 
+    /** 个人悬赏开关（默认关闭，UI 可配置） */
+    private val _personalBountyEnabled = MutableStateFlow(false)
+    val personalBountyEnabled: StateFlow<Boolean> = _personalBountyEnabled
+
     private const val PREFS_NAME = "script_prefs"
     private const val KEY_INVITE_CHECK = "invite_check_enabled"
 
@@ -66,6 +70,19 @@ object GameManager {
             .edit().putBoolean(KEY_INVITE_CHECK, enabled).apply()
     }
 
+    private const val KEY_PERSONAL_BOUNTY = "personal_bounty_enabled"
+
+    fun loadPersonalBountySetting(context: Context) {
+        val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        _personalBountyEnabled.value = prefs.getBoolean(KEY_PERSONAL_BOUNTY, false)
+    }
+
+    fun setPersonalBountyEnabled(context: Context, enabled: Boolean) {
+        _personalBountyEnabled.value = enabled
+        context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_PERSONAL_BOUNTY, enabled).apply()
+    }
+
     private fun postLog(msg: String) {
         LogUtil.i(TAG, msg)
         _logEvents.tryEmit(msg)
@@ -73,6 +90,12 @@ object GameManager {
 
     fun updateBountyConfigs(configs: List<BountyConfig>) {
         selectedBounties = configs
+    }
+
+    private var selectedPersonalBounties: List<BountyConfig> = BountyConfig.defaultList().filter { it.enabled }
+
+    fun updatePersonalBountyConfigs(configs: List<BountyConfig>) {
+        selectedPersonalBounties = configs
     }
 
     /** 返回当前已勾选的等级列表（供 UI 读取） */
@@ -125,6 +148,8 @@ object GameManager {
                     onPageEvent = { event -> _pageEvents.tryEmit(event) }
                 ).runLoop(
                     selectedBounties,
+                    personalBountyEnabled = _personalBountyEnabled.value,
+                    personalConfigs = selectedPersonalBounties,
                     onProgress = { progress -> _bountyProgress.value = progress }
                 )
             } catch (e: CancellationException) {
@@ -159,6 +184,8 @@ object GameManager {
                         onPageEvent = { event -> _pageEvents.tryEmit(event) }
                     ).runLoop(
                         selectedBounties,
+                        personalBountyEnabled = _personalBountyEnabled.value,
+                        personalConfigs = selectedPersonalBounties,
                         onProgress = { progress -> _bountyProgress.value = progress }
                     )
                 } catch (e: CancellationException) {

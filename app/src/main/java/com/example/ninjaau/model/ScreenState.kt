@@ -49,5 +49,10 @@ enum class ScreenState(val description: String) {
     /** 组队邀请 — 同意按钮 */
     INVITE_AGREE("邀请同意按钮"),
 
-    UNKNOWN("未知界面");
+    UNKNOWN("未知界面"),
+
+    // === 个人悬赏 ===
+    PERSONAL_BOUNTY_CENTER_SCREEN("个人悬赏中心页面"),
+    PERSONAL_BOUNTY_DETAIL_SCREEN("个人悬赏详情页面"),
+    PERSONAL_BOUNTY_PUBLISH_BTN("悬赏发布按钮");
 }

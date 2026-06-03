@@ -1,9 +1,7 @@
 package com.example.ninjaau.core.node
 
-import android.graphics.Bitmap
 import com.example.ninjaau.core.GameNode
 import com.example.ninjaau.core.NodeContext
-import com.example.ninjaau.core.RecognizeResult
 import com.example.ninjaau.core.checkNodeTimeout
 import com.example.ninjaau.model.GameContext
 import com.example.ninjaau.model.GamePhase
@@ -30,11 +28,6 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
     companion object {
         private const val POST_CLICK_DELAY = 1000L
         private const val WAIT_BATTLE_TIMEOUT_MS = 30_000L
-    }
-
-    override suspend fun recognize(screen: Bitmap): RecognizeResult {
-        val coord = ctx.detector.matchTemplate(screen, ScreenState.READY_BUTTON)
-        return RecognizeResult(coord != null, coord)
     }
 
     /**

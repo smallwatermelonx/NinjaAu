@@ -1,10 +1,9 @@
 package com.example.ninjaau.core.node
 
-import android.graphics.Bitmap
 import com.example.ninjaau.core.GameNode
 import com.example.ninjaau.core.NodeContext
-import com.example.ninjaau.core.RecognizeResult
 import com.example.ninjaau.core.checkNodeTimeout
+import com.example.ninjaau.model.BusinessLine
 import com.example.ninjaau.model.GameContext
 import com.example.ninjaau.model.GamePhase
 import com.example.ninjaau.model.ScreenState
@@ -25,13 +24,6 @@ class SettlementNode(private val ctx: NodeContext) : GameNode {
     companion object {
         private const val NORMAL_INTERVAL_MS = 1000L
         private const val POST_CLICK_DELAY = 1000L
-    }
-
-    override suspend fun recognize(screen: Bitmap): RecognizeResult {
-        val coord = ctx.detector.matchTemplate(screen, ScreenState.SETTLEMENT_POPUP)
-        if (coord != null) return RecognizeResult(true, coord)
-        val confirm = ctx.detector.matchTemplate(screen, ScreenState.CONFIRM_BUTTON)
-        return RecognizeResult(confirm != null, confirm)
     }
 
     /**
@@ -100,8 +92,21 @@ class SettlementNode(private val ctx: NodeContext) : GameNode {
         ctx.actualGrade = null
 
         if (ctx.activeGrades.isEmpty()) {
+            // ═══ 日常完成 → 切换到个人悬赏 ═══
+            if (ctx.businessLine == BusinessLine.DAILY && ctx.personalBountyEnabled) {
+                this.ctx.log("日常悬赏全部完成，准备切换到个人悬赏")
+                ctx.businessLine = BusinessLine.PERSONAL
+                ctx.activeGrades = ctx.personalActiveGrades
+                ctx.totalCycles = 0
+                return GamePhase.PERSONAL_BOUNTY_CENTER
+            }
             this.ctx.log("所有悬赏已完成！")
             return GamePhase.DONE
+        }
+
+        // ═══ 个人悬赏结算后回到个人悬赏中心 ═══
+        if (ctx.businessLine == BusinessLine.PERSONAL) {
+            return GamePhase.PERSONAL_BOUNTY_CENTER
         }
         return GamePhase.IDLE
     }

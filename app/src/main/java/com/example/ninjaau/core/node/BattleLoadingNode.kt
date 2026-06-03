@@ -1,9 +1,7 @@
 package com.example.ninjaau.core.node
 
-import android.graphics.Bitmap
 import com.example.ninjaau.core.GameNode
 import com.example.ninjaau.core.NodeContext
-import com.example.ninjaau.core.RecognizeResult
 import com.example.ninjaau.core.checkNodeTimeout
 import com.example.ninjaau.model.GameContext
 import com.example.ninjaau.model.GamePhase
@@ -26,11 +24,6 @@ class BattleLoadingNode(private val ctx: NodeContext) : GameNode {
 
     companion object {
         private const val INTERVAL_MS = 1000L
-    }
-
-    override suspend fun recognize(screen: Bitmap): RecognizeResult {
-        val coord = ctx.detector.matchTemplate(screen, ScreenState.BATTLE_LOADING)
-        return RecognizeResult(coord != null, coord)
     }
 
     override suspend fun execute(ctx: GameContext): GamePhase? {

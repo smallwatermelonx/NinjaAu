@@ -1,9 +1,7 @@
 package com.example.ninjaau.core.node
 
-import android.graphics.Bitmap
 import com.example.ninjaau.core.GameNode
 import com.example.ninjaau.core.NodeContext
-import com.example.ninjaau.core.RecognizeResult
 import com.example.ninjaau.model.GameContext
 import com.example.ninjaau.model.GamePhase
 import com.example.ninjaau.model.ScreenState
@@ -20,10 +18,6 @@ class RecoveryNode(private val ctx: NodeContext? = null) : GameNode {
 
     companion object {
         private const val RECOVERY_DELAY_MS = 1500L
-    }
-
-    override suspend fun recognize(screen: Bitmap): RecognizeResult {
-        return RecognizeResult(true)
     }
 
     override suspend fun execute(ctx: GameContext): GamePhase? {

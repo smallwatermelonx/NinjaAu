@@ -1,9 +1,7 @@
 package com.example.ninjaau.core.node
 
-import android.graphics.Bitmap
 import com.example.ninjaau.core.GameNode
 import com.example.ninjaau.core.NodeContext
-import com.example.ninjaau.core.RecognizeResult
 import com.example.ninjaau.core.checkNodeTimeout
 import com.example.ninjaau.model.BountyGrade
 import com.example.ninjaau.model.GameContext
@@ -29,11 +27,6 @@ class BountyListNode(private val ctx: NodeContext) : GameNode {
 
     companion object {
         private const val FAST_INTERVAL_MS = 1L
-    }
-
-    override suspend fun recognize(screen: Bitmap): RecognizeResult {
-        val recruitTab = ctx.detector.matchTemplate(screen, ScreenState.RECRUIT_TAB)
-        return RecognizeResult(recruitTab != null, recruitTab)
     }
 
     /**

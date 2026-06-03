@@ -3,19 +3,18 @@ package com.example.ninjaau.ui
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
-import android.widget.Toast
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -24,7 +23,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.example.ninjaau.core.GameManager
 import com.example.ninjaau.core.ScriptState
@@ -35,60 +33,116 @@ import com.example.ninjaau.core.util.LogUtil
 import com.example.ninjaau.core.util.PermissionManager
 import com.example.ninjaau.model.BountyConfig
 import com.example.ninjaau.model.BountyGrade
-import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private val Purple = Color(0xFF7C4DFF)
-private val PurpleLight = Color(0xFFB388FF)
-private val DarkBg = Color(0xFF1A1A2E)
-private val DarkSurface = Color(0xFF16213E)
-private val DarkCard = Color(0xFF0F3460)
-private val GreenOn = Color(0xFF4CAF50)
-private val RedOff = Color(0xFF616161)
-private val ChaseDreamGold = Color(0xFFFFB300)
-private val Gold = Color(0xFFFFD700)
-private val TextPrimary = Color(0xFFE0E0E0)
-private val TextSecondary = Color(0xFF9E9E9E)
-private val LogBg = Color(0xFF0D0D1A)
+// ═══ Theme (VS Code Dark+ / IntelliJ Light) ═══
+private object Theme {
+    var isLight = mutableStateOf(false)
+
+    private val D_Bg = Color(0xFF1E1E1E)
+    private val D_Surface = Color(0xFF252526)
+    private val D_Card = Color(0xFF2D2D30)
+    private val D_Border = Color(0xFF3C3C3C)
+    private val D_Text = Color(0xFFD4D4D4)
+    private val D_TextMid = Color(0xFF969696)
+    private val D_TextLow = Color(0xFF6A6A6A)
+    private val D_Accent = Color(0xFF569CD6)
+    private val D_AccentLight = Color(0xFF9CDCFE)
+    private val D_Success = Color(0xFF4EC9B0)
+    private val D_Warning = Color(0xFFDCDCAA)
+    private val D_Danger = Color(0xFFF44747)
+    private val D_LogBg = Color(0xFF1B1B1C)
+    private val D_Gold = Color(0xFFCE9178)
+
+    private val L_Bg = Color(0xFFF2F2F2)
+    private val L_Surface = Color(0xFFFFFFFF)
+    private val L_Card = Color(0xFFF7F8FA)
+    private val L_Border = Color(0xFFD1D5DB)
+    private val L_Text = Color(0xFF1E1E1E)
+    private val L_TextMid = Color(0xFF6B7280)
+    private val L_TextLow = Color(0xFF9CA3AF)
+    private val L_Accent = Color(0xFF3B82F6)
+    private val L_AccentLight = Color(0xFF2563EB)
+    private val L_Success = Color(0xFF10B981)
+    private val L_Warning = Color(0xFFF59E0B)
+    private val L_Danger = Color(0xFFEF4444)
+    private val L_LogBg = Color(0xFFE9ECEF)
+    private val L_Gold = Color(0xFFD97706)
+
+    val Accent get() = if (isLight.value) L_Accent else D_Accent
+    val AccentLight get() = if (isLight.value) L_AccentLight else D_AccentLight
+    val AccentGlow get() = Accent.copy(alpha = 0.10f)
+    val Bg get() = if (isLight.value) L_Bg else D_Bg
+    val Surface get() = if (isLight.value) L_Surface else D_Surface
+    val Card get() = if (isLight.value) L_Card else D_Card
+    val Border get() = if (isLight.value) L_Border else D_Border
+    val Text get() = if (isLight.value) L_Text else D_Text
+    val TextMid get() = if (isLight.value) L_TextMid else D_TextMid
+    val TextLow get() = if (isLight.value) L_TextLow else D_TextLow
+    val Success get() = if (isLight.value) L_Success else D_Success
+    val Warning get() = if (isLight.value) L_Warning else D_Warning
+    val Danger get() = if (isLight.value) L_Danger else D_Danger
+    val LogBg get() = if (isLight.value) L_LogBg else D_LogBg
+    val Gold get() = if (isLight.value) L_Gold else D_Gold
+    val DisabledBg get() = Border.copy(alpha = 0.5f)
+    val DisabledText get() = TextLow
+}
+
+private enum class MainTab(val label: String) {
+    HOME("首页"),
+    SETTINGS("设置")
+}
+
+private enum class ConfigTarget(val label: String) {
+    DAILY("日常悬赏"),
+    PERSONAL("个人悬赏"),
+    NS("逆袭悬赏"),
+    TREASURE("藏宝图")
+}
+
+// ═══ 藏宝图 ═══
+private enum class TreasureElement(val label: String, val icon: String) {
+    WIND("风", "🌿"), FIRE("火", "🔥"), WATER("水", "💧"), THUNDER("雷", "⚡")
+}
+
+private enum class TreasureGrade(val label: String) {
+    FAN("凡"), ZHEN("珍"), JUE("绝"), SHEN("神"), CHUANSONG("传颂")
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NinjaScriptMainUI() {
     val context = LocalContext.current
     val scriptState by GameManager.state.collectAsState()
-    val scope = rememberCoroutineScope()
+    val isLight by Theme.isLight
 
-    // 用户勾选配置
+    var selectedTab by remember { mutableStateOf(MainTab.HOME) }
+    var configTarget by remember { mutableStateOf<ConfigTarget?>(null) }
+
     var bountyConfigs by remember { mutableStateOf(BountyConfigStorage.load(context)) }
+    var personalConfigs by remember { mutableStateOf(BountyConfigStorage.loadPersonal(context)) }
+    var nsConfigs by remember { mutableStateOf(BountyConfigStorage.loadNs(context)) }
+    var enabledElements by remember { mutableStateOf(setOf<TreasureElement>()) }
+    var enabledGrades by remember { mutableStateOf(setOf<TreasureGrade>()) }
+    var chaseDreamGrades by remember { mutableStateOf(setOf<TreasureGrade>()) }
+    var dailyEnabled by remember { mutableStateOf(bountyConfigs.any { it.enabled }) }
+    var personalEnabled by remember { mutableStateOf(personalConfigs.any { it.enabled }) }
+    var nsEnabled by remember { mutableStateOf(nsConfigs.any { it.enabled }) }
+    var treasureEnabled by remember { mutableStateOf(false) }
     var inviteCheckEnabled by remember { mutableStateOf(GameManager.inviteCheckEnabled.value) }
-    // 运行日志 (timestamp, message)
+
     val timeFormatter = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
     var logEntries by remember { mutableStateOf(listOf(System.currentTimeMillis() to "就绪，等待启动...")) }
-    // 权限状态
-    var permAccessibility by remember { mutableStateOf(false) }
-    var permOverlay by remember { mutableStateOf(false) }
-    var permProjection by remember { mutableStateOf(false) }
 
-    // 检查权限
-    fun refreshPerms() {
-        permAccessibility = PermissionManager.isAccessibilityServiceEnabled(context)
-        permOverlay = Settings.canDrawOverlays(context)
-        permProjection = PermissionManager.hasProjectionPermission()
+    val lifecycleOwner = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event -> }
+        lifecycleOwner.addObserver(observer)
+        onDispose { lifecycleOwner.removeObserver(observer) }
     }
 
-    // 用 LifecycleObserver 在每次恢复时刷新权限状态（从系统设置返回后生效）
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
-    DisposableEffect(lifecycle) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) refreshPerms()
-        }
-        lifecycle.addObserver(observer)
-        onDispose { lifecycle.removeObserver(observer) }
-    }
-
-    // 收集 GameManager 日志事件到运行日志面板
     LaunchedEffect(Unit) {
         GameManager.logEvents.collect { msg ->
             logEntries = (logEntries + (System.currentTimeMillis() to msg)).take(200)
@@ -101,422 +155,598 @@ fun NinjaScriptMainUI() {
 
     val onStart = {
         LogUtil.i("MainUI", "===== 点击启动 =====")
-        // 实时检查权限，不依赖可能过期的缓存状态
-        val hasAcc = PermissionManager.isAccessibilityServiceEnabled(context)
-        val hasOverlay = Settings.canDrawOverlays(context)
-        val hasProj = PermissionManager.hasProjectionPermission()
-
-        if (!hasAcc) {
-            addLog("❌ 需要开启无障碍服务")
-            context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            })
-        } else if (!hasOverlay) {
-            addLog("❌ 需要悬浮窗权限")
-            context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:${context.packageName}")).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            })
-        } else if (!hasProj) {
-            addLog("📷 请求截图权限...")
-            context.startActivity(Intent(context, CapturePermissionActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            })
-        } else if (bountyConfigs.none { it.enabled }) {
-            addLog("⚠️ 请先在下方勾选需要完成的悬赏等级")
-        } else {
-            // 同步 UI 勾选到 GameManager
-            GameManager.updateBountyConfigs(bountyConfigs.filter { it.enabled })
-
-            addLog("🚀 启动脚本...")
-            // 用 Activity Context 启动前台服务（Android 12+ 要求）
-            val intent = Intent(context, FloatingWindowService::class.java)
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+        when {
+            !PermissionManager.isAccessibilityServiceEnabled(context) -> {
+                addLog("❌ 需要开启无障碍服务")
+                context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
             }
-            GameManager.startScript(context)
+            !Settings.canDrawOverlays(context) -> {
+                addLog("❌ 需要悬浮窗权限")
+                context.startActivity(
+                    Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
+                        .apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+                )
+            }
+            !PermissionManager.hasProjectionPermission() -> {
+                addLog("📷 请求截图权限...")
+                context.startActivity(Intent(context, CapturePermissionActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+            }
+            !dailyEnabled && !personalEnabled && !nsEnabled -> {
+                addLog("⚠️ 请至少勾选一条业务线")
+            }
+            else -> {
+                GameManager.updateBountyConfigs(bountyConfigs.filter { it.enabled })
+                GameManager.setPersonalBountyEnabled(context, personalEnabled)
+                if (personalEnabled) GameManager.updatePersonalBountyConfigs(personalConfigs.filter { it.enabled })
+                GameManager.setInviteCheckEnabled(context, inviteCheckEnabled)
+                addLog("🚀 启动脚本...")
+                val intent = Intent(context, FloatingWindowService::class.java)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+                GameManager.startScript(context)
+            }
         }
     }
 
-    val onPause = {
-        addLog("⏸ 暂停脚本")
-        GameManager.pauseScript()
-    }
-
-    val onResumeAction = {
-        addLog("▶ 恢复脚本")
-        GameManager.resumeScript(context)
-    }
-
-    val onStop = {
-        addLog("⏹ 停止所有服务")
-        GameManager.stopScript()
-        context.stopService(Intent(context, FloatingWindowService::class.java))
-        Unit
-    }
-
     MaterialTheme(
-        colorScheme = darkColorScheme(
-            primary = Purple,
-            background = DarkBg,
-            surface = DarkSurface,
-            onPrimary = Color.White,
-            onBackground = TextPrimary,
-            onSurface = TextPrimary
+        colorScheme = if (isLight) lightColorScheme(
+            primary = Theme.Accent, background = Theme.Bg, surface = Theme.Surface,
+            onPrimary = Color.White, onBackground = Theme.Text, onSurface = Theme.Text
+        ) else darkColorScheme(
+            primary = Theme.Accent, background = Theme.Bg, surface = Theme.Surface,
+            onPrimary = Color.White, onBackground = Theme.Text, onSurface = Theme.Text
         )
     ) {
         Scaffold(
             topBar = {
-                TopAppBar(
-                    title = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("NinjaAu", fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                            Spacer(Modifier.width(8.dp))
-                            Text("忍三自动化", fontSize = 14.sp, color = TextSecondary)
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkSurface)
-                )
-            },
-            containerColor = DarkBg
-        ) { padding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // ========== 权限状态行 ==========
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    PermChip("无障碍", permAccessibility, "♿")
-                    PermChip("悬浮窗", permOverlay, "▣")
-                    PermChip("截图", permProjection, "📷")
-                }
-
-                // ========== 启动/停止按钮 ==========
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
-                    colors = CardDefaults.cardColors(containerColor = DarkSurface)
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        // 脚本状态指示器
-                        Text(
-                            when (scriptState) {
-                                ScriptState.IDLE -> "● 空闲"
-                                ScriptState.RUNNING -> "● 运行中"
-                                ScriptState.PAUSED -> "● 已暂停"
-                            },
-                            fontSize = 13.sp,
-                            color = when (scriptState) {
-                                ScriptState.RUNNING -> GreenOn
-                                ScriptState.PAUSED -> Gold
-                                ScriptState.IDLE -> TextSecondary
+                Column {
+                    TopAppBar(
+                        title = { Text("NinjaAu", fontWeight = FontWeight.Bold, fontSize = 17.sp) },
+                        actions = {
+                            TextButton(onClick = { Theme.isLight.value = !Theme.isLight.value }) {
+                                Text(if (isLight) "☀" else "☾", fontSize = 18.sp, color = Theme.TextMid)
                             }
-                        )
-                        Spacer(Modifier.height(16.dp))
-
-                        // 大启动/暂停/继续按钮（渐变背景）
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(56.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(
-                                    Brush.linearGradient(
-                                        colors = when (scriptState) {
-                                            ScriptState.IDLE -> listOf(Purple, PurpleLight)
-                                            ScriptState.RUNNING -> listOf(Color(0xFFF5A623), Color(0xFFFF8C00))
-                                            ScriptState.PAUSED -> listOf(GreenOn, Color(0xFF81C784))
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Theme.Surface)
+                    )
+                    TabRow(
+                        selectedTabIndex = selectedTab.ordinal,
+                        containerColor = Theme.Surface,
+                        indicator = {}, divider = {}
+                    ) {
+                        MainTab.entries.forEach { tab ->
+                            val sel = selectedTab == tab
+                            Tab(
+                                selected = sel,
+                                onClick = { selectedTab = tab; if (tab == MainTab.SETTINGS) configTarget = null },
+                                text = {
+                                    Text(tab.label, fontSize = 12.sp,
+                                        fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (sel) Theme.AccentLight else Theme.TextLow)
+                                }
+                            )
+                        }
+                    }
+                    HorizontalDivider(color = Theme.Border, thickness = 1.dp)
+                }
+            },
+            containerColor = Theme.Bg
+        ) { padding ->
+            when (selectedTab) {
+                MainTab.HOME -> {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding)
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // ═══ Left: task list ═══
+                        Column(
+                            modifier = Modifier.weight(0.2f).fillMaxHeight(),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = CardDefaults.cardColors(containerColor = Theme.Surface)
+                            ) {
+                                Column(modifier = Modifier.padding(vertical = 4.dp, horizontal = 2.dp)) {
+                                    TaskRow("日常悬赏", dailyEnabled, onToggle = {
+                                        dailyEnabled = !dailyEnabled
+                                        if (dailyEnabled && bountyConfigs.none { it.enabled }) {
+                                            bountyConfigs = bountyConfigs.map { it.copy(enabled = true) }
+                                            GameManager.updateBountyConfigs(bountyConfigs)
+                                            BountyConfigStorage.save(context, bountyConfigs)
                                         }
-                                    )
-                                )
-                                .clickable {
+                                        GameManager.updateBountyConfigs(bountyConfigs.filter { it.enabled })
+                                    }, onGearClick = { configTarget = ConfigTarget.DAILY })
+                                    HorizontalDivider(color = Theme.Border, modifier = Modifier.padding(horizontal = 8.dp))
+                                    TaskRow("个人悬赏", personalEnabled, onToggle = {
+                                        personalEnabled = !personalEnabled
+                                        GameManager.setPersonalBountyEnabled(context, personalEnabled)
+                                    }, onGearClick = { configTarget = ConfigTarget.PERSONAL })
+                                    HorizontalDivider(color = Theme.Border, modifier = Modifier.padding(horizontal = 8.dp))
+                                    TaskRow("逆袭悬赏", nsEnabled, onToggle = { nsEnabled = !nsEnabled },
+                                        onGearClick = { configTarget = ConfigTarget.NS })
+                                    HorizontalDivider(color = Theme.Border, modifier = Modifier.padding(horizontal = 8.dp))
+                                    TaskRow("藏宝图", treasureEnabled, onToggle = {
+                                        treasureEnabled = !treasureEnabled
+                                    }, onGearClick = { configTarget = ConfigTarget.TREASURE })
+                                }
+                            }
+
+                            Spacer(Modifier.weight(1f))
+
+                            Box(
+                                modifier = Modifier.fillMaxWidth().height(40.dp)
+                                    .shadow(2.dp, RoundedCornerShape(8.dp))
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Brush.horizontalGradient(
+                                        colors = when (scriptState) {
+                                            ScriptState.IDLE -> listOf(Theme.Accent, Theme.AccentLight)
+                                            ScriptState.RUNNING -> listOf(Theme.Danger, Color(0xFFFF7675))
+                                            ScriptState.PAUSED -> listOf(Theme.Success, Color(0xFF55EFC4))
+                                        }
+                                    ))
+                                    .clickable {
+                                        when (scriptState) {
+                                            ScriptState.IDLE -> onStart()
+                                            ScriptState.RUNNING -> { GameManager.pauseScript(); addLog("⏸ 暂停") }
+                                            ScriptState.PAUSED -> { GameManager.resumeScript(context); addLog("▶ 恢复") }
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
                                     when (scriptState) {
-                                        ScriptState.IDLE -> onStart()
-                                        ScriptState.RUNNING -> onPause()
-                                        ScriptState.PAUSED -> onResumeAction()
+                                        ScriptState.IDLE -> "Link Start!"
+                                        ScriptState.RUNNING -> "暂停"
+                                        ScriptState.PAUSED -> "继续"
+                                    },
+                                    fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White, letterSpacing = 1.sp
+                                )
+                            }
+                            if (scriptState != ScriptState.IDLE) {
+                                TextButton(
+                                    onClick = {
+                                        GameManager.stopScript()
+                                        context.stopService(Intent(context, FloatingWindowService::class.java))
+                                        addLog("⏹ 停止")
+                                    },
+                                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                                ) { Text("停止", fontSize = 10.sp, color = Theme.TextLow) }
+                            }
+                        }
+
+                        // ═══ Middle: config panel ═══
+                        Column(modifier = Modifier.weight(0.6f).fillMaxHeight()) {
+                            if (configTarget != null) {
+                                ConfigPanel(
+                                    target = configTarget!!,
+                                    bountyConfigs = bountyConfigs,
+                                    personalConfigs = personalConfigs,
+                                    nsConfigs = nsConfigs,
+                                    enabledElements = enabledElements,
+                                    enabledGrades = enabledGrades,
+                                    chaseDreamGrades = chaseDreamGrades,
+                                    onBountyConfigsChanged = { configs ->
+                                        bountyConfigs = configs; dailyEnabled = configs.any { it.enabled }
+                                        GameManager.updateBountyConfigs(configs.filter { it.enabled })
+                                        BountyConfigStorage.save(context, configs)
+                                    },
+                                    onPersonalConfigsChanged = { configs ->
+                                        personalConfigs = configs
+                                        val e = configs.any { it.enabled }; personalEnabled = e
+                                        GameManager.setPersonalBountyEnabled(context, e)
+                                        GameManager.updatePersonalBountyConfigs(configs.filter { it.enabled })
+                                        BountyConfigStorage.savePersonal(context, configs)
+                                    },
+                                    onNsConfigsChanged = { configs ->
+                                        nsConfigs = configs; nsEnabled = configs.any { it.enabled }
+                                        BountyConfigStorage.saveNs(context, configs)
+                                    },
+                                    onEnabledElementsChanged = { enabledElements = it },
+                                    onEnabledGradesChanged = { enabledGrades = it },
+                                    onChaseDreamGradesChanged = { chaseDreamGrades = it }
+                                )
+                            } else {
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("⚙", fontSize = 24.sp, color = Theme.DisabledText)
+                                        Spacer(Modifier.height(4.dp))
+                                        Text("点击齿轮配置业务", fontSize = 11.sp, color = Theme.TextLow)
                                     }
-                                },
-                            contentAlignment = Alignment.Center
+                                }
+                            }
+                        }
+
+                        // ═══ Right: log ═══
+                        Card(
+                            modifier = Modifier.weight(0.2f).fillMaxHeight(),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = CardDefaults.cardColors(containerColor = Theme.LogBg)
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                Text("日志", fontSize = 9.sp, color = Theme.TextLow, fontWeight = FontWeight.Medium)
+                                Spacer(Modifier.height(4.dp))
+                                val logListState = rememberLazyListState()
+                                val displayLogs = logEntries.takeLast(50)
+                                LaunchedEffect(displayLogs.size) {
+                                    if (displayLogs.isNotEmpty()) logListState.animateScrollToItem(displayLogs.size - 1)
+                                }
+                                LazyColumn(state = logListState, modifier = Modifier.fillMaxWidth().weight(1f)) {
+                                    items(displayLogs) { (ts, line) ->
+                                        val time = timeFormatter.format(Date(ts))
+                                        val color = when {
+                                            line.contains("❌") -> Theme.Danger
+                                            line.contains("⚠") -> Theme.Warning
+                                            else -> Theme.TextLow
+                                        }
+                                        Text(text = "$time  $line", fontSize = 8.sp, color = color,
+                                            lineHeight = 10.sp, modifier = Modifier.padding(vertical = 0.3.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                MainTab.SETTINGS -> SettingsContent(
+                    modifier = Modifier.padding(padding).padding(horizontal = 16.dp, vertical = 12.dp),
+                    inviteCheckEnabled = inviteCheckEnabled,
+                    onInviteCheckChanged = { inviteCheckEnabled = it }
+                )
+            }
+        }
+    }
+}
+
+// ════════════════════════════════════════
+//  配置面板
+// ════════════════════════════════════════
+@Composable
+private fun ConfigPanel(
+    target: ConfigTarget,
+    bountyConfigs: List<BountyConfig>,
+    personalConfigs: List<BountyConfig>,
+    nsConfigs: List<BountyConfig>,
+    enabledElements: Set<TreasureElement>,
+    enabledGrades: Set<TreasureGrade>,
+    chaseDreamGrades: Set<TreasureGrade>,
+    onBountyConfigsChanged: (List<BountyConfig>) -> Unit,
+    onPersonalConfigsChanged: (List<BountyConfig>) -> Unit,
+    onNsConfigsChanged: (List<BountyConfig>) -> Unit,
+    onEnabledElementsChanged: (Set<TreasureElement>) -> Unit,
+    onEnabledGradesChanged: (Set<TreasureGrade>) -> Unit,
+    onChaseDreamGradesChanged: (Set<TreasureGrade>) -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Theme.Surface)
+            .padding(horizontal = 12.dp, vertical = 12.dp)
+    ) {
+        Text(target.label, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Theme.Text)
+        Spacer(Modifier.height(6.dp))
+        HorizontalDivider(color = Theme.Border)
+        Spacer(Modifier.height(8.dp))
+
+        when (target) {
+            ConfigTarget.DAILY -> BountyGradePanel(
+                configs = bountyConfigs.filter { !it.grade.isEvent },
+                allConfigs = bountyConfigs,
+                onConfigsChanged = onBountyConfigsChanged,
+                showChaseDream = true
+            )
+            ConfigTarget.PERSONAL -> BountyGradePanel(
+                configs = personalConfigs,
+                allConfigs = personalConfigs,
+                onConfigsChanged = onPersonalConfigsChanged,
+                showChaseDream = false,
+                lockedGrade = BountyGrade.SS_PLUS
+            )
+            ConfigTarget.NS -> BountyGradePanel(
+                configs = nsConfigs,
+                allConfigs = nsConfigs,
+                onConfigsChanged = onNsConfigsChanged,
+                showChaseDream = true
+            )
+            ConfigTarget.TREASURE -> TreasureMapPanel(
+                enabledElements = enabledElements,
+                enabledGrades = enabledGrades,
+                chaseDreamGrades = chaseDreamGrades,
+                onEnabledElementsChanged = onEnabledElementsChanged,
+                onEnabledGradesChanged = onEnabledGradesChanged,
+                onChaseDreamGradesChanged = onChaseDreamGradesChanged
+            )
+        }
+    }
+}
+
+// ════════════════════════════════════════
+//  悬赏等级面板（垂直行布局）
+// ════════════════════════════════════════
+@Composable
+private fun BountyGradePanel(
+    configs: List<BountyConfig>,
+    allConfigs: List<BountyConfig>,
+    onConfigsChanged: (List<BountyConfig>) -> Unit,
+    showChaseDream: Boolean,
+    lockedGrade: BountyGrade? = null
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PillButton("全选", Theme.AccentLight) {
+                onConfigsChanged(allConfigs.map { if (it.grade != lockedGrade) it.copy(enabled = true) else it })
+            }
+            PillButton("清空", Theme.TextLow) {
+                onConfigsChanged(allConfigs.map { it.copy(enabled = false) })
+            }
+        }
+
+        configs.forEach { config ->
+            val locked = lockedGrade != null && config.grade == lockedGrade
+            val enabled = config.enabled && !locked
+            val dreaming = config.chaseDream
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp),
+                colors = CardDefaults.cardColors(containerColor = Theme.Card)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = enabled,
+                        onCheckedChange = {
+                            if (!locked) {
+                                onConfigsChanged(allConfigs.map {
+                                    if (it.grade == config.grade) it.copy(enabled = !enabled) else it
+                                })
+                            }
+                        },
+                        enabled = !locked,
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = Theme.Accent, uncheckedColor = Theme.TextLow,
+                            disabledCheckedColor = Theme.Accent.copy(alpha = 0.4f),
+                            disabledUncheckedColor = Theme.DisabledText
+                        ),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        config.grade.displayName, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                        color = if (locked) Theme.DisabledText else Theme.Text,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    if (showChaseDream && config.grade.canChaseDream) {
+                        Box(
+                            modifier = Modifier.clip(RoundedCornerShape(4.dp))
+                                .background(
+                                    if (dreaming && enabled) Theme.Gold.copy(alpha = 0.15f)
+                                    else if (enabled) Theme.Surface else Color.Transparent
+                                )
+                                .clickable(enabled = enabled) {
+                                    onConfigsChanged(allConfigs.map {
+                                        if (it.grade == config.grade) it.copy(chaseDream = !dreaming) else it
+                                    })
+                                }
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
                         ) {
                             Text(
-                                when (scriptState) {
-                                    ScriptState.IDLE -> "▶  LINK START"
-                                    ScriptState.RUNNING -> "⏸  暂停"
-                                    ScriptState.PAUSED -> "▶  继续"
-                                },
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
+                                "追梦", fontSize = 9.sp,
+                                fontWeight = if (dreaming) FontWeight.Bold else FontWeight.Normal,
+                                color = if (dreaming && enabled) Theme.Gold
+                                else if (enabled) Theme.TextMid else Theme.DisabledText
                             )
-                        }
-
-                        // 运行中/暂停时显示停止按钮
-                        if (scriptState != ScriptState.IDLE) {
-                            Spacer(Modifier.height(8.dp))
-                            TextButton(onClick = onStop) {
-                                Text("停止脚本", fontSize = 13.sp, color = TextSecondary)
-                            }
                         }
                     }
                 }
+            }
+        }
+    }
+}
 
-                // ========== 悬赏选择面板（日常 + 活动分栏） ==========
-                Card(
+// ════════════════════════════════════════
+//  藏宝图面板
+// ════════════════════════════════════════
+@Composable
+private fun TreasureMapPanel(
+    enabledElements: Set<TreasureElement>,
+    enabledGrades: Set<TreasureGrade>,
+    chaseDreamGrades: Set<TreasureGrade>,
+    onEnabledElementsChanged: (Set<TreasureElement>) -> Unit,
+    onEnabledGradesChanged: (Set<TreasureGrade>) -> Unit,
+    onChaseDreamGradesChanged: (Set<TreasureGrade>) -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // ═══ 元素筛选行 ═══
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(8.dp),
+            colors = CardDefaults.cardColors(containerColor = Theme.Card)
+        ) {
+            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("属性", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Theme.TextMid)
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
-                    colors = CardDefaults.cardColors(containerColor = DarkSurface)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                    TreasureElement.entries.forEach { element ->
+                        val active = element in enabledElements
+                        val bg = if (active) Theme.AccentGlow else Theme.Surface
+                        val border = if (active) Theme.Accent else Theme.Border
+                        val textColor = if (active) Theme.AccentLight else Theme.TextMid
+                        Card(
+                            modifier = Modifier.weight(1f).clip(RoundedCornerShape(6.dp))
+                                .clickable {
+                                    onEnabledElementsChanged(
+                                        if (active) enabledElements - element
+                                        else enabledElements + element
+                                    )
+                                },
+                            shape = RoundedCornerShape(6.dp),
+                            border = BorderStroke(1.dp, border),
+                            colors = CardDefaults.cardColors(containerColor = bg)
                         ) {
-                            Text("悬赏选择", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                TextButton(onClick = {
-                                    bountyConfigs = bountyConfigs.map { it.copy(enabled = true) }
-                                    BountyConfigStorage.save(context, bountyConfigs)
-                                }) { Text("全选", fontSize = 13.sp, color = PurpleLight) }
-                                TextButton(onClick = {
-                                    bountyConfigs = bountyConfigs.map { it.copy(enabled = false) }
-                                    BountyConfigStorage.save(context, bountyConfigs)
-                                }) { Text("清空", fontSize = 13.sp, color = TextSecondary) }
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
-
-                        // 组队邀请检测开关
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                checked = inviteCheckEnabled,
-                                onCheckedChange = { checked ->
-                                    inviteCheckEnabled = checked
-                                    GameManager.setInviteCheckEnabled(context, checked)
-                                }
+                            Text(
+                                "${element.icon}${element.label}",
+                                fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                color = textColor,
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                                textAlign = TextAlign.Center
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("检测组队邀请并自动拒绝", fontSize = 13.sp, color = TextSecondary)
-                        }
-                        Spacer(Modifier.height(8.dp))
-
-                        // 日常悬赏
-                        Text("日常悬赏", fontSize = 13.sp, color = TextSecondary, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(8.dp))
-                        val dailyConfigs = bountyConfigs.filter { !it.grade.isEvent }
-                        val dailyRows = dailyConfigs.chunked(4)
-                        dailyRows.forEach { row ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                row.forEach { config ->
-                                    BountyGradeCard(
-                                        config = config,
-                                        modifier = Modifier.weight(1f),
-                                        onToggle = {
-                                            bountyConfigs = bountyConfigs.map {
-                                                if (it.grade == config.grade) it.copy(enabled = !it.enabled)
-                                                else it
-                                            }
-                                            GameManager.updateBountyConfigs(bountyConfigs.filter { it.enabled })
-                                            BountyConfigStorage.save(context, bountyConfigs)
-                                        },
-                                        onChaseDream = if (config.grade.canChaseDream) {
-                                            {
-                                                bountyConfigs = bountyConfigs.map {
-                                                    if (it.grade == config.grade) it.copy(chaseDream = !it.chaseDream)
-                                                    else it
-                                                }
-                                                BountyConfigStorage.save(context, bountyConfigs)
-                                            }
-                                        } else null
-                                    )
-                                }
-                                repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
-                            }
-                            Spacer(Modifier.height(6.dp))
-                        }
-
-                        // 活动悬赏分隔
-                        Spacer(Modifier.height(12.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(Modifier.weight(1f).height(1.dp).background(DarkCard))
-                            Spacer(Modifier.width(8.dp))
-                            Text("活动悬赏 (N系列)", fontSize = 13.sp, color = TextSecondary, fontWeight = FontWeight.Bold)
-                            Spacer(Modifier.width(8.dp))
-                            Box(Modifier.weight(1f).height(1.dp).background(DarkCard))
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        val eventConfigs = bountyConfigs.filter { it.grade.isEvent }
-                        val eventRows = eventConfigs.chunked(4)
-                        eventRows.forEach { row ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                row.forEach { config ->
-                                    BountyGradeCard(
-                                        config = config,
-                                        modifier = Modifier.weight(1f),
-                                        onToggle = {
-                                            bountyConfigs = bountyConfigs.map {
-                                                if (it.grade == config.grade) it.copy(enabled = !it.enabled)
-                                                else it
-                                            }
-                                            GameManager.updateBountyConfigs(bountyConfigs.filter { it.enabled })
-                                            BountyConfigStorage.save(context, bountyConfigs)
-                                        }
-                                    )
-                                }
-                                repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
-                            }
-                            Spacer(Modifier.height(6.dp))
                         }
                     }
                 }
+            }
+        }
 
-                // ========== 运行日志 ==========
-                Card(
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 220.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
-                    colors = CardDefaults.cardColors(containerColor = LogBg)
+        // ═══ 级别行（勾选 + 追梦） ═══
+        TreasureGrade.entries.forEach { grade ->
+            val active = grade in enabledGrades
+            val dreaming = grade in chaseDreamGrades
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp),
+                colors = CardDefaults.cardColors(containerColor = Theme.Card)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text("运行日志", fontSize = 13.sp, color = TextSecondary, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(4.dp))
-                        val logListState = rememberLazyListState()
-                        val displayLogs = logEntries.takeLast(30)
-                        LaunchedEffect(displayLogs.size) {
-                            if (displayLogs.isNotEmpty()) {
-                                logListState.animateScrollToItem(displayLogs.size - 1)
-                            }
-                        }
-                        LazyColumn(
-                            state = logListState,
-                            modifier = Modifier.fillMaxWidth().weight(1f)
-                        ) {
-                            items(displayLogs) { (ts, line) ->
-                                val time = timeFormatter.format(Date(ts))
-                                val isWarning = line.contains("警告") || line.contains("⚠")
-                                val isError = line.contains("错误") || line.contains("❌")
-                                val color = when {
-                                    isError -> Color(0xFFEF5350)
-                                    isWarning -> Color(0xFFFFB74D)
-                                    else -> TextSecondary
-                                }
-                                Text(
-                                    text = "$time  $line",
-                                    fontSize = 11.sp,
-                                    color = color,
-                                    modifier = Modifier.padding(vertical = 1.dp)
+                    Checkbox(
+                        checked = active,
+                        onCheckedChange = {
+                            onEnabledGradesChanged(
+                                if (active) enabledGrades - grade
+                                else enabledGrades + grade
+                            )
+                        },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = Theme.Accent, uncheckedColor = Theme.TextLow
+                        ),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        grade.label, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                        color = Theme.Text, modifier = Modifier.weight(1f)
+                    )
+
+                    Box(
+                        modifier = Modifier.clip(RoundedCornerShape(4.dp))
+                            .background(
+                                if (dreaming) Theme.Gold.copy(alpha = 0.15f)
+                                else if (active) Theme.Surface else Color.Transparent
+                            )
+                            .clickable(enabled = active) {
+                                onChaseDreamGradesChanged(
+                                    if (dreaming) chaseDreamGrades - grade
+                                    else chaseDreamGrades + grade
                                 )
                             }
-                        }
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            "追梦", fontSize = 9.sp,
+                            fontWeight = if (dreaming) FontWeight.Bold else FontWeight.Normal,
+                            color = if (dreaming) Theme.Gold
+                            else if (active) Theme.TextMid else Theme.DisabledText
+                        )
                     }
                 }
-
-                Spacer(Modifier.height(8.dp))
-                Text("v3.0", fontSize = 11.sp, color = TextSecondary, modifier = Modifier.align(Alignment.CenterHorizontally))
             }
         }
     }
 }
 
-// ========== 子组件 ==========
-
+// ════════════════════════════════════════
+//  设置页
+// ════════════════════════════════════════
 @Composable
-private fun PermChip(label: String, granted: Boolean, icon: String = "") {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(if (granted) DarkCard else DarkSurface)
-            .border(1.dp, if (granted) GreenOn.copy(alpha = 0.3f) else Color.White.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
-            .padding(horizontal = 12.dp, vertical = 6.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(if (granted) GreenOn else RedOff)
-        )
-        Spacer(Modifier.width(6.dp))
-        if (icon.isNotEmpty()) {
-            Text(icon, fontSize = 12.sp, color = if (granted) TextPrimary else TextSecondary)
-            Spacer(Modifier.width(4.dp))
-        }
-        Text(label, fontSize = 12.sp, color = if (granted) TextPrimary else TextSecondary)
-    }
-}
-
-@Composable
-private fun BountyGradeCard(
-    config: BountyConfig,
+private fun SettingsContent(
     modifier: Modifier = Modifier,
-    onToggle: () -> Unit,
-    onChaseDream: (() -> Unit)? = null
+    inviteCheckEnabled: Boolean,
+    onInviteCheckChanged: (Boolean) -> Unit
 ) {
-    val bg = if (config.enabled) DarkCard else DarkSurface
-    val border = when {
-        config.chaseDream && config.enabled -> ChaseDreamGold
-        config.enabled -> Purple
-        else -> Color.Transparent
-    }
-
-    Card(
-        modifier = modifier.clip(RoundedCornerShape(12.dp)).clickable { onToggle() },
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(if (config.enabled) 1.dp else 0.dp, border),
-        colors = CardDefaults.cardColors(containerColor = bg)
+    Column(
+        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(8.dp),
+            colors = CardDefaults.cardColors(containerColor = Theme.Surface)
         ) {
-            Text(
-                text = config.grade.displayName,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (config.enabled) PurpleLight else TextSecondary
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = "${config.targetRuns}次",
-                fontSize = 11.sp,
-                color = if (config.enabled) TextSecondary else TextSecondary.copy(alpha = 0.5f)
-            )
-            if (config.grade.canChaseDream && config.enabled && onChaseDream != null) {
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = if (config.chaseDream) "追梦 ON" else "追梦",
-                    fontSize = 10.sp,
-                    fontWeight = if (config.chaseDream) FontWeight.Bold else FontWeight.Normal,
-                    color = if (config.chaseDream) ChaseDreamGold else TextSecondary.copy(alpha = 0.6f),
-                    modifier = Modifier.clickable { onChaseDream() }
-                )
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("检测设置", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Theme.TextMid)
+                Spacer(Modifier.height(8.dp))
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = inviteCheckEnabled, onCheckedChange = onInviteCheckChanged,
+                        colors = CheckboxDefaults.colors(checkedColor = Theme.Accent, uncheckedColor = Theme.TextLow)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("检测组队邀请并自动拒绝", fontSize = 12.sp, color = Theme.TextMid)
+                }
             }
         }
     }
+}
+
+// ════════════════════════════════════════
+//  通用子组件
+// ════════════════════════════════════════
+
+@Composable
+private fun TaskRow(label: String, enabled: Boolean, locked: Boolean = false, onToggle: () -> Unit, onGearClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .clickable(enabled = !locked) { onToggle() }
+            .padding(horizontal = 4.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = enabled, onCheckedChange = { if (!locked) onToggle() }, enabled = !locked,
+            colors = CheckboxDefaults.colors(
+                checkedColor = Theme.Accent, uncheckedColor = Theme.TextLow,
+                disabledCheckedColor = Theme.Accent.copy(alpha = 0.4f), disabledUncheckedColor = Theme.DisabledText
+            ),
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(label, fontSize = 12.sp, color = if (locked) Theme.DisabledText else Theme.Text, modifier = Modifier.weight(1f))
+        Box(
+            modifier = Modifier.size(24.dp).clip(RoundedCornerShape(5.dp))
+                .background(if (locked) Theme.DisabledBg else Theme.Card)
+                .clickable(enabled = !locked) { onGearClick() },
+            contentAlignment = Alignment.Center
+        ) { Text("⚙", fontSize = 12.sp, color = if (locked) Theme.DisabledText else Theme.TextMid) }
+    }
+}
+
+@Composable
+private fun PillButton(text: String, color: Color, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Theme.Card).clickable { onClick() }
+            .padding(horizontal = 14.dp, vertical = 6.dp)
+    ) { Text(text, fontSize = 11.sp, color = color) }
 }

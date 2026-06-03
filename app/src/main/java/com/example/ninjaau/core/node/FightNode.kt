@@ -1,9 +1,7 @@
 package com.example.ninjaau.core.node
 
-import android.graphics.Bitmap
 import com.example.ninjaau.core.GameNode
 import com.example.ninjaau.core.NodeContext
-import com.example.ninjaau.core.RecognizeResult
 import com.example.ninjaau.core.checkNodeTimeout
 import com.example.ninjaau.model.GameContext
 import com.example.ninjaau.model.GamePhase
@@ -32,13 +30,6 @@ class FightNode(private val ctx: NodeContext) : GameNode {
         private const val MAX_JUMP_MISS = 3
         private const val MAX_SKILL_ATTEMPTS = 10
         private const val MAX_WEAPON_ATTEMPTS = 1
-    }
-
-    override suspend fun recognize(screen: Bitmap): RecognizeResult {
-        val slide = ctx.detector.matchTemplate(screen, ScreenState.SLIDE_BUTTON)
-        if (slide != null) return RecognizeResult(true, slide)
-        val skill = ctx.detector.matchTemplate(screen, ScreenState.ULTIMATE_SKILL)
-        return RecognizeResult(skill != null, skill)
     }
 
     override suspend fun execute(ctx: GameContext): GamePhase? {

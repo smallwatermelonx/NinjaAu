@@ -15,9 +15,6 @@ data class BountyConfig(
     /** 追梦模式：跳过每日上限检查，只要等级匹配就继续准备 */
     val chaseDream: Boolean = false
 ) {
-    /** 是否还需要继续执行该等级 */
-    val isRunsRemaining: Boolean get() = completedRuns < targetRuns
-
     companion object {
         /** 生成所有等级的默认配置（日常悬赏默认勾选，N系列活动悬赏默认不勾选） */
         fun defaultList(): List<BountyConfig> =

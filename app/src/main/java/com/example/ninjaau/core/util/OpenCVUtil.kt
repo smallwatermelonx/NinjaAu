@@ -42,18 +42,6 @@ object OpenCVUtil {
     }
 
     /**
-     * Mat 转 Bitmap (BGR -> RGBA) 用于调试显示
-     */
-    fun matToBitmap(mat: Mat): Bitmap {
-        val rgbaMat = Mat()
-        Imgproc.cvtColor(mat, rgbaMat, Imgproc.COLOR_BGR2RGBA)
-        val bitmap = Bitmap.createBitmap(rgbaMat.cols(), rgbaMat.rows(), Bitmap.Config.ARGB_8888)
-        Utils.matToBitmap(rgbaMat, bitmap)
-        rgbaMat.release()
-        return bitmap
-    }
-
-    /**
      * 安全释放多个 Mat 对象
      */
     fun releaseMats(vararg mats: Mat?) {

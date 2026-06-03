@@ -1,10 +1,8 @@
 package com.example.ninjaau.core.node
 
-import android.graphics.Bitmap
 import com.example.ninjaau.core.GameNode
 import com.example.ninjaau.core.NodeContext
 import com.example.ninjaau.core.NodeTimeoutException
-import com.example.ninjaau.core.RecognizeResult
 import com.example.ninjaau.core.checkNodeTimeout
 import com.example.ninjaau.model.GameContext
 import com.example.ninjaau.model.GamePhase
@@ -26,13 +24,6 @@ class HallNode(private val ctx: NodeContext) : GameNode {
     companion object {
         private const val POST_CLICK_DELAY = 1000L
         private const val NORMAL_INTERVAL_MS = 1000L
-    }
-
-    override suspend fun recognize(screen: Bitmap): RecognizeResult {
-        val chatIcon = ctx.detector.matchTemplate(screen, ScreenState.CHAT_ICON)
-        if (chatIcon != null) return RecognizeResult(true, chatIcon)
-        val recruitTab = ctx.detector.matchTemplate(screen, ScreenState.RECRUIT_TAB)
-        return RecognizeResult(recruitTab != null, recruitTab)
     }
 
     /**

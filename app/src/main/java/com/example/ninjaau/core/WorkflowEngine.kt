@@ -9,6 +9,7 @@ import com.example.ninjaau.core.recognition.SceneDetector
 import com.example.ninjaau.core.util.LogUtil
 import com.example.ninjaau.core.util.PermissionManager
 import com.example.ninjaau.model.BountyConfig
+import com.example.ninjaau.model.BusinessLine
 import com.example.ninjaau.model.BountyGrade
 import com.example.ninjaau.model.GameContext
 import com.example.ninjaau.model.GamePhase
@@ -57,6 +58,9 @@ class WorkflowEngine(
     private val recruitInviteNode: RecruitInviteNode
     private val defeatNode: DefeatNode
     private val recoveryNode: RecoveryNode
+    private val personalBountyCenterNode: PersonalBountyCenterNode
+    private val personalBountyDetailNode: PersonalBountyDetailNode
+    private val personalBountyPublishNode: PersonalBountyPublishNode
 
     init {
         val nodeCtx = NodeContext(
@@ -76,6 +80,9 @@ class WorkflowEngine(
         recruitInviteNode = RecruitInviteNode(nodeCtx)
         defeatNode = DefeatNode(nodeCtx)
         recoveryNode = RecoveryNode(nodeCtx)
+        personalBountyCenterNode = PersonalBountyCenterNode(nodeCtx)
+        personalBountyDetailNode = PersonalBountyDetailNode(nodeCtx)
+        personalBountyPublishNode = PersonalBountyPublishNode(nodeCtx)
     }
 
     companion object {
@@ -88,9 +95,11 @@ class WorkflowEngine(
 
     suspend fun runLoop(
         configs: List<BountyConfig>,
+        personalBountyEnabled: Boolean = false,
+        personalConfigs: List<BountyConfig> = emptyList(),
         onProgress: ((Map<BountyGrade, Pair<Int, Int>>) -> Unit)? = null
     ): Boolean {
-        val ctx = buildContext(configs)
+        val ctx = buildContext(configs, personalBountyEnabled, personalConfigs)
         globalFailCount = 0
         emitProgress(ctx, onProgress)
 
@@ -118,6 +127,16 @@ class WorkflowEngine(
                     emitProgress(ctx, onProgress)
                     val pageEvent = phaseToEvent(nextPhase)
                     if (pageEvent != null) onPageEvent?.invoke(pageEvent)
+
+                    // ═══ 日常完成 → 自动切换到个人悬赏 ═══
+                    if (nextPhase == GamePhase.DONE && ctx.personalBountyEnabled && !ctx.personalBountyCompleted) {
+                        log("日常悬赏全部完成，切换到个人悬赏")
+                        ctx.businessLine = BusinessLine.PERSONAL
+                        ctx.activeGrades = ctx.personalActiveGrades
+                        ctx.currentPhase = GamePhase.PERSONAL_BOUNTY_CENTER
+                        emitProgress(ctx, onProgress)
+                        onPageEvent?.invoke("切换到个人悬赏")
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -156,6 +175,9 @@ class WorkflowEngine(
             GamePhase.DEFEAT -> defeatNode.execute(ctx)
             GamePhase.SETTLEMENT -> settlementNode.execute(ctx)
             GamePhase.RECOVERY -> recoveryNode.execute(ctx)
+            GamePhase.PERSONAL_BOUNTY_CENTER -> personalBountyCenterNode.execute(ctx)
+            GamePhase.PERSONAL_BOUNTY_DETAIL -> personalBountyDetailNode.execute(ctx)
+            GamePhase.PERSONAL_BOUNTY_PUBLISH -> personalBountyPublishNode.execute(ctx)
             GamePhase.DONE -> GamePhase.DONE
         }
     }
@@ -164,11 +186,14 @@ class WorkflowEngine(
         return when (phase) {
             GamePhase.LOBBY, GamePhase.IDLE -> "进入大厅"
             GamePhase.RECRUIT_LIST -> "进入招募列表"
-            GamePhase.BOUNTY_DETAIL, GamePhase.BOUNTY_DETAIL -> "队伍房间准备就绪"
+            GamePhase.BOUNTY_DETAIL -> "队伍房间准备就绪"
             GamePhase.BATTLE_LOADING -> "战斗加载"
             GamePhase.FIGHT -> "⚔ 战斗开始"
             GamePhase.SETTLEMENT -> "结算领奖"
             GamePhase.DONE -> "🎉 全部悬赏完成"
+            GamePhase.PERSONAL_BOUNTY_CENTER -> "进入个人悬赏中心"
+            GamePhase.PERSONAL_BOUNTY_DETAIL -> "个人悬赏详情"
+            GamePhase.PERSONAL_BOUNTY_PUBLISH -> "发布个人悬赏"
             else -> null
         }
     }
@@ -177,17 +202,22 @@ class WorkflowEngine(
     //  辅助方法
     // ══════════════════════════════════════════
 
-    private fun buildContext(configs: List<BountyConfig>): GameContext {
+    private fun buildContext(configs: List<BountyConfig>, personalBountyEnabled: Boolean = false, personalConfigs: List<BountyConfig> = emptyList()): GameContext {
         val enabled = configs.filter { it.enabled }
         val grades = enabled.map { it.grade }
         val chaseDreamGrades = enabled.filter { it.chaseDream }.map { it.grade }.toSet()
+        val personalEnabled = personalConfigs.filter { it.enabled }
+        val personalGrades = personalEnabled.map { it.grade }
         return GameContext(
             currentPhase = GamePhase.IDLE,
             activeGrades = grades,
             totalGrades = grades,
             runCounts = enabled.associate { it.grade to 0 }.toMutableMap(),
             targetRuns = enabled.associate { it.grade to it.targetRuns },
-            chaseDreamGrades = chaseDreamGrades
+            chaseDreamGrades = chaseDreamGrades,
+            personalBountyEnabled = personalBountyEnabled,
+            personalActiveGrades = personalGrades,
+            personalTargetRuns = personalEnabled.associate { it.grade to it.targetRuns }
         )
     }
 
