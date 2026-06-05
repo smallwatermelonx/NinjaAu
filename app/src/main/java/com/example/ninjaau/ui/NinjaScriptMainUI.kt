@@ -127,11 +127,22 @@ fun NinjaScriptMainUI() {
     var enabledElements by remember { mutableStateOf(setOf<TreasureElement>()) }
     var enabledGrades by remember { mutableStateOf(setOf<TreasureGrade>()) }
     var chaseDreamGrades by remember { mutableStateOf(setOf<TreasureGrade>()) }
-    var dailyEnabled by remember { mutableStateOf(bountyConfigs.any { it.enabled }) }
-    var personalEnabled by remember { mutableStateOf(personalConfigs.any { it.enabled }) }
-    var nsEnabled by remember { mutableStateOf(nsConfigs.any { it.enabled }) }
-    var treasureEnabled by remember { mutableStateOf(false) }
+
+    val savedBusiness = remember { BountyConfigStorage.loadBusinessEnabled(context) }
+    var dailyEnabled by remember { mutableStateOf(BountyConfigStorage.BUSINESS_DAILY in savedBusiness) }
+    var personalEnabled by remember { mutableStateOf(BountyConfigStorage.BUSINESS_PERSONAL in savedBusiness) }
+    var nsEnabled by remember { mutableStateOf(BountyConfigStorage.BUSINESS_NS in savedBusiness) }
+    var treasureEnabled by remember { mutableStateOf(BountyConfigStorage.BUSINESS_TREASURE in savedBusiness) }
     var inviteCheckEnabled by remember { mutableStateOf(GameManager.inviteCheckEnabled.value) }
+
+    fun saveBusinessEnabled() {
+        val set = mutableSetOf<String>()
+        if (dailyEnabled) set.add(BountyConfigStorage.BUSINESS_DAILY)
+        if (personalEnabled) set.add(BountyConfigStorage.BUSINESS_PERSONAL)
+        if (nsEnabled) set.add(BountyConfigStorage.BUSINESS_NS)
+        if (treasureEnabled) set.add(BountyConfigStorage.BUSINESS_TREASURE)
+        BountyConfigStorage.saveBusinessEnabled(context, set)
+    }
 
     val timeFormatter = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
     var logEntries by remember { mutableStateOf(listOf(System.currentTimeMillis() to "就绪，等待启动...")) }
@@ -180,7 +191,9 @@ fun NinjaScriptMainUI() {
             }
             else -> {
                 GameManager.updateBountyConfigs(bountyConfigs.filter { it.enabled })
+                GameManager.setDailyEnabled(dailyEnabled)
                 GameManager.setPersonalBountyEnabled(context, personalEnabled)
+                GameManager.setNsEnabled(nsEnabled)
                 if (personalEnabled) GameManager.updatePersonalBountyConfigs(personalConfigs.filter { it.enabled })
                 GameManager.setInviteCheckEnabled(context, inviteCheckEnabled)
                 addLog("🚀 启动脚本...")
@@ -261,6 +274,7 @@ fun NinjaScriptMainUI() {
                                 Column(modifier = Modifier.padding(vertical = 4.dp, horizontal = 2.dp)) {
                                     TaskRow("日常悬赏", dailyEnabled, onToggle = {
                                         dailyEnabled = !dailyEnabled
+                                        saveBusinessEnabled()
                                         if (dailyEnabled && bountyConfigs.none { it.enabled }) {
                                             bountyConfigs = bountyConfigs.map { it.copy(enabled = true) }
                                             GameManager.updateBountyConfigs(bountyConfigs)
@@ -271,14 +285,18 @@ fun NinjaScriptMainUI() {
                                     HorizontalDivider(color = Theme.Border, modifier = Modifier.padding(horizontal = 8.dp))
                                     TaskRow("个人悬赏", personalEnabled, onToggle = {
                                         personalEnabled = !personalEnabled
+                                        saveBusinessEnabled()
                                         GameManager.setPersonalBountyEnabled(context, personalEnabled)
                                     }, onGearClick = { configTarget = ConfigTarget.PERSONAL })
                                     HorizontalDivider(color = Theme.Border, modifier = Modifier.padding(horizontal = 8.dp))
-                                    TaskRow("逆袭悬赏", nsEnabled, onToggle = { nsEnabled = !nsEnabled },
-                                        onGearClick = { configTarget = ConfigTarget.NS })
+                                    TaskRow("逆袭悬赏", nsEnabled, onToggle = {
+                                        nsEnabled = !nsEnabled
+                                        saveBusinessEnabled()
+                                    }, onGearClick = { configTarget = ConfigTarget.NS })
                                     HorizontalDivider(color = Theme.Border, modifier = Modifier.padding(horizontal = 8.dp))
                                     TaskRow("藏宝图", treasureEnabled, onToggle = {
                                         treasureEnabled = !treasureEnabled
+                                        saveBusinessEnabled()
                                     }, onGearClick = { configTarget = ConfigTarget.TREASURE })
                                 }
                             }
@@ -293,14 +311,12 @@ fun NinjaScriptMainUI() {
                                         colors = when (scriptState) {
                                             ScriptState.IDLE -> listOf(Theme.Accent, Theme.AccentLight)
                                             ScriptState.RUNNING -> listOf(Theme.Danger, Color(0xFFFF7675))
-                                            ScriptState.PAUSED -> listOf(Theme.Success, Color(0xFF55EFC4))
                                         }
                                     ))
                                     .clickable {
                                         when (scriptState) {
                                             ScriptState.IDLE -> onStart()
-                                            ScriptState.RUNNING -> { GameManager.pauseScript(); addLog("⏸ 暂停") }
-                                            ScriptState.PAUSED -> { GameManager.resumeScript(context); addLog("▶ 恢复") }
+                                            ScriptState.RUNNING -> { GameManager.stopScript(); addLog("⏹ 停止") }
                                         }
                                     },
                                 contentAlignment = Alignment.Center
@@ -308,8 +324,7 @@ fun NinjaScriptMainUI() {
                                 Text(
                                     when (scriptState) {
                                         ScriptState.IDLE -> "Link Start!"
-                                        ScriptState.RUNNING -> "暂停"
-                                        ScriptState.PAUSED -> "继续"
+                                        ScriptState.RUNNING -> "停止"
                                     },
                                     fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White, letterSpacing = 1.sp
                                 )
@@ -338,8 +353,14 @@ fun NinjaScriptMainUI() {
                                     enabledGrades = enabledGrades,
                                     chaseDreamGrades = chaseDreamGrades,
                                     onBountyConfigsChanged = { configs ->
-                                        bountyConfigs = configs; dailyEnabled = configs.any { it.enabled }
-                                        GameManager.updateBountyConfigs(configs.filter { it.enabled })
+                                        bountyConfigs = configs
+                                        val enabledList = configs.filter { it.enabled }
+                                        dailyEnabled = enabledList.any { !it.grade.isEvent }
+                                        nsEnabled = enabledList.any { it.grade.isEvent }
+                                        saveBusinessEnabled()
+                                        GameManager.updateBountyConfigs(enabledList)
+                                        GameManager.setDailyEnabled(dailyEnabled)
+                                        GameManager.setNsEnabled(nsEnabled)
                                         BountyConfigStorage.save(context, configs)
                                     },
                                     onPersonalConfigsChanged = { configs ->
@@ -350,7 +371,10 @@ fun NinjaScriptMainUI() {
                                         BountyConfigStorage.savePersonal(context, configs)
                                     },
                                     onNsConfigsChanged = { configs ->
-                                        nsConfigs = configs; nsEnabled = configs.any { it.enabled }
+                                        nsConfigs = configs
+                                        nsEnabled = configs.any { it.enabled }
+                                        saveBusinessEnabled()
+                                        GameManager.setNsEnabled(nsEnabled)
                                         BountyConfigStorage.saveNs(context, configs)
                                     },
                                     onEnabledElementsChanged = { enabledElements = it },

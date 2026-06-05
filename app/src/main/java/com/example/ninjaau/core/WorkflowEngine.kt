@@ -60,7 +60,6 @@ class WorkflowEngine(
     private val recoveryNode: RecoveryNode
     private val personalBountyCenterNode: PersonalBountyCenterNode
     private val personalBountyDetailNode: PersonalBountyDetailNode
-    private val personalBountyPublishNode: PersonalBountyPublishNode
 
     init {
         val nodeCtx = NodeContext(
@@ -82,7 +81,6 @@ class WorkflowEngine(
         recoveryNode = RecoveryNode(nodeCtx)
         personalBountyCenterNode = PersonalBountyCenterNode(nodeCtx)
         personalBountyDetailNode = PersonalBountyDetailNode(nodeCtx)
-        personalBountyPublishNode = PersonalBountyPublishNode(nodeCtx)
     }
 
     companion object {
@@ -95,13 +93,17 @@ class WorkflowEngine(
 
     suspend fun runLoop(
         configs: List<BountyConfig>,
+        dailyEnabled: Boolean = true,
         personalBountyEnabled: Boolean = false,
         personalConfigs: List<BountyConfig> = emptyList(),
+        nsEnabled: Boolean = false,
         onProgress: ((Map<BountyGrade, Pair<Int, Int>>) -> Unit)? = null
     ): Boolean {
-        val ctx = buildContext(configs, personalBountyEnabled, personalConfigs)
+        val ctx = buildContext(configs, dailyEnabled, personalBountyEnabled, personalConfigs, nsEnabled)
         globalFailCount = 0
         emitProgress(ctx, onProgress)
+
+        log("业务线: 日常=${ctx.dailyEnabled}, 个人=${ctx.personalBountyEnabled}, 逆袭=${ctx.nsEnabled}")
 
         while (coroutineContext.isActive &&
             ctx.currentPhase != GamePhase.DONE &&
@@ -128,14 +130,13 @@ class WorkflowEngine(
                     val pageEvent = phaseToEvent(nextPhase)
                     if (pageEvent != null) onPageEvent?.invoke(pageEvent)
 
-                    // ═══ 日常完成 → 自动切换到个人悬赏 ═══
-                    if (nextPhase == GamePhase.DONE && ctx.personalBountyEnabled && !ctx.personalBountyCompleted) {
-                        log("日常悬赏全部完成，切换到个人悬赏")
-                        ctx.businessLine = BusinessLine.PERSONAL
-                        ctx.activeGrades = ctx.personalActiveGrades
-                        ctx.currentPhase = GamePhase.PERSONAL_BOUNTY_CENTER
-                        emitProgress(ctx, onProgress)
-                        onPageEvent?.invoke("切换到个人悬赏")
+                    // ═══ 当前业务线完成 → 切换到下一个 ═══
+                    if (nextPhase == GamePhase.DONE) {
+                        val next = switchToNextBusinessLine(ctx)
+                        if (next != null) {
+                            ctx.currentPhase = next
+                            emitProgress(ctx, onProgress)
+                        }
                     }
                 }
             } catch (e: CancellationException) {
@@ -149,7 +150,7 @@ class WorkflowEngine(
             }
         }
 
-        val allDone = ctx.allCompleted
+        val allDone = isAllBusinessLinesDone(ctx)
         if (globalFailCount >= MAX_GLOBAL_FAIL) {
             val msg = "整体判定3次失败，脚本停止"
             log(msg)
@@ -158,6 +159,55 @@ class WorkflowEngine(
         }
         LogUtil.i(TAG, "流水线结束: allCompleted=$allDone, globalFailCount=$globalFailCount")
         return allDone
+    }
+
+    /**
+     * 当前业务线完成后，切换到下一个启用的业务线。
+     * @return 下一个阶段，或 null 表示全部完成
+     */
+    private fun switchToNextBusinessLine(ctx: GameContext): GamePhase? {
+        when (ctx.businessLine) {
+            BusinessLine.DAILY -> {
+                // 日常完成 → 切换到个人悬赏
+                if (ctx.personalBountyEnabled && ctx.personalActiveGrades.isNotEmpty()) {
+                    log("日常悬赏完成，切换到个人悬赏")
+                    ctx.businessLine = BusinessLine.PERSONAL
+                    ctx.activeGrades = ctx.personalActiveGrades
+                    ctx.currentPhase = GamePhase.PERSONAL_BOUNTY_CENTER
+                    onPageEvent?.invoke("切换到个人悬赏")
+                    return GamePhase.PERSONAL_BOUNTY_CENTER
+                }
+                // 个人未启用或无等级 → 尝试逆袭
+                return trySwitchToNS(ctx, "日常悬赏完成")
+            }
+            BusinessLine.PERSONAL -> {
+                return trySwitchToNS(ctx, "个人悬赏完成")
+            }
+        }
+        return GamePhase.DONE
+    }
+
+    /** 尝试切换到逆袭悬赏（逆袭复用日常流程） */
+    private fun trySwitchToNS(ctx: GameContext, reason: String): GamePhase? {
+        if (ctx.nsEnabled && ctx.nsActiveGrades.isNotEmpty()) {
+            log("$reason，切换到逆袭悬赏")
+            ctx.businessLine = BusinessLine.DAILY
+            ctx.activeGrades = ctx.nsActiveGrades
+            ctx.currentPhase = GamePhase.IDLE
+            onPageEvent?.invoke("切换到逆袭悬赏")
+            return GamePhase.IDLE
+        }
+        log("所有业务线已完成")
+        return GamePhase.DONE
+    }
+
+    /** 检查所有启用的业务线是否都已完成 */
+    private fun isAllBusinessLinesDone(ctx: GameContext): Boolean {
+        // switchToNextBusinessLine 返回 null 表示全部完成
+        // 这里做二次校验：当前业务线的 activeGrades 是否清空 + 个人是否完成
+        if (ctx.businessLine == BusinessLine.DAILY && ctx.activeGrades.isNotEmpty()) return false
+        if (ctx.personalBountyEnabled && !ctx.personalBountyCompleted) return false
+        return true
     }
 
     // ══════════════════════════════════════════
@@ -177,7 +227,6 @@ class WorkflowEngine(
             GamePhase.RECOVERY -> recoveryNode.execute(ctx)
             GamePhase.PERSONAL_BOUNTY_CENTER -> personalBountyCenterNode.execute(ctx)
             GamePhase.PERSONAL_BOUNTY_DETAIL -> personalBountyDetailNode.execute(ctx)
-            GamePhase.PERSONAL_BOUNTY_PUBLISH -> personalBountyPublishNode.execute(ctx)
             GamePhase.DONE -> GamePhase.DONE
         }
     }
@@ -193,7 +242,6 @@ class WorkflowEngine(
             GamePhase.DONE -> "🎉 全部悬赏完成"
             GamePhase.PERSONAL_BOUNTY_CENTER -> "进入个人悬赏中心"
             GamePhase.PERSONAL_BOUNTY_DETAIL -> "个人悬赏详情"
-            GamePhase.PERSONAL_BOUNTY_PUBLISH -> "发布个人悬赏"
             else -> null
         }
     }
@@ -202,29 +250,72 @@ class WorkflowEngine(
     //  辅助方法
     // ══════════════════════════════════════════
 
-    private fun buildContext(configs: List<BountyConfig>, personalBountyEnabled: Boolean = false, personalConfigs: List<BountyConfig> = emptyList()): GameContext {
+    private fun buildContext(
+        configs: List<BountyConfig>,
+        dailyEnabled: Boolean = true,
+        personalBountyEnabled: Boolean = false,
+        personalConfigs: List<BountyConfig> = emptyList(),
+        nsEnabled: Boolean = false
+    ): GameContext {
         val enabled = configs.filter { it.enabled }
-        val grades = enabled.map { it.grade }
+        val (dailyConfigs, nsConfigs) = enabled.partition { !it.grade.isEvent }
+        val dailyGrades = if (dailyEnabled) dailyConfigs.map { it.grade } else emptyList()
+        val nsGrades = if (nsEnabled) nsConfigs.map { it.grade } else emptyList()
         val chaseDreamGrades = enabled.filter { it.chaseDream }.map { it.grade }.toSet()
         val personalEnabled = personalConfigs.filter { it.enabled }
         val personalGrades = personalEnabled.map { it.grade }
+
+        // 按优先级确定起始业务线
+        val startBusinessLine: BusinessLine
+        val startGrades: List<BountyGrade>
+        val startPhase: GamePhase
+
+        when {
+            dailyGrades.isNotEmpty() -> {
+                startBusinessLine = BusinessLine.DAILY
+                startGrades = dailyGrades
+                startPhase = GamePhase.IDLE
+            }
+            personalBountyEnabled && personalGrades.isNotEmpty() -> {
+                startBusinessLine = BusinessLine.PERSONAL
+                startGrades = personalGrades
+                startPhase = GamePhase.PERSONAL_BOUNTY_CENTER
+            }
+            nsGrades.isNotEmpty() -> {
+                startBusinessLine = BusinessLine.DAILY
+                startGrades = nsGrades
+                startPhase = GamePhase.IDLE
+            }
+            else -> {
+                startBusinessLine = BusinessLine.DAILY
+                startGrades = emptyList()
+                startPhase = GamePhase.DONE
+            }
+        }
+
         return GameContext(
-            currentPhase = GamePhase.IDLE,
-            activeGrades = grades,
-            totalGrades = grades,
-            runCounts = enabled.associate { it.grade to 0 }.toMutableMap(),
+            currentPhase = startPhase,
+            activeGrades = startGrades,
+            totalGrades = dailyGrades + personalGrades + nsGrades,
+            runCounts = (dailyGrades + nsGrades).associate { it to 0 }.toMutableMap(),
             targetRuns = enabled.associate { it.grade to it.targetRuns },
             chaseDreamGrades = chaseDreamGrades,
             personalBountyEnabled = personalBountyEnabled,
             personalActiveGrades = personalGrades,
-            personalTargetRuns = personalEnabled.associate { it.grade to it.targetRuns }
+            personalTargetRuns = personalEnabled.associate { it.grade to it.targetRuns },
+            businessLine = startBusinessLine,
+            dailyEnabled = dailyGrades.isNotEmpty(),
+            nsEnabled = nsGrades.isNotEmpty(),
+            nsActiveGrades = nsGrades
         )
     }
 
     private fun emitProgress(ctx: GameContext, onProgress: ((Map<BountyGrade, Pair<Int, Int>>) -> Unit)?) {
         if (onProgress == null) return
-        // 使用 totalGrades（含已完成）确保悬浮窗始终显示所有等级进度
-        val progress = ctx.totalGrades.associateWith { grade ->
+        // 当前业务线的等级进度
+        val activeList = if (ctx.businessLine == BusinessLine.PERSONAL) ctx.personalActiveGrades else ctx.activeGrades
+        val allGrades = ctx.totalGrades.ifEmpty { activeList }
+        val progress = allGrades.associateWith { grade ->
             Pair(ctx.runCounts[grade] ?: 0, ctx.targetRuns[grade] ?: grade.defaultRuns)
         }
         onProgress(progress)

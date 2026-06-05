@@ -138,9 +138,9 @@ class FightNode(private val ctx: NodeContext) : GameNode {
                     }
                 }
 
-                // ── 大招（左侧 1/4 ROI） ──
+                // ── 大招（左侧 1/3 ROI） ──
                 if (ultimateCount < MAX_SKILL_ATTEMPTS) {
-                    ultMat = this.ctx.detector.cropLeftQuarter(screenMat)
+                    ultMat = this.ctx.detector.cropLeftThird(screenMat)
                     val ultCoord = this.ctx.detector.matchTemplateMat(ultMat, ScreenState.ULTIMATE_SKILL)
                     if (ultCoord != null) {
                         this.ctx.click(ultCoord)

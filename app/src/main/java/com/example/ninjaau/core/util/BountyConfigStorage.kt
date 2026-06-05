@@ -14,6 +14,26 @@ object BountyConfigStorage {
     private const val KEY_CHASE_DREAM = "chase_dream_grades"
     private const val KEY_PERSONAL_ENABLED_GRADES = "personal_enabled_grades"
     private const val KEY_NS_ENABLED_GRADES = "ns_enabled_grades"
+    private const val KEY_BUSINESS_ENABLED = "business_enabled"
+
+    const val BUSINESS_DAILY = "daily"
+    const val BUSINESS_PERSONAL = "personal"
+    const val BUSINESS_NS = "ns"
+    const val BUSINESS_TREASURE = "treasure"
+
+    /** 加载首页业务线勾选状态，默认仅日常悬赏勾选 */
+    fun loadBusinessEnabled(context: Context): Set<String> {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val saved = prefs.getString(KEY_BUSINESS_ENABLED, null)
+        if (saved == null) return setOf(BUSINESS_DAILY)
+        return saved.split(",").filter { it.isNotEmpty() }.toSet()
+    }
+
+    /** 保存首页业务线勾选状态 */
+    fun saveBusinessEnabled(context: Context, enabled: Set<String>) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_BUSINESS_ENABLED, enabled.joinToString(",")).apply()
+    }
 
     fun load(context: Context): List<BountyConfig> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

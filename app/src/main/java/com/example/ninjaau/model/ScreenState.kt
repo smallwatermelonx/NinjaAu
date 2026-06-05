@@ -52,7 +52,14 @@ enum class ScreenState(val description: String) {
     UNKNOWN("未知界面"),
 
     // === 个人悬赏 ===
-    PERSONAL_BOUNTY_CENTER_SCREEN("个人悬赏中心页面"),
+    /** 大厅中的个人悬赏入口图标 */
+    PERSONAL_BOUNTY_ENTRY("个人悬赏入口"),
+    /** 个人悬赏列表页面标识 */
+    PERSONAL_BOUNTY_LIST_SCREEN("个人悬赏列表页面"),
+    /** 个人悬赏详情页面标识 */
     PERSONAL_BOUNTY_DETAIL_SCREEN("个人悬赏详情页面"),
-    PERSONAL_BOUNTY_PUBLISH_BTN("悬赏发布按钮");
+    /** 个人悬赏详情 — 发送消息按钮 */
+    PERSONAL_BOUNTY_SEND_MSG("发送消息按钮"),
+    /** 个人悬赏详情 — 出发按钮 */
+    PERSONAL_BOUNTY_GO("出发按钮");
 }

@@ -98,7 +98,7 @@ class BountyListNode(private val ctx: NodeContext) : GameNode {
                 val tRange = System.currentTimeMillis()
 
                 // ═══ ② 等级匹配 → 偏移点击（左侧 1/4 ROI，起点(0,0)无ROI偏移） ═══
-                gradeMat = this.ctx.detector.cropLeftQuarter(screenMat)
+                gradeMat = this.ctx.detector.cropLeftThird(screenMat)
                 val match = this.ctx.detector.matchAnyGradeMat(gradeMat, remaining)
                 if (match != null) {
                     val (grade, coord) = match

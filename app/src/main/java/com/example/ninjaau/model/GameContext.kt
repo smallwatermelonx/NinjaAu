@@ -24,9 +24,14 @@ data class GameContext(
     val chaseDreamGrades: Set<BountyGrade> = emptySet(),
     /** 总轮次计数 */
     var totalCycles: Int = 0,
-    // ═══ 个人悬赏相关 ═══
+    // ═══ 业务线控制 ═══
     /** 当前业务线 */
     var businessLine: BusinessLine = BusinessLine.DAILY,
+    /** 日常悬赏是否有勾选等级 */
+    var dailyEnabled: Boolean = false,
+    /** 逆袭悬赏是否启用 */
+    var nsEnabled: Boolean = false,
+    // ═══ 个人悬赏相关 ═══
     /** 个人悬赏是否启用 */
     var personalBountyEnabled: Boolean = false,
     /** 个人悬赏是否全部完成 */
@@ -34,7 +39,9 @@ data class GameContext(
     /** 个人悬赏用户勾选的等级列表 */
     var personalActiveGrades: List<BountyGrade> = emptyList(),
     /** 个人悬赏各等级目标次数 */
-    val personalTargetRuns: Map<BountyGrade, Int> = emptyMap()
+    val personalTargetRuns: Map<BountyGrade, Int> = emptyMap(),
+    /** 逆袭悬赏用户勾选的等级列表（从 dailyEnabled configs 中筛选 isEvent） */
+    var nsActiveGrades: List<BountyGrade> = emptyList()
 ) {
     /** 是否所有可完成的悬赏都已完成（追梦等级不参与判定，脚本持续运行） */
     val allCompleted: Boolean
@@ -68,10 +75,8 @@ enum class GamePhase {
     RECOVERY,
     DONE,
     // ═══ 个人悬赏 ═══
-    /** 个人悬赏中心 */
+    /** 个人悬赏中心/列表 */
     PERSONAL_BOUNTY_CENTER,
     /** 个人悬赏详情 */
-    PERSONAL_BOUNTY_DETAIL,
-    /** 悬赏发布 */
-    PERSONAL_BOUNTY_PUBLISH
+    PERSONAL_BOUNTY_DETAIL
 }

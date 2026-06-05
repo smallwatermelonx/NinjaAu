@@ -65,6 +65,15 @@ class SettlementNode(private val ctx: NodeContext) : GameNode {
                     break
                 }
 
+                // 个人悬赏结算后可能回到个人悬赏列表页面
+                if (ctx.businessLine == BusinessLine.PERSONAL) {
+                    val listScreen = this.ctx.detector.matchTemplate(screen, ScreenState.PERSONAL_BOUNTY_LIST_SCREEN)
+                    if (listScreen != null) {
+                        this.ctx.log("已回到个人悬赏列表")
+                        break
+                    }
+                }
+
                 // 无匹配 → 超时检测
                 checkNodeTimeout(lastMatchMs)
             } finally {

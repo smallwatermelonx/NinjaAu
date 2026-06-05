@@ -21,8 +21,7 @@ import kotlinx.coroutines.launch
 
 enum class ScriptState {
     IDLE,
-    RUNNING,
-    PAUSED
+    RUNNING
 }
 
 object GameManager {
@@ -55,6 +54,22 @@ object GameManager {
     /** 个人悬赏开关（默认关闭，UI 可配置） */
     private val _personalBountyEnabled = MutableStateFlow(false)
     val personalBountyEnabled: StateFlow<Boolean> = _personalBountyEnabled
+
+    /** 逆袭悬赏开关（默认关闭，UI 可配置） */
+    private val _nsEnabled = MutableStateFlow(false)
+    val nsEnabled: StateFlow<Boolean> = _nsEnabled
+
+    /** 日常悬赏开关（默认开启，UI 可配置） */
+    private val _dailyEnabled = MutableStateFlow(true)
+    val dailyEnabled: StateFlow<Boolean> = _dailyEnabled
+
+    fun setDailyEnabled(enabled: Boolean) {
+        _dailyEnabled.value = enabled
+    }
+
+    fun setNsEnabled(enabled: Boolean) {
+        _nsEnabled.value = enabled
+    }
 
     private const val PREFS_NAME = "script_prefs"
     private const val KEY_INVITE_CHECK = "invite_check_enabled"
@@ -106,8 +121,7 @@ object GameManager {
     fun toggleScript(context: Context) {
         when (_state.value) {
             ScriptState.IDLE -> startScript(context)
-            ScriptState.RUNNING -> pauseScript()
-            ScriptState.PAUSED -> resumeScript(context)
+            ScriptState.RUNNING -> stopScript()
         }
     }
 
@@ -148,8 +162,10 @@ object GameManager {
                     onPageEvent = { event -> _pageEvents.tryEmit(event) }
                 ).runLoop(
                     selectedBounties,
+                    dailyEnabled = _dailyEnabled.value,
                     personalBountyEnabled = _personalBountyEnabled.value,
                     personalConfigs = selectedPersonalBounties,
+                    nsEnabled = _nsEnabled.value,
                     onProgress = { progress -> _bountyProgress.value = progress }
                 )
             } catch (e: CancellationException) {
@@ -161,52 +177,11 @@ object GameManager {
         }
     }
 
-    fun pauseScript() {
-        if (_state.value != ScriptState.RUNNING) return
-        postLog("⏸ 脚本已暂停")
-        mainJob?.cancel(CancellationException("脚本暂停"))
-        mainJob = null
-        _state.value = ScriptState.PAUSED
-        PermissionManager.pauseMediaProjection()
-    }
-
-    fun resumeScript(context: Context) {
-        if (_state.value != ScriptState.PAUSED) return
-        if (PermissionManager.resumeMediaProjection(context)) {
-            postLog("▶ 脚本已恢复")
-            _state.value = ScriptState.RUNNING
-            val appContext = context.applicationContext
-            mainJob = scope.launch {
-                try {
-                    WorkflowEngine(
-                        appContext,
-                        postLog = { msg -> postLog(msg) },
-                        onPageEvent = { event -> _pageEvents.tryEmit(event) }
-                    ).runLoop(
-                        selectedBounties,
-                        personalBountyEnabled = _personalBountyEnabled.value,
-                        personalConfigs = selectedPersonalBounties,
-                        onProgress = { progress -> _bountyProgress.value = progress }
-                    )
-                } catch (e: CancellationException) {
-                    postLog("脚本已取消")
-                } catch (e: Exception) {
-                    postLog("❌ 脚本异常: ${e.message}")
-                }
-                _state.value = ScriptState.IDLE
-            }
-        } else {
-            postLog("❌ 截图权限失效")
-            Toast.makeText(context, "截图权限失效，请重新启动悬浮窗", Toast.LENGTH_SHORT).show()
-            _state.value = ScriptState.IDLE
-        }
-    }
-
     fun stopScript() {
+        if (_state.value == ScriptState.IDLE) return
         postLog("⏹ 停止脚本")
         mainJob?.cancel()
         mainJob = null
-        PermissionManager.releaseMediaProjection()
         _state.value = ScriptState.IDLE
     }
 }

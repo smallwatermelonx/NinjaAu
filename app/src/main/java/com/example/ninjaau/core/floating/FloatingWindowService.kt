@@ -190,10 +190,6 @@ class FloatingWindowService : Service() {
                         showHud()
                         updatePanelVisibility()
                     }
-                    ScriptState.PAUSED -> {
-                        ivControlIcon.setImageResource(android.R.drawable.ic_media_play)
-                        showHud()
-                    }
                     ScriptState.IDLE -> {
                         ivControlIcon.setImageResource(android.R.drawable.ic_media_play)
                         hideHud()
@@ -1023,6 +1019,5 @@ class FloatingWindowService : Service() {
         removeAllViews()
         stopForeground(STOP_FOREGROUND_REMOVE)
         PermissionManager.releaseMediaProjection()
-        ScreenCapture.release()
     }
 }

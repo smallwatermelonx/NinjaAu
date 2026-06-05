@@ -34,12 +34,15 @@ enum class BountyGrade(
     val templateName: String,
     val priority: Int,
     val level: Int,
-    val group: GradeGroup
+    val group: GradeGroup,
+    /** 该等级可能出现的多个级别（SS+ 有 105~130 六种） */
+    val levelVariants: List<Int> = emptyList()
 ) {
     NSS_PLUS("nss_plus", "NSS+", 1, "nss_plus.png", 12, 125, GradeGroup.NSS_PLUS),
     NS("ns", "NS", 5, "ns.png", 13, 125, GradeGroup.NS),
     NA("na", "NA", 2, "na.png", 14, 125, GradeGroup.NA),
-    SS_PLUS("ss_plus", "SS+", 1, "ss_plus.png", 0, 125, GradeGroup.SS_PLUS),
+    SS_PLUS("ss_plus", "SS+", 1, "ss_plus.png", 0, 125, GradeGroup.SS_PLUS,
+        levelVariants = listOf(105, 110, 115, 120, 125, 130)),
     SS("ss", "SS", 1, "ss.png", 1, 100, GradeGroup.SS),
     S_PLUS("s_plus", "S+", 5, "s_plus.png", 2, 90, GradeGroup.S_GROUP),
     S("s", "S", 5, "s.png", 3, 90, GradeGroup.S_GROUP),
@@ -53,14 +56,27 @@ enum class BountyGrade(
     fun gradeIconPath() = "templates/bounty_list/${displayName}.png"
 
     /** 队伍房间中建议等级图标的路径（lv30 / lv40 / lv60 / lv80 / lv90 / lv125 等） */
-    fun levelIconPath(): String? = when (level) {
+    fun levelIconPath(): String? = levelToPath(level)
+
+    /** 所有可能的等级图标路径（含多级别变体） */
+    fun levelIconPaths(): List<String> {
+        val levels = if (levelVariants.isNotEmpty()) levelVariants else listOf(level)
+        return levels.mapNotNull { levelToPath(it) }
+    }
+
+    private fun levelToPath(lv: Int): String? = when (lv) {
         30 -> "templates/team_room/lv30.png"
         40 -> "templates/team_room/lv40.png"
         60 -> "templates/team_room/lv60.png"
         80 -> "templates/team_room/lv80.png"
         90 -> "templates/team_room/lv90.png"
         100 -> "templates/team_room/lv100.png"
+        105 -> "templates/team_room/lv105.png"
+        110 -> "templates/team_room/lv110.png"
+        115 -> "templates/team_room/lv115.png"
+        120 -> "templates/team_room/lv120.png"
         125 -> "templates/team_room/lv125.png"
+        130 -> "templates/team_room/lv130.png"
         else -> null
     }
 

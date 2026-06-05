@@ -58,22 +58,6 @@ object PermissionManager {
         }
     }
 
-    // 暂停时调用：仅置空但不释放（保留权限）
-    fun pauseMediaProjection() {
-        synchronized(lock) {
-            _mediaProjection = null
-            isProjectionLost = false
-            LogUtil.i("PermissionManager", "MediaProjection暂停（未释放权限）")
-        }
-    }
-
-    // 恢复时重新初始化（复用权限）
-    fun resumeMediaProjection(context: Context): Boolean {
-        synchronized(lock) {
-            return initMediaProjection(context)
-        }
-    }
-
     /**
      * 判断是否有有效的截图授权数据
      * 仅检查内存中的数据，不读 SharedPreferences

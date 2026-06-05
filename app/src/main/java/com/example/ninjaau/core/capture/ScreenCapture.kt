@@ -23,6 +23,7 @@ class ScreenCapture private constructor(context: Context) {
 
     @Volatile
     private var isInitialized = false
+    private var currentProjection: MediaProjection? = null
     private val initLock = Any()
 
     init {
@@ -32,7 +33,6 @@ class ScreenCapture private constructor(context: Context) {
         screenWidth = metrics.widthPixels
         screenHeight = metrics.heightPixels
         densityDpi = metrics.densityDpi
-        tryInit()
     }
 
     companion object {
@@ -44,26 +44,37 @@ class ScreenCapture private constructor(context: Context) {
                 INSTANCE ?: ScreenCapture(context.applicationContext).also { INSTANCE = it }
             }
         }
-
-        fun release() {
-            synchronized(this) {
-                INSTANCE?.releaseResources()
-                INSTANCE = null
-                LogUtil.i("ScreenCapture", "截图资源已释放")
-            }
-        }
     }
 
-    /** 每次调用 capture 前自动尝试初始化，解决一次性失败的问题 */
-    private fun tryInit() {
+    /**
+     * 确保截图资源就绪。
+     * 每次 capture() 前自动调用，检测投影变化并重建资源。
+     */
+    private fun ensureReady(): Boolean {
+        // 快速路径：已初始化且投影未变，跳过锁
+        if (isInitialized && PermissionManager.mediaProjection === currentProjection) return true
         synchronized(initLock) {
-            if (isInitialized) return
-
             val mp = PermissionManager.mediaProjection
+
+            // 投影不存在 → 释放旧资源，等待
             if (mp == null) {
-                LogUtil.w("ScreenCapture", "MediaProjection 未就绪，等待下次重试")
-                return
+                if (isInitialized) {
+                    LogUtil.w("ScreenCapture", "MediaProjection 已失效，释放资源")
+                    releaseResources()
+                }
+                return false
             }
+
+            // 投影对象变了（stop→restart） → 释放旧资源，重建
+            if (isInitialized && mp !== currentProjection) {
+                LogUtil.i("ScreenCapture", "MediaProjection 已更换，重新初始化")
+                releaseResources()
+            }
+
+            if (isInitialized) return true
+
+            // 初始化
+            currentProjection = mp
             try {
                 imageReader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 2)
                 virtualDisplay = mp.createVirtualDisplay(
@@ -73,29 +84,26 @@ class ScreenCapture private constructor(context: Context) {
                 )
                 isInitialized = true
                 LogUtil.i("ScreenCapture", "截图资源初始化成功")
+                return true
             } catch (e: Exception) {
                 LogUtil.e("ScreenCapture", "初始化截图资源失败: ${e.message}", e)
                 releaseResources()
+                return false
             }
         }
     }
 
     private fun releaseResources() {
-        synchronized(initLock) {
-            virtualDisplay?.release()
-            imageReader?.close()
-            virtualDisplay = null
-            imageReader = null
-            isInitialized = false
-        }
+        virtualDisplay?.release()
+        imageReader?.close()
+        virtualDisplay = null
+        imageReader = null
+        isInitialized = false
+        currentProjection = null
     }
 
     fun capture(): Bitmap? {
-        tryInit() // 每次截图前自动重试初始化，解决首次失败后永不恢复的问题
-        if (!isInitialized || imageReader == null) {
-            LogUtil.w("ScreenCapture", "截图资源未初始化，跳过本次截图")
-            return null
-        }
+        if (!ensureReady()) return null
         return try {
             val image = imageReader!!.acquireLatestImage() ?: return null
             val bitmap = imageToBitmap(image)

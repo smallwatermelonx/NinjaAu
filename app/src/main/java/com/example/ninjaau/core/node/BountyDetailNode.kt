@@ -73,9 +73,10 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                         }
                     }
 
-                    val levelMatch = this.ctx.detector.matchAnyLevelIcon(screen, ctx.activeGrades)
+                    val levelMatch = this.ctx.detector.matchAnyLevelIcon(screen, ctx.activeGrades, topFraction = 0.125f)
                     if (levelMatch != null) {
-                        val (limitGrade, _) = levelMatch
+                        val limitGrade = levelMatch.grade
+                        this.ctx.log("上限检测等级匹配相似度: ${String.format("%.3f", levelMatch.similarity)}")
                         val group = limitGrade.group
                         for (member in group.members()) {
                             ctx.runCounts[member] = group.defaultRuns
@@ -83,7 +84,7 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                         ctx.activeGrades = ctx.activeGrades.filter { it.group != group }
                         this.ctx.log("${group.name}已达今日上限，标记为完成")
                     } else {
-                        this.ctx.log("已达上限，但无法识别等级，使用 currentBounty 兜底")
+                        this.ctx.log("已达上限，等级匹配失败(activeGrades=${ctx.activeGrades.joinToString { it.displayName }})，使用 currentBounty 兜底")
                         val fallbackGroup = ctx.currentBounty?.group
                         if (fallbackGroup != null) {
                             for (member in fallbackGroup.members()) {
@@ -103,15 +104,16 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                 if (battleWaitStart == 0L) {
                     val readyCoord = this.ctx.detector.matchTemplate(screen, ScreenState.READY_BUTTON)
                     if (readyCoord != null) {
-                        val levelMatch = this.ctx.detector.matchAnyLevelIcon(screen, ctx.activeGrades)
+                        val levelMatch = this.ctx.detector.matchAnyLevelIcon(screen, ctx.activeGrades, topFraction = 0.125f)
                         if (levelMatch == null) {
-                            this.ctx.log("⚠ 等级识别失败，队伍级别不在勾选范围内，退出队伍")
+                            this.ctx.log("⚠ 等级识别失败(activeGrades=${ctx.activeGrades.joinToString { it.displayName }})，队伍级别不在勾选范围内，退出队伍")
                             exitTeam()
                             ctx.currentBounty = null
                             ctx.actualGrade = null
                             return GamePhase.LOBBY
                         }
-                        val (actualGrade, _) = levelMatch
+                        val actualGrade = levelMatch.grade
+                        this.ctx.log("等级匹配相似度: ${String.format("%.3f", levelMatch.similarity)}")
                         ctx.actualGrade = actualGrade
                         this.ctx.log("等级匹配 ${actualGrade.displayName} (lv${actualGrade.level})，点击准备")
                         this.ctx.click(readyCoord)
