@@ -249,8 +249,8 @@ class SceneDetector(private val context: Context) {
         ScreenState.LV_ICON to TemplateEntry("templates/fight/lv.png"),
         ScreenState.JUMP_BUTTON to TemplateEntry("templates/fight/jump.png"),
         ScreenState.SCROLL_UP to TemplateEntry("templates/fight/scroll_up.png"),
-        ScreenState.ULTIMATE_SKILL to TemplateEntry("templates/fight/shihara/r_shihara.png", 0.6f),
-        ScreenState.WEAPON_SKILL to TemplateEntry("templates/fight/wopen_shedao.png", 0.6f),
+        ScreenState.ULTIMATE_SKILL to TemplateEntry("templates/fight/role/shihara/r_shihara.png", 0.6f),
+        ScreenState.WEAPON_SKILL to TemplateEntry("templates/fight/wopen/shedao.png", 0.6f),
         ScreenState.DEFEAT_POPUP to TemplateEntry("templates/fight/defeat_popup.png", 0.6f),
         // ── 结算 ──
         ScreenState.SETTLEMENT_POPUP to TemplateEntry("templates/settlement/black.png", 0.7f),
@@ -318,7 +318,10 @@ class SceneDetector(private val context: Context) {
     // ── Mat 预转换方法（避免重复 Bitmap→Mat） ──
 
     /** 将 screen Bitmap 转为 Mat，调用方用完需 release */
-    fun screenToMat(screen: Bitmap): Mat = OpenCVUtil.bitmapToMat(screen)
+    fun screenToMat(screen: Bitmap): Mat {
+        OpenCVUtil.initOpenCV()
+        return OpenCVUtil.bitmapToMat(screen)
+    }
 
     /** 裁剪 Mat 左下角 1/3 区域（超出范围标识所在区域），调用方用完需 release */
     fun cropBottomLeft(mat: Mat): Mat {
@@ -339,6 +342,18 @@ class SceneDetector(private val context: Context) {
         val h = mat.rows() / 3
         val y = mat.rows() - h
         return Mat(mat, org.opencv.core.Rect(0, y, mat.cols(), h))
+    }
+
+    /** 裁剪 Mat 左侧 1/10 区域（聊天按钮所在区域），高度不动，调用方用完需 release */
+    fun cropLeftTenth(mat: Mat): Mat {
+        val w = mat.cols() / 10
+        return Mat(mat, org.opencv.core.Rect(0, 0, w, mat.rows()))
+    }
+
+    /** 裁剪 Mat 上方 1/10 区域（招募页签所在区域），全宽，调用方用完需 release */
+    fun cropTopTenth(mat: Mat): Mat {
+        val h = mat.rows() / 10
+        return Mat(mat, org.opencv.core.Rect(0, 0, mat.cols(), h))
     }
 
     /** 裁剪 Mat 左上角指定比例区域（Lv等级标识所在区域），调用方用完需 release */
