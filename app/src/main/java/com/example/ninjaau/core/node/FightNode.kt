@@ -13,11 +13,11 @@ import kotlinx.coroutines.isActive
  * 战斗节点 — 下滑 → Boss战 → 结算。
  *
  * 流程：
- * ① 下滑阶段（500ms间隔）：识别下滑按钮并点击，
+ * ① 下滑阶段（500ms间隔）：左下1/4识别下滑按钮并点击，
  *    连续3次无匹配 → Boss阶段
- * ② Boss检测（300ms间隔）：识别Lv图标判定Boss出现
- * ③ Boss战斗（1000ms间隔）：跳跃/大招(5次)/武器(1次)，
- *    连续3次无跳跃 → 阵亡检测 TODO → 结算节点
+ * ② Boss检测（100ms间隔）：左上1/8识别Lv图标判定Boss出现
+ * ③ Boss战斗（1000ms间隔）：跳跃(右下1/4)/大招(左1/6,记住坐标连点10次)/武器(下方1/4,记住坐标连点10次)，
+ *    连续3次无跳跃 → 结算节点
  * ④ 30秒无匹配 → 抛 NodeTimeoutException 回到主流程
  */
 class FightNode(private val ctx: NodeContext) : GameNode {
@@ -28,8 +28,8 @@ class FightNode(private val ctx: NodeContext) : GameNode {
         private const val BOSS_LOOP_INTERVAL_MS = 1000L
         private const val MAX_SLIDE_MISS = 3
         private const val MAX_JUMP_MISS = 3
-        private const val MAX_SKILL_ATTEMPTS = 10
-        private const val MAX_WEAPON_ATTEMPTS = 1
+        private const val MAX_SKILL_CLICKS = 10
+        private const val SKILL_CLICK_INTERVAL_MS = 240L
     }
 
     override suspend fun execute(ctx: GameContext): GamePhase? {
@@ -37,22 +37,31 @@ class FightNode(private val ctx: NodeContext) : GameNode {
         this.ctx.delay(6000)
 
         // ═════════════════════════════════════
-        //  ① 下滑阶段
+        //  ① 下滑阶段（左下1/4）
         // ═════════════════════════════════════
         var slideMissCount = 0
         while (currentCoroutineContext().isActive && slideMissCount < MAX_SLIDE_MISS) {
             val screen = this.ctx.captureBitmap()
             if (screen == null) { this.ctx.delay(SLIDE_INTERVAL_MS); continue }
+            var slideMat: org.opencv.core.Mat? = null
             try {
-                val slideCoord = this.ctx.detector.matchTemplate(screen, ScreenState.SLIDE_BUTTON)
-                if (slideCoord != null) {
-                    this.ctx.click(slideCoord)
-                    this.ctx.log("下滑")
-                    slideMissCount = 0
-                } else {
-                    slideMissCount++
+                slideMat = this.ctx.detector.screenToMat(screen)
+                val crop = this.ctx.detector.cropBottomLeftQuarter(slideMat)
+                try {
+                    val slideCoord = this.ctx.detector.matchTemplateMat(crop, ScreenState.SLIDE_BUTTON)
+                    if (slideCoord != null) {
+                        val fullY = slideCoord.second + slideMat.rows() * 3 / 4
+                        this.ctx.click(Pair(slideCoord.first, fullY))
+                        this.ctx.log("下滑")
+                        slideMissCount = 0
+                    } else {
+                        slideMissCount++
+                    }
+                } finally {
+                    crop.release()
                 }
             } finally {
+                slideMat?.release()
                 screen.recycle()
             }
             this.ctx.delay(SLIDE_INTERVAL_MS)
@@ -62,18 +71,26 @@ class FightNode(private val ctx: NodeContext) : GameNode {
         this.ctx.log("下滑结束，进入Boss检测")
 
         // ═════════════════════════════════════
-        //  ② Boss检测（Lv图标）
+        //  ② Boss检测（左上1/8，Lv图标）
         // ═════════════════════════════════════
         while (currentCoroutineContext().isActive) {
             val screen = this.ctx.captureBitmap()
             if (screen == null) { this.ctx.delay(BOSS_DETECT_INTERVAL_MS); continue }
+            var lvMat: org.opencv.core.Mat? = null
             try {
-                val lvCoord = this.ctx.detector.matchTemplate(screen, ScreenState.LV_ICON)
-                if (lvCoord != null) {
-                    this.ctx.log("Boss出现")
-                    break
+                lvMat = this.ctx.detector.screenToMat(screen)
+                val crop = this.ctx.detector.cropTopLeftEighth(lvMat)
+                try {
+                    val lvCoord = this.ctx.detector.matchTemplateMat(crop, ScreenState.LV_ICON)
+                    if (lvCoord != null) {
+                        this.ctx.log("Boss出现")
+                        break
+                    }
+                } finally {
+                    crop.release()
                 }
             } finally {
+                lvMat?.release()
                 screen.recycle()
             }
             this.ctx.delay(BOSS_DETECT_INTERVAL_MS)
@@ -85,16 +102,21 @@ class FightNode(private val ctx: NodeContext) : GameNode {
         // ═════════════════════════════════════
         //  ③ Boss战斗阶段
         // ═════════════════════════════════════
-        var ultimateCount = 0
-        var weaponCount = 0
         var jumpMissCount = 0
         var lastMatchMs = System.currentTimeMillis()
+
+        // 大招：记住坐标，连续点击
+        var ultimateCoord: Pair<Float, Float>? = null
+        var ultimateClickCount = 0
+
+        // 武器：记住坐标，连续点击
+        var weaponCoord: Pair<Float, Float>? = null
+        var weaponClickCount = 0
 
         while (currentCoroutineContext().isActive) {
             val screen = this.ctx.captureBitmap()
             if (screen == null) { this.ctx.delay(BOSS_LOOP_INTERVAL_MS); continue }
             var screenMat: org.opencv.core.Mat? = null
-            var ultMat: org.opencv.core.Mat? = null
             var jumpMat: org.opencv.core.Mat? = null
             try {
                 screenMat = this.ctx.detector.screenToMat(screen)
@@ -111,56 +133,94 @@ class FightNode(private val ctx: NodeContext) : GameNode {
                     return GamePhase.SETTLEMENT
                 }
 
-                // ── 跳跃/上翻按钮（下方 1/3 ROI） ──
-                jumpMat = this.ctx.detector.cropBottomThird(screenMat)
-                val jumpCoord = this.ctx.detector.matchTemplateMat(jumpMat, ScreenState.JUMP_BUTTON)
-                if (jumpCoord != null) {
-                    val fullY = jumpCoord.second + screenMat.rows() * 2 / 3
-                    this.ctx.click(Pair(jumpCoord.first, fullY))
-                    this.ctx.log("跳跃")
-                    jumpMissCount = 0
-                    lastMatchMs = System.currentTimeMillis()
-                } else {
-                    val scrollCoord = this.ctx.detector.matchTemplateMat(jumpMat, ScreenState.SCROLL_UP)
-                    if (scrollCoord != null) {
-                        val fullY = scrollCoord.second + screenMat.rows() * 2 / 3
-                        this.ctx.click(Pair(scrollCoord.first, fullY))
-                        this.ctx.log("上翻")
+                // ── 跳跃/上翻按钮（右下1/4 ROI） ──
+                val jumpCrop = this.ctx.detector.cropBottomRightQuarter(screenMat)
+                try {
+                    val jumpCoord = this.ctx.detector.matchTemplateMat(jumpCrop, ScreenState.JUMP_BUTTON)
+                    if (jumpCoord != null) {
+                        val fullX = jumpCoord.first + screenMat.cols() / 2
+                        val fullY = jumpCoord.second + screenMat.rows() * 3 / 4
+                        this.ctx.click(Pair(fullX, fullY))
+                        this.ctx.log("跳跃")
                         jumpMissCount = 0
                         lastMatchMs = System.currentTimeMillis()
                     } else {
-                        jumpMissCount++
-                        if (jumpMissCount >= MAX_JUMP_MISS) {
-                            this.ctx.log("连续3次未识别跳跃/上翻按钮")
-                            this.ctx.log("阵亡检测 TODO → 直接进入结算节点")
-                            return GamePhase.SETTLEMENT
+                        val scrollCoord = this.ctx.detector.matchTemplateMat(jumpCrop, ScreenState.SCROLL_UP)
+                        if (scrollCoord != null) {
+                            val fullX = scrollCoord.first + screenMat.cols() / 2
+                            val fullY = scrollCoord.second + screenMat.rows() * 3 / 4
+                            this.ctx.click(Pair(fullX, fullY))
+                            this.ctx.log("上翻")
+                            jumpMissCount = 0
+                            lastMatchMs = System.currentTimeMillis()
+                        } else {
+                            jumpMissCount++
+                            if (jumpMissCount >= MAX_JUMP_MISS) {
+                                this.ctx.log("连续3次未识别跳跃/上翻按钮，进入结算")
+                                return GamePhase.SETTLEMENT
+                            }
                         }
                     }
+                } finally {
+                    jumpCrop.release()
                 }
 
-                // ── 大招（左侧 1/3 ROI） ──
-                if (ultimateCount < MAX_SKILL_ATTEMPTS) {
-                    ultMat = this.ctx.detector.cropLeftThird(screenMat)
-                    val ultCoord = this.ctx.detector.matchTemplateMat(ultMat, ScreenState.ULTIMATE_SKILL)
-                    if (ultCoord != null) {
-                        this.ctx.click(ultCoord)
-                        this.ctx.log("大招 (${ultimateCount + 1}/$MAX_SKILL_ATTEMPTS)")
-                        ultimateCount++
+                // ── 大招（左1/6，记住坐标连点） ──
+                if (ultimateClickCount < MAX_SKILL_CLICKS) {
+                    if (ultimateCoord == null) {
+                        // 首次识别：匹配并记住坐标
+                        val ultCrop = this.ctx.detector.cropLeftSixth(screenMat)
+                        try {
+                            val ultCoord = this.ctx.detector.matchTemplateMat(ultCrop, ScreenState.ULTIMATE_SKILL)
+                            if (ultCoord != null) {
+                                ultimateCoord = Pair(ultCoord.first, ultCoord.second)
+                                this.ctx.click(ultimateCoord)
+                                ultimateClickCount++
+                                this.ctx.log("大招 (${ultimateClickCount}/$MAX_SKILL_CLICKS)")
+                                lastMatchMs = System.currentTimeMillis()
+                                this.ctx.delay(SKILL_CLICK_INTERVAL_MS)
+                                continue
+                            }
+                        } finally {
+                            ultCrop.release()
+                        }
+                    } else {
+                        // 已记住坐标：直接点击，不识别
+                        this.ctx.click(ultimateCoord)
+                        ultimateClickCount++
+                        this.ctx.log("大招 (${ultimateClickCount}/$MAX_SKILL_CLICKS)")
                         lastMatchMs = System.currentTimeMillis()
-                        this.ctx.delay(100)
+                        this.ctx.delay(SKILL_CLICK_INTERVAL_MS)
                         continue
                     }
                 }
 
-                // ── 武器（全屏） ──
-                if (weaponCount < MAX_WEAPON_ATTEMPTS) {
-                    val wpnCoord = this.ctx.detector.matchTemplateMat(screenMat, ScreenState.WEAPON_SKILL)
-                    if (wpnCoord != null) {
-                        this.ctx.click(wpnCoord)
-                        this.ctx.log("武器 (1/$MAX_WEAPON_ATTEMPTS)")
-                        weaponCount++
+                // ── 武器（下方1/4，记住坐标连点） ──
+                if (weaponClickCount < MAX_SKILL_CLICKS) {
+                    if (weaponCoord == null) {
+                        // 首次识别：匹配并记住坐标
+                        val wpnCrop = this.ctx.detector.cropBottomQuarter(screenMat)
+                        try {
+                            val wpnCoord = this.ctx.detector.matchTemplateMat(wpnCrop, ScreenState.WEAPON_SKILL)
+                            if (wpnCoord != null) {
+                                weaponCoord = Pair(wpnCoord.first, wpnCoord.second + screenMat.rows() * 3 / 4)
+                                this.ctx.click(weaponCoord)
+                                weaponClickCount++
+                                this.ctx.log("武器 (${weaponClickCount}/$MAX_SKILL_CLICKS)")
+                                lastMatchMs = System.currentTimeMillis()
+                                this.ctx.delay(SKILL_CLICK_INTERVAL_MS)
+                                continue
+                            }
+                        } finally {
+                            wpnCrop.release()
+                        }
+                    } else {
+                        // 已记住坐标：直接点击，不识别
+                        this.ctx.click(weaponCoord)
+                        weaponClickCount++
+                        this.ctx.log("武器 (${weaponClickCount}/$MAX_SKILL_CLICKS)")
                         lastMatchMs = System.currentTimeMillis()
-                        this.ctx.delay(200)
+                        this.ctx.delay(SKILL_CLICK_INTERVAL_MS)
                         continue
                     }
                 }
@@ -168,8 +228,6 @@ class FightNode(private val ctx: NodeContext) : GameNode {
                 // ── 超时检测 ──
                 checkNodeTimeout(lastMatchMs)
             } finally {
-                ultMat?.release()
-                jumpMat?.release()
                 screenMat?.release()
                 screen.recycle()
             }

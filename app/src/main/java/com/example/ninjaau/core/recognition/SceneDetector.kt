@@ -360,6 +360,43 @@ class SceneDetector(private val context: Context) {
         return Mat(mat, org.opencv.core.Rect(x, 0, segW, mat.rows()))
     }
 
+    /** 裁剪 Mat 左半边下方 1/4 区域（下滑按钮所在区域），调用方用完需 release */
+    fun cropBottomLeftQuarter(mat: Mat): Mat {
+        val w = mat.cols() / 2
+        val h = mat.rows() / 4
+        val y = mat.rows() - h
+        return Mat(mat, org.opencv.core.Rect(0, y, w, h))
+    }
+
+    /** 裁剪 Mat 右半边下方 1/4 区域（跳跃按钮所在区域），调用方用完需 release */
+    fun cropBottomRightQuarter(mat: Mat): Mat {
+        val w = mat.cols() / 2
+        val x = mat.cols() / 2
+        val h = mat.rows() / 4
+        val y = mat.rows() - h
+        return Mat(mat, org.opencv.core.Rect(x, y, w, h))
+    }
+
+    /** 裁剪 Mat 左侧 1/6 区域（大招按钮所在区域），高度不动，调用方用完需 release */
+    fun cropLeftSixth(mat: Mat): Mat {
+        val w = mat.cols() / 6
+        return Mat(mat, org.opencv.core.Rect(0, 0, w, mat.rows()))
+    }
+
+    /** 裁剪 Mat 左半边上 1/8 区域（Boss Lv图标所在区域），调用方用完需 release */
+    fun cropTopLeftEighth(mat: Mat): Mat {
+        val w = mat.cols() / 2
+        val h = mat.rows() / 8
+        return Mat(mat, org.opencv.core.Rect(0, 0, w, h))
+    }
+
+    /** 裁剪 Mat 下方 1/4 区域（武器按钮所在区域），全宽，调用方用完需 release */
+    fun cropBottomQuarter(mat: Mat): Mat {
+        val h = mat.rows() / 4
+        val y = mat.rows() - h
+        return Mat(mat, org.opencv.core.Rect(0, y, mat.cols(), h))
+    }
+
     /** 裁剪 Mat 下方 1/3 区域（跳跃/上翻按钮所在区域），全宽，调用方用完需 release */
     fun cropBottomThird(mat: Mat): Mat {
         val h = mat.rows() / 3
@@ -397,15 +434,6 @@ class SceneDetector(private val context: Context) {
         val w = mat.cols() / 3
         val x = mat.cols() / 3
         return Mat(mat, org.opencv.core.Rect(x, 0, w, h))
-    }
-
-    /** 裁剪 Mat 右下 1/4 区域（准备按钮所在区域），调用方用完需 release */
-    fun cropBottomRightQuarter(mat: Mat): Mat {
-        val w = mat.cols() / 2
-        val h = mat.rows() / 4
-        val x = mat.cols() - w
-        val y = mat.rows() - h
-        return Mat(mat, org.opencv.core.Rect(x, y, w, h))
     }
 
     /** 裁剪 Mat 右上角 1/10 区域（返回按钮所在区域），调用方用完需 release */

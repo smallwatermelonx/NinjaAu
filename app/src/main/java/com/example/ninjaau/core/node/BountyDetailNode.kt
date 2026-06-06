@@ -95,7 +95,7 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                             }
                         }
 
-                        val levelMatch = this.ctx.detector.matchAnyLevelIconMat(topMiddleTenth, ctx.activeGrades)
+                        val levelMatch = this.ctx.detector.matchAnyLevelIconMat(topMiddleTenth, com.example.ninjaau.model.BountyGrade.entries)
                         if (levelMatch != null) {
                             val limitGrade = levelMatch.grade
                             this.ctx.log("上限检测等级匹配相似度: ${String.format("%.3f", levelMatch.similarity)}")
@@ -150,11 +150,16 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                         }
                     }
 
-                    // ═══ ④ 战斗等待中（上方1/4匹配加载界面） ═══
+                    // ═══ ④ 战斗等待中（左下角匹配加载笑脸） ═══
                     if (battleWaitStart > 0) {
-                        if (this.ctx.detector.matchTemplateMat(topQuarter, ScreenState.BATTLE_LOADING) != null) {
-                            this.ctx.log("检测到战斗加载界面，切换至加载节点")
-                            return GamePhase.BATTLE_LOADING
+                        val bottomLeft = this.ctx.detector.cropBottomLeft(screenMat)
+                        try {
+                            if (this.ctx.detector.matchTemplateMat(bottomLeft, ScreenState.BATTLE_LOADING) != null) {
+                                this.ctx.log("检测到战斗加载界面，切换至加载节点")
+                                return GamePhase.BATTLE_LOADING
+                            }
+                        } finally {
+                            bottomLeft.release()
                         }
 
                         val elapsed = System.currentTimeMillis() - battleWaitStart
@@ -168,7 +173,7 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                     }
 
                     // ═══ ⑤ 回到大厅 ═══
-                    if (this.ctx.detector.matchTemplateMat(topQuarter, ScreenState.CHAT_ICON) != null) {
+                    if (this.ctx.detector.matchTemplateMat(screenMat, ScreenState.CHAT_ICON) != null) {
                         this.ctx.log("已回到大厅")
                         ctx.currentBounty = null
                         ctx.actualGrade = null
