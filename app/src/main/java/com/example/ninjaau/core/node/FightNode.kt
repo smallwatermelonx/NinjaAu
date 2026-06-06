@@ -151,59 +151,47 @@ class FightNode(private val ctx: NodeContext) : GameNode {
                     jumpCrop.release()
                 }
 
-                // ── 大招（左1/6，记住坐标连点） ──
-                if (ultimateClickCount < MAX_SKILL_CLICKS) {
-                    if (ultimateCoord == null) {
-                        val ultCrop = this.ctx.detector.cropLeftSixth(screenMat)
-                        try {
-                            val ultCoord = this.ctx.detector.matchTemplateMat(ultCrop, ScreenState.ULTIMATE_SKILL)
-                            if (ultCoord != null) {
-                                ultimateCoord = Pair(ultCoord.first, ultCoord.second)
-                                this.ctx.click(ultimateCoord)
-                                ultimateClickCount++
-                                this.ctx.log("大招 (${ultimateClickCount}/$MAX_SKILL_CLICKS)")
-                                lastMatchMs = System.currentTimeMillis()
-                                this.ctx.delay(SKILL_CLICK_INTERVAL_MS)
-                                continue
-                            }
-                        } finally {
-                            ultCrop.release()
+                // ── 大招（左1/6，识别后连续点击 10 次） ──
+                if (ultimateClickCount == 0) {
+                    val ultCrop = this.ctx.detector.cropLeftSixth(screenMat)
+                    try {
+                        val ultCoord = this.ctx.detector.matchTemplateMat(ultCrop, ScreenState.ULTIMATE_SKILL)
+                        if (ultCoord != null) {
+                            ultimateCoord = Pair(ultCoord.first, ultCoord.second)
                         }
-                    } else {
-                        this.ctx.click(ultimateCoord)
+                    } finally {
+                        ultCrop.release()
+                    }
+                }
+                if (ultimateCoord != null && ultimateClickCount < MAX_SKILL_CLICKS) {
+                    repeat(MAX_SKILL_CLICKS - ultimateClickCount) {
+                        this.ctx.click(ultimateCoord!!)
                         ultimateClickCount++
                         this.ctx.log("大招 (${ultimateClickCount}/$MAX_SKILL_CLICKS)")
                         lastMatchMs = System.currentTimeMillis()
                         this.ctx.delay(SKILL_CLICK_INTERVAL_MS)
-                        continue
                     }
                 }
 
-                // ── 武器（下方1/4，记住坐标连点） ──
-                if (weaponClickCount < MAX_SKILL_CLICKS) {
-                    if (weaponCoord == null) {
-                        val wpnCrop = this.ctx.detector.cropBottomQuarter(screenMat)
-                        try {
-                            val wpnCoord = this.ctx.detector.matchTemplateMat(wpnCrop, ScreenState.WEAPON_SKILL)
-                            if (wpnCoord != null) {
-                                weaponCoord = Pair(wpnCoord.first, wpnCoord.second + screenMat.rows() * 3 / 4)
-                                this.ctx.click(weaponCoord)
-                                weaponClickCount++
-                                this.ctx.log("武器 (${weaponClickCount}/$MAX_SKILL_CLICKS)")
-                                lastMatchMs = System.currentTimeMillis()
-                                this.ctx.delay(SKILL_CLICK_INTERVAL_MS)
-                                continue
-                            }
-                        } finally {
-                            wpnCrop.release()
+                // ── 武器（下方1/4，识别后连续点击 10 次） ──
+                if (weaponClickCount == 0) {
+                    val wpnCrop = this.ctx.detector.cropBottomQuarter(screenMat)
+                    try {
+                        val wpnCoord = this.ctx.detector.matchTemplateMat(wpnCrop, ScreenState.WEAPON_SKILL)
+                        if (wpnCoord != null) {
+                            weaponCoord = Pair(wpnCoord.first, wpnCoord.second + screenMat.rows() * 3 / 4)
                         }
-                    } else {
-                        this.ctx.click(weaponCoord)
+                    } finally {
+                        wpnCrop.release()
+                    }
+                }
+                if (weaponCoord != null && weaponClickCount < MAX_SKILL_CLICKS) {
+                    repeat(MAX_SKILL_CLICKS - weaponClickCount) {
+                        this.ctx.click(weaponCoord!!)
                         weaponClickCount++
                         this.ctx.log("武器 (${weaponClickCount}/$MAX_SKILL_CLICKS)")
                         lastMatchMs = System.currentTimeMillis()
                         this.ctx.delay(SKILL_CLICK_INTERVAL_MS)
-                        continue
                     }
                 }
 

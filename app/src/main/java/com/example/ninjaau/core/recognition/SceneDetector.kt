@@ -390,6 +390,15 @@ class SceneDetector(private val context: Context) {
         return Mat(mat, org.opencv.core.Rect(0, 0, w, h))
     }
 
+    /** 裁剪 Mat 中间 50% x 50% 区域（弹窗/对话框所在区域），调用方用完需 release */
+    fun cropCenterHalf(mat: Mat): Mat {
+        val w = mat.cols() / 2
+        val h = mat.rows() / 2
+        val x = mat.cols() / 4
+        val y = mat.rows() / 4
+        return Mat(mat, org.opencv.core.Rect(x, y, w, h))
+    }
+
     /** 裁剪 Mat 下方 1/4 区域（武器按钮所在区域），全宽，调用方用完需 release */
     fun cropBottomQuarter(mat: Mat): Mat {
         val h = mat.rows() / 4
