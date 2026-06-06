@@ -196,38 +196,31 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
      */
     private suspend fun exitTeam() {
         this.ctx.log("退出队伍...")
-        repeat(10) { i ->
-            val screen = this.ctx.captureBitmap()
-            if (screen == null) {
-                this.ctx.log("exitTeam[$i] 截图为空")
-                this.ctx.delay(500)
-                return@repeat
-            }
-            var screenMat: Mat? = null
+        repeat(10) {
+            val screen = this.ctx.captureBitmap() ?: return@repeat this.ctx.delay(500)
             try {
-                screenMat = this.ctx.detector.screenToMat(screen)
+                if (this.ctx.detector.matchTemplate(screen, ScreenState.CHAT_ICON) != null ||
+                    this.ctx.detector.matchTemplate(screen, ScreenState.RECRUIT_TAB) != null
+                ) {
+                    this.ctx.log("已回到大厅")
+                    return
+                }
 
-                // 全屏匹配返回按钮（模板含深色圆形背景，裁剪区域匹配不稳定）
-                val backResult = this.ctx.detector.matchTemplateMat(screenMat, ScreenState.BACK_BUTTON)
-                if (backResult != null) {
-                    this.ctx.log("exitTeam[$i] 点击 BACK_BUTTON (${backResult.first},${backResult.second})")
-                    this.ctx.click(backResult)
-                    this.ctx.delay(800)
+                val confirmCoord = this.ctx.detector.matchTemplate(screen, ScreenState.EXIT_CONFIRM)
+                if (confirmCoord != null) {
+                    this.ctx.click(confirmCoord)
+                    this.ctx.delay(1000)
                     return@repeat
                 }
 
-                // 全屏匹配确认退出按钮
-                val confirmResult = this.ctx.detector.matchTemplateMat(screenMat, ScreenState.EXIT_CONFIRM)
-                if (confirmResult != null) {
-                    this.ctx.log("exitTeam[$i] 点击 EXIT_CONFIRM (${confirmResult.first},${confirmResult.second})")
-                    this.ctx.click(confirmResult)
-                    this.ctx.delay(800)
+                val backCoord = this.ctx.detector.matchTemplate(screen, ScreenState.BACK_BUTTON)
+                if (backCoord != null) {
+                    this.ctx.click(backCoord)
+                    this.ctx.delay(1200)
                     return@repeat
                 }
-
-                this.ctx.delay(500)
+                this.ctx.delay(800)
             } finally {
-                screenMat?.release()
                 screen.recycle()
             }
         }

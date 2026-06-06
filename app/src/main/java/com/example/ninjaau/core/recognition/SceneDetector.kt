@@ -240,7 +240,7 @@ class SceneDetector(private val context: Context) {
         ScreenState.RECRUIT_INVITE to TemplateEntry("templates/bounty_list/recruit_invite.png"),
         // ── 入队 ──
         ScreenState.READY_BUTTON to TemplateEntry("templates/team_room/prepare.png"),
-        ScreenState.EXIT_CONFIRM to TemplateEntry("templates/team_room/confirm.png"),
+        ScreenState.EXIT_CONFIRM to TemplateEntry("templates/team_room/confirm.png", 0.65f),
         ScreenState.DAILY_LIMIT to TemplateEntry("templates/team_room/daily_limit.png"),
         // ── 战斗 ──
         ScreenState.BATTLE_LOADING to TemplateEntry("templates/battle_loading/smile.png"),
@@ -332,10 +332,32 @@ class SceneDetector(private val context: Context) {
         return Mat(mat, org.opencv.core.Rect(0, y, w, h))
     }
 
+    /** 裁剪 Mat 左半边下方 1/5 区域（超出范围标识所在区域），调用方用完需 release */
+    fun cropBottomLeftFifth(mat: Mat): Mat {
+        val w = mat.cols() / 2
+        val h = mat.rows() / 5
+        val y = mat.rows() - h
+        return Mat(mat, org.opencv.core.Rect(0, y, w, h))
+    }
+
     /** 裁剪 Mat 左侧 1/3 区域（等级图标所在区域），高度不动，调用方用完需 release */
     fun cropLeftThird(mat: Mat): Mat {
         val w = mat.cols() / 3
         return Mat(mat, org.opencv.core.Rect(0, 0, w, mat.rows()))
+    }
+
+    /** 裁剪 Mat 左侧 1/4 区域（等级图标所在区域，更小 ROI 加速匹配），高度不动，调用方用完需 release */
+    fun cropLeftQuarter(mat: Mat): Mat {
+        val w = mat.cols() / 4
+        return Mat(mat, org.opencv.core.Rect(0, 0, w, mat.rows()))
+    }
+
+    /** 裁剪 Mat 左侧第 3 个十分之一区域（x=20%~30%，等级图标所在区域），高度不动，调用方用完需 release */
+    fun cropLeftMidTenth(mat: Mat): Mat {
+        val w = mat.cols()
+        val x = w * 2 / 10
+        val segW = w / 10
+        return Mat(mat, org.opencv.core.Rect(x, 0, segW, mat.rows()))
     }
 
     /** 裁剪 Mat 下方 1/3 区域（跳跃/上翻按钮所在区域），全宽，调用方用完需 release */
@@ -411,12 +433,12 @@ class SceneDetector(private val context: Context) {
             LogUtil.i(TAG, "$state: 相似度 ${String.format("%.2f", result.similarity)} ≥ ${entry.threshold}")
             return Pair(result.centerX, result.centerY)
         }
+        LogUtil.d(TAG, "$state: 相似度 ${String.format("%.2f", result.similarity)} < ${entry.threshold} (未匹配)")
         return null
     }
 
-    /** 使用预转换的 screen Mat 搜索多个等级图标 — 使用缓存的 Mat 避免重复转换 */
+    /** 使用预转换的 screen Mat 搜索等级图标 — 匹配到第一个即返回（保持原始快速行为） */
     fun matchAnyGradeMat(screenMat: Mat, grades: List<BountyGrade>): Pair<BountyGrade, Pair<Float, Float>>? {
-        val matches = mutableListOf<GradeMatch>()
         for (grade in grades) {
             // 获取或创建缓存的 Mat
             val cachedMat = gradeIconMatCache[grade]
@@ -441,25 +463,13 @@ class SceneDetector(private val context: Context) {
             }
             val result = TemplateMatcher.matchMatWithMat(screenMat, templateMat, 0.85f, templateW, templateH)
             if (result.isMatched) {
-                matches.add(GradeMatch(grade, result.similarity, result.centerX, result.centerY))
+                LogUtil.i(TAG, "matchAnyGradeMat → 选中 ${grade.displayName} (相似度=${String.format("%.2f", result.similarity)})")
+                return Pair(grade, Pair(result.centerX, result.centerY))
             }
         }
 
-        if (matches.isEmpty()) {
-            LogUtil.d(TAG, "matchAnyGradeMat: ${grades.size}个等级均未匹配")
-            return null
-        }
-
-        matches.sortByDescending { it.similarity }
-        val best = matches.first()
-
-        if (matches.size > 1) {
-            val matchSummary = matches.joinToString { "${it.grade.displayName}=${String.format("%.2f", it.similarity)}" }
-            LogUtil.w(TAG, "matchAnyGradeMat: 多个等级匹配 - $matchSummary，最佳=${best.grade.displayName}")
-        }
-
-        LogUtil.i(TAG, "matchAnyGradeMat → 选中 ${best.grade.displayName} (相似度=${String.format("%.2f", best.similarity)})")
-        return Pair(best.grade, Pair(best.centerX, best.centerY))
+        LogUtil.d(TAG, "matchAnyGradeMat: ${grades.size}个等级均未匹配")
+        return null
     }
 
     /** 在截图中匹配队伍房间内的建议等级标识，支持多级别变体（如 SS+ 的 lv105~lv130） */

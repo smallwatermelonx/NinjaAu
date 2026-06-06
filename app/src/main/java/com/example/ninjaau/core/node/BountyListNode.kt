@@ -48,6 +48,7 @@ class BountyListNode(private val ctx: NodeContext) : GameNode {
         var loopCount = 0
 
         while (coroutineContext.isActive) {
+            loopCount++
             val loopStart = System.currentTimeMillis()
 
             val screen = this.ctx.captureBitmap()
@@ -79,14 +80,14 @@ class BountyListNode(private val ctx: NodeContext) : GameNode {
                         continue
                     }
                 }
+                val tInvite = System.currentTimeMillis()
 
-                // ═══ ① 刷新检测（左下角 1/3 ROI） ═══
-                rangeMat = this.ctx.detector.cropBottomLeft(screenMat)
+                // ═══ ① 刷新检测（左半边下方 1/5 ROI） ═══
+                rangeMat = this.ctx.detector.cropBottomLeftFifth(screenMat)
                 val rangeCoord =
                     this.ctx.detector.matchTemplateMat(rangeMat, ScreenState.OUT_OF_RANGE_RECRUIT)
                 if (rangeCoord != null) {
-                    // ROI 裁剪坐标 → 全屏坐标：x 不偏移，y 加上裁剪起始偏移
-                    val roiY = screenMat.rows() * 2 / 3
+                    val roiY = screenMat.rows() * 4 / 5
                     val fullCoord = Pair(rangeCoord.first, rangeCoord.second + roiY)
                     this.ctx.log("超出范围悬赏，点击刷新列表 (全屏: $fullCoord)")
                     this.ctx.click(fullCoord)
@@ -97,13 +98,14 @@ class BountyListNode(private val ctx: NodeContext) : GameNode {
 
                 val tRange = System.currentTimeMillis()
 
-                // ═══ ② 等级匹配 → 偏移点击（左侧 1/4 ROI，起点(0,0)无ROI偏移） ═══
-                gradeMat = this.ctx.detector.cropLeftThird(screenMat)
+                // ═══ ② 等级匹配 → 偏移点击（左侧第3个1/10 ROI，x=20%~30%） ═══
+                gradeMat = this.ctx.detector.cropLeftMidTenth(screenMat)
                 val match = this.ctx.detector.matchAnyGradeMat(gradeMat, remaining)
                 if (match != null) {
                     val (grade, coord) = match
                     ctx.currentBounty = grade
-                    val clickX = coord.first + 430f
+                    val cropOffsetX = screenMat.cols() * 2f / 10
+                    val clickX = coord.first + cropOffsetX + 430f
                     val clickY = coord.second + 300f
                     this.ctx.click(Pair(clickX, clickY))
                     this.ctx.log("${grade.displayName}悬赏，点击加入 ($clickX, $clickY)")
@@ -129,10 +131,9 @@ class BountyListNode(private val ctx: NodeContext) : GameNode {
                 checkNodeTimeout(lastMatchMs)
 
                 // 每 10 轮输出一次耗时统计
-                loopCount++
                 if (loopCount % 10 == 0) {
                     val total = tReady - loopStart
-                    this.ctx.log("[性能] 第${loopCount}轮 | 截图${tCapture - loopStart}ms | 转Mat${tMat - tCapture}ms | 邀请${tRange - tMat}ms | 等级${tGrade - tRange}ms | 合计${total}ms")
+                    this.ctx.log("[性能] 第${loopCount}轮 | 截图${tCapture - loopStart}ms | 转Mat${tMat - tCapture}ms | 邀请${tInvite - tMat}ms | 刷新${tRange - tInvite}ms | 等级${tGrade - tRange}ms | 合计${total}ms")
                 }
             } finally {
                 gradeMat?.release()

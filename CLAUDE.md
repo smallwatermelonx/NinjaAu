@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 核心规则（必须遵守）
+
+1. **不要乱改已有业务逻辑。** 修改/重构已有功能必须先完全理解业务上下文。不要凭假设修改。已经正常工作的代码，如果没有明确的 bug 证据，不要动它。
+2. **优化前必须先确认原始行为。** 要优化某个模块，先用 `git show` 读取历史版本，理解原始设计意图，再做针对性改进。不要把"重构"当"优化"。
+3. **改动后必须验证。** 每次改动都要编译、安装、实际运行验证，不能只看代码就认为正确。
+
 ## Build Commands
 
 ```bash
