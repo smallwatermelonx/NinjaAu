@@ -2,6 +2,7 @@ package com.example.ninjaau.core
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.media.RingtoneManager
 import com.example.ninjaau.core.accessibility.NinjaAccessibilityService
 import com.example.ninjaau.core.capture.ScreenCapture
 import com.example.ninjaau.core.node.*
@@ -70,7 +71,14 @@ class WorkflowEngine(
             click = { click(it) },
             log = { log(it) },
             onPageEvent = onPageEvent,
-            delay = { delay(it) }
+            delay = { delay(it) },
+            playAlarm = {
+                try {
+                    val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                    val ringtone = RingtoneManager.getRingtone(context, alarmUri)
+                    ringtone?.play()
+                } catch (_: Exception) {}
+            }
         )
         hallNode = HallNode(nodeCtx)
         bountyListNode = BountyListNode(nodeCtx)

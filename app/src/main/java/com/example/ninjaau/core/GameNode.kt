@@ -23,5 +23,6 @@ class NodeContext(
     val click: (Pair<Float, Float>) -> Unit,
     val log: (String) -> Unit,
     val onPageEvent: ((String) -> Unit)?,
-    val delay: suspend (Long) -> Unit
+    val delay: suspend (Long) -> Unit,
+    val playAlarm: () -> Unit
 )

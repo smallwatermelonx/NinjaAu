@@ -172,6 +172,10 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                             )
                             ctx.actualGrade = actualGrade
                             this.ctx.log("等级匹配 ${actualGrade.displayName} (lv${actualGrade.level})，点击准备")
+                            if (actualGrade.level in 105..130) {
+                                this.ctx.log("SS+ 悬赏！播放提醒铃声")
+                                this.ctx.playAlarm()
+                            }
                             // 坐标偏移：bottomRight 裁剪起点为 (halfWidth, 3/4 height)
                             val halfW = screen.width / 2f
                             val offsetH = screen.height * 3f / 4f
