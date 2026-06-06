@@ -29,7 +29,7 @@ class FightNode(private val ctx: NodeContext) : GameNode {
         private const val BOSS_LOOP_INTERVAL_MS = 1000L
         private const val MAX_SLIDE_MISS = 3
         private const val MAX_JUMP_MISS = 3
-        private const val MAX_SKILL_CLICKS = 10
+        private const val MAX_SKILL_CLICKS = 24
         private const val SKILL_CLICK_INTERVAL_MS = 240L
     }
 
@@ -169,7 +169,11 @@ class FightNode(private val ctx: NodeContext) : GameNode {
                         ultimateClickCount++
                         this.ctx.log("大招 (${ultimateClickCount}/$MAX_SKILL_CLICKS)")
                         lastMatchMs = System.currentTimeMillis()
-                        this.ctx.delay(SKILL_CLICK_INTERVAL_MS)
+                        if (ultimateClickCount == 1) {
+                            this.ctx.delay(1500)
+                        } else {
+                            this.ctx.delay(SKILL_CLICK_INTERVAL_MS)
+                        }
                     }
                 }
 

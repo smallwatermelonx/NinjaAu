@@ -8,6 +8,7 @@ import com.example.ninjaau.model.GameContext
 import com.example.ninjaau.model.GamePhase
 import com.example.ninjaau.model.ScreenState
 import kotlinx.coroutines.isActive
+import org.opencv.core.Mat
 import kotlin.coroutines.coroutineContext
 
 /**
@@ -22,8 +23,8 @@ import kotlin.coroutines.coroutineContext
 class SettlementNode(private val ctx: NodeContext) : GameNode {
 
     companion object {
-        private const val NORMAL_INTERVAL_MS = 1000L
-        private const val POST_CLICK_DELAY = 1000L
+        private const val NORMAL_INTERVAL_MS = 500L
+        private const val POST_CLICK_DELAY = 500L
     }
 
     /**
@@ -38,45 +39,54 @@ class SettlementNode(private val ctx: NodeContext) : GameNode {
         val grade = ctx.actualGrade ?: ctx.currentBounty
         this.ctx.log("结算 Phase，悬赏=${grade?.displayName}")
         var lastMatchMs = System.currentTimeMillis()
+        var confirmClicked = false
 
         while (coroutineContext.isActive) {
             val screen = this.ctx.captureBitmap()
             if (screen == null) { this.ctx.delay(NORMAL_INTERVAL_MS); continue }
+            var screenMat: Mat? = null
             try {
-                var settlementCoord =
-                    this.ctx.detector.matchTemplate(screen, ScreenState.SETTLEMENT_POPUP)
-                if (settlementCoord != null) {
-                    this.ctx.click(settlementCoord)
-                    this.ctx.delay(800)
-                    lastMatchMs = System.currentTimeMillis()
-                    continue
+                screenMat = this.ctx.detector.screenToMat(screen)
+
+                // 裁剪下方1/5中间1/3，检测结算弹窗和确认按钮
+                val bottomMiddle = this.ctx.detector.cropBottomMiddleFifth(screenMat)
+                try {
+                    val x = screenMat.cols() / 3f
+                    val y = screenMat.rows() * 4f / 5f
+
+                    // 先检测结算弹窗（点空白处关闭）
+                    val settlementCoord = this.ctx.detector.matchTemplateMat(bottomMiddle, ScreenState.SETTLEMENT_POPUP)
+                    if (settlementCoord != null) {
+                        this.ctx.click(Pair(settlementCoord.first + x, settlementCoord.second + y))
+                        this.ctx.log("点击空白处关闭结算弹窗")
+                        lastMatchMs = System.currentTimeMillis()
+                        this.ctx.delay(500)
+                        continue
+                    }
+
+                    // 再检测确认按钮（点击领奖）
+                    val confirmCoord = this.ctx.detector.matchTemplateMat(bottomMiddle, ScreenState.CONFIRM_BUTTON)
+                    if (confirmCoord != null) {
+                        this.ctx.click(Pair(confirmCoord.first + x, confirmCoord.second + y))
+                        this.ctx.log("点击确认领奖")
+                        confirmClicked = true
+                        lastMatchMs = System.currentTimeMillis()
+                        this.ctx.delay(POST_CLICK_DELAY)
+                        continue
+                    }
+                } finally {
+                    bottomMiddle.release()
                 }
 
-                val confirmCoord = this.ctx.detector.matchTemplate(screen, ScreenState.CONFIRM_BUTTON)
-                if (confirmCoord != null) {
-                    this.ctx.click(confirmCoord)
-                    this.ctx.delay(POST_CLICK_DELAY)
-                    lastMatchMs = System.currentTimeMillis()
-                    continue
-                }
-
-                if (this.ctx.detector.matchTemplate(screen, ScreenState.CHAT_ICON) != null) {
-                    this.ctx.log("已回到大厅")
+                // 确认按钮点击后不再检测到 → 回到大厅
+                if (confirmClicked) {
+                    this.ctx.log("确认按钮消失，回到大厅")
                     break
                 }
 
-                // 个人悬赏结算后可能回到个人悬赏列表页面
-                if (ctx.businessLine == BusinessLine.PERSONAL) {
-                    val listScreen = this.ctx.detector.matchTemplate(screen, ScreenState.PERSONAL_BOUNTY_LIST_SCREEN)
-                    if (listScreen != null) {
-                        this.ctx.log("已回到个人悬赏列表")
-                        break
-                    }
-                }
-
-                // 无匹配 → 超时检测
                 checkNodeTimeout(lastMatchMs)
             } finally {
+                screenMat?.release()
                 screen.recycle()
             }
             this.ctx.delay(NORMAL_INTERVAL_MS)
