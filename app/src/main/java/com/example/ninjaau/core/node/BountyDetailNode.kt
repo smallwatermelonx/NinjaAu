@@ -8,7 +8,7 @@ import com.example.ninjaau.model.GamePhase
 import com.example.ninjaau.model.ScreenState
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
-import kotlin.coroutines.coroutineContext
+import org.opencv.core.Mat
 
 /**
  * 悬赏详情节点 — 队伍房间内的所有操作。
@@ -54,106 +54,137 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
         while (currentCoroutineContext().isActive) {
             val screen = this.ctx.captureBitmap()
             if (screen == null) { this.ctx.delay(POST_CLICK_DELAY); continue }
+            var screenMat: Mat? = null
             try {
-                // ═══ ② 已达上限 → 二次确认后标记对应组完成 ═══
-                // 追梦模式：跳过每日上限检查，只要等级匹配就继续准备
-                val isChaseDream = ctx.chaseDreamGrades.contains(targetGrade)
-                if (!isChaseDream && this.ctx.detector.matchTemplate(screen, ScreenState.DAILY_LIMIT) != null) {
-                    this.ctx.delay(500)
-                    val recheckScreen = this.ctx.captureBitmap()
-                    if (recheckScreen != null) {
-                        try {
-                            if (this.ctx.detector.matchTemplate(recheckScreen, ScreenState.DAILY_LIMIT) == null) {
-                                this.ctx.log("DAILY_LIMIT 二次确认未命中，忽略")
-                                lastMatchMs = System.currentTimeMillis()
-                                continue
+                screenMat = this.ctx.detector.screenToMat(screen)
+
+                // ═══ 上方 1/5 区域：上限检测 ═══
+                val topFifth = this.ctx.detector.cropTopFifth(screenMat)
+                // ═══ 上方 1/10 高度、中间 1/3 宽度：等级图标检测 ═══
+                val topMiddleTenth = this.ctx.detector.cropTopMiddleTenth(screenMat)
+                // ═══ 上方 1/4 区域：加载/大厅检测 ═══
+                val topQuarter = this.ctx.detector.cropTopQuarter(screenMat)
+                // ═══ 右下 1/4 区域：准备按钮检测 ═══
+                val bottomRight = this.ctx.detector.cropBottomRightQuarter(screenMat)
+
+                try {
+                    // ═══ ② 已达上限 → 二次确认后标记对应组完成 ═══
+                    val isChaseDream = ctx.chaseDreamGrades.contains(targetGrade)
+                    if (!isChaseDream && this.ctx.detector.matchTemplateMat(topFifth, ScreenState.DAILY_LIMIT) != null) {
+                        this.ctx.delay(500)
+                        val recheckScreen = this.ctx.captureBitmap()
+                        if (recheckScreen != null) {
+                            try {
+                                val recheckMat = this.ctx.detector.screenToMat(recheckScreen)
+                                try {
+                                    val recheckTopFifth = this.ctx.detector.cropTopFifth(recheckMat)
+                                    try {
+                                        if (this.ctx.detector.matchTemplateMat(recheckTopFifth, ScreenState.DAILY_LIMIT) == null) {
+                                            this.ctx.log("DAILY_LIMIT 二次确认未命中，忽略")
+                                            lastMatchMs = System.currentTimeMillis()
+                                            continue
+                                        }
+                                    } finally {
+                                        recheckTopFifth.release()
+                                    }
+                                } finally {
+                                    recheckMat.release()
+                                }
+                            } finally {
+                                recheckScreen.recycle()
                             }
-                        } finally {
-                            recheckScreen.recycle()
                         }
-                    }
 
-                    val levelMatch = this.ctx.detector.matchAnyLevelIcon(screen, ctx.activeGrades, topFraction = 0.125f)
-                    if (levelMatch != null) {
-                        val limitGrade = levelMatch.grade
-                        this.ctx.log("上限检测等级匹配相似度: ${String.format("%.3f", levelMatch.similarity)}")
-                        val group = limitGrade.group
-                        for (member in group.members()) {
-                            ctx.runCounts[member] = group.defaultRuns
-                        }
-                        ctx.activeGrades = ctx.activeGrades.filter { it.group != group }
-                        this.ctx.log("${group.name}已达今日上限，标记为完成")
-                    } else {
-                        this.ctx.log("已达上限，等级匹配失败(activeGrades=${ctx.activeGrades.joinToString { it.displayName }})，使用 currentBounty 兜底")
-                        val fallbackGroup = ctx.currentBounty?.group
-                        if (fallbackGroup != null) {
-                            for (member in fallbackGroup.members()) {
-                                ctx.runCounts[member] = fallbackGroup.defaultRuns
+                        val levelMatch = this.ctx.detector.matchAnyLevelIconMat(topMiddleTenth, ctx.activeGrades)
+                        if (levelMatch != null) {
+                            val limitGrade = levelMatch.grade
+                            this.ctx.log("上限检测等级匹配相似度: ${String.format("%.3f", levelMatch.similarity)}")
+                            val group = limitGrade.group
+                            for (member in group.members()) {
+                                ctx.runCounts[member] = group.defaultRuns
                             }
-                            ctx.activeGrades = ctx.activeGrades.filter { it.group != fallbackGroup }
-                            this.ctx.log("${fallbackGroup.name} 根据 currentBounty 标记为完成")
+                            ctx.activeGrades = ctx.activeGrades.filter { it.group != group }
+                            this.ctx.log("${group.name}已达今日上限，标记为完成")
+                        } else {
+                            this.ctx.log("已达上限，等级匹配失败(activeGrades=${ctx.activeGrades.joinToString { it.displayName }})，使用 currentBounty 兜底")
+                            val fallbackGroup = ctx.currentBounty?.group
+                            if (fallbackGroup != null) {
+                                for (member in fallbackGroup.members()) {
+                                    ctx.runCounts[member] = fallbackGroup.defaultRuns
+                                }
+                                ctx.activeGrades = ctx.activeGrades.filter { it.group != fallbackGroup }
+                                this.ctx.log("${fallbackGroup.name} 根据 currentBounty 标记为完成")
+                            }
                         }
-                    }
-                    exitTeam()
-                    ctx.currentBounty = null
-                    ctx.actualGrade = null
-                    return GamePhase.LOBBY
-                }
-
-                // ═══ ③ 准备按钮 + 等级校验（必须识别等级才能准备） ═══
-                if (battleWaitStart == 0L) {
-                    val readyCoord = this.ctx.detector.matchTemplate(screen, ScreenState.READY_BUTTON)
-                    if (readyCoord != null) {
-                        val levelMatch = this.ctx.detector.matchAnyLevelIcon(screen, ctx.activeGrades, topFraction = 0.125f)
-                        if (levelMatch == null) {
-                            this.ctx.log("⚠ 等级识别失败(activeGrades=${ctx.activeGrades.joinToString { it.displayName }})，队伍级别不在勾选范围内，退出队伍")
-                            exitTeam()
-                            ctx.currentBounty = null
-                            ctx.actualGrade = null
-                            return GamePhase.LOBBY
-                        }
-                        val actualGrade = levelMatch.grade
-                        this.ctx.log("等级匹配相似度: ${String.format("%.3f", levelMatch.similarity)}")
-                        ctx.actualGrade = actualGrade
-                        this.ctx.log("等级匹配 ${actualGrade.displayName} (lv${actualGrade.level})，点击准备")
-                        this.ctx.click(readyCoord)
-                        this.ctx.delay(POST_CLICK_DELAY)
-                        battleWaitStart = System.currentTimeMillis()
-                        this.ctx.log("战斗等待计时启动")
-                        lastMatchMs = System.currentTimeMillis()
-                        continue
-                    }
-                }
-
-                // ═══ ④ 战斗等待中 ═══
-                if (battleWaitStart > 0) {
-                    val loadingCoord = this.ctx.detector.matchTemplate(screen, ScreenState.BATTLE_LOADING)
-                    if (loadingCoord != null) {
-                        this.ctx.log("检测到战斗加载界面，切换至加载节点")
-                        return GamePhase.BATTLE_LOADING
-                    }
-
-                    val elapsed = System.currentTimeMillis() - battleWaitStart
-                    if (elapsed >= WAIT_BATTLE_TIMEOUT_MS) {
-                        this.ctx.log("等待战斗超时 ${WAIT_BATTLE_TIMEOUT_MS}ms")
                         exitTeam()
                         ctx.currentBounty = null
                         ctx.actualGrade = null
                         return GamePhase.LOBBY
                     }
-                }
 
-                // ═══ ⑤ 回到大厅 ═══
-                if (this.ctx.detector.matchTemplate(screen, ScreenState.CHAT_ICON) != null) {
-                    this.ctx.log("已回到大厅")
-                    ctx.currentBounty = null
-                    ctx.actualGrade = null
-                    return GamePhase.LOBBY
-                }
+                    // ═══ ③ 准备按钮 + 等级校验（右下1/4匹配准备，上方1/4匹配等级） ═══
+                    if (battleWaitStart == 0L) {
+                        val readyCoord = this.ctx.detector.matchTemplateMat(bottomRight, ScreenState.READY_BUTTON)
+                        if (readyCoord != null) {
+                            val levelMatch = this.ctx.detector.matchAnyLevelIconMat(topMiddleTenth, ctx.activeGrades)
+                            if (levelMatch == null) {
+                                this.ctx.log("⚠ 等级识别失败(activeGrades=${ctx.activeGrades.joinToString { it.displayName }})，队伍级别不在勾选范围内，退出队伍")
+                                exitTeam()
+                                ctx.currentBounty = null
+                                ctx.actualGrade = null
+                                return GamePhase.LOBBY
+                            }
+                            val actualGrade = levelMatch.grade
+                            this.ctx.log("等级匹配相似度: ${String.format("%.3f", levelMatch.similarity)}")
+                            ctx.actualGrade = actualGrade
+                            this.ctx.log("等级匹配 ${actualGrade.displayName} (lv${actualGrade.level})，点击准备")
+                            // 坐标偏移：bottomRight 裁剪起点为 (halfWidth, 3/4 height)
+                            val halfW = screen.width / 2f
+                            val offsetH = screen.height * 3f / 4f
+                            this.ctx.click(Pair(readyCoord.first + halfW, readyCoord.second + offsetH))
+                            this.ctx.delay(POST_CLICK_DELAY)
+                            battleWaitStart = System.currentTimeMillis()
+                            this.ctx.log("战斗等待计时启动")
+                            lastMatchMs = System.currentTimeMillis()
+                            continue
+                        }
+                    }
 
-                // ═══ ⑥ 无匹配 → 超时检测 ═══
-                checkNodeTimeout(lastMatchMs)
+                    // ═══ ④ 战斗等待中（上方1/4匹配加载界面） ═══
+                    if (battleWaitStart > 0) {
+                        if (this.ctx.detector.matchTemplateMat(topQuarter, ScreenState.BATTLE_LOADING) != null) {
+                            this.ctx.log("检测到战斗加载界面，切换至加载节点")
+                            return GamePhase.BATTLE_LOADING
+                        }
+
+                        val elapsed = System.currentTimeMillis() - battleWaitStart
+                        if (elapsed >= WAIT_BATTLE_TIMEOUT_MS) {
+                            this.ctx.log("等待战斗超时 ${WAIT_BATTLE_TIMEOUT_MS}ms")
+                            exitTeam()
+                            ctx.currentBounty = null
+                            ctx.actualGrade = null
+                            return GamePhase.LOBBY
+                        }
+                    }
+
+                    // ═══ ⑤ 回到大厅 ═══
+                    if (this.ctx.detector.matchTemplateMat(topQuarter, ScreenState.CHAT_ICON) != null) {
+                        this.ctx.log("已回到大厅")
+                        ctx.currentBounty = null
+                        ctx.actualGrade = null
+                        return GamePhase.LOBBY
+                    }
+
+                    // ═══ ⑥ 无匹配 → 超时检测 ═══
+                    checkNodeTimeout(lastMatchMs)
+                } finally {
+                    bottomRight.release()
+                    topQuarter.release()
+                    topMiddleTenth.release()
+                    topFifth.release()
+                }
             } finally {
+                screenMat?.release()
                 screen.recycle()
             }
         }
@@ -165,31 +196,38 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
      */
     private suspend fun exitTeam() {
         this.ctx.log("退出队伍...")
-        repeat(10) {
-            val screen = this.ctx.captureBitmap() ?: return@repeat this.ctx.delay(500)
+        repeat(10) { i ->
+            val screen = this.ctx.captureBitmap()
+            if (screen == null) {
+                this.ctx.log("exitTeam[$i] 截图为空")
+                this.ctx.delay(500)
+                return@repeat
+            }
+            var screenMat: Mat? = null
             try {
-                if (this.ctx.detector.matchTemplate(screen, ScreenState.CHAT_ICON) != null ||
-                    this.ctx.detector.matchTemplate(screen, ScreenState.RECRUIT_TAB) != null
-                ) {
-                    this.ctx.log("已回到大厅")
-                    return
-                }
+                screenMat = this.ctx.detector.screenToMat(screen)
 
-                val confirmCoord = this.ctx.detector.matchTemplate(screen, ScreenState.EXIT_CONFIRM)
-                if (confirmCoord != null) {
-                    this.ctx.click(confirmCoord)
-                    this.ctx.delay(1000)
+                // 全屏匹配返回按钮（模板含深色圆形背景，裁剪区域匹配不稳定）
+                val backResult = this.ctx.detector.matchTemplateMat(screenMat, ScreenState.BACK_BUTTON)
+                if (backResult != null) {
+                    this.ctx.log("exitTeam[$i] 点击 BACK_BUTTON (${backResult.first},${backResult.second})")
+                    this.ctx.click(backResult)
+                    this.ctx.delay(800)
                     return@repeat
                 }
 
-                val backCoord = this.ctx.detector.matchTemplate(screen, ScreenState.BACK_BUTTON)
-                if (backCoord != null) {
-                    this.ctx.click(backCoord)
-                    this.ctx.delay(1200)
+                // 全屏匹配确认退出按钮
+                val confirmResult = this.ctx.detector.matchTemplateMat(screenMat, ScreenState.EXIT_CONFIRM)
+                if (confirmResult != null) {
+                    this.ctx.log("exitTeam[$i] 点击 EXIT_CONFIRM (${confirmResult.first},${confirmResult.second})")
+                    this.ctx.click(confirmResult)
+                    this.ctx.delay(800)
                     return@repeat
                 }
-                this.ctx.delay(800)
+
+                this.ctx.delay(500)
             } finally {
+                screenMat?.release()
                 screen.recycle()
             }
         }

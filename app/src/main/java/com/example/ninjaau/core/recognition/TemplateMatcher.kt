@@ -79,6 +79,39 @@ object TemplateMatcher {
         }
     }
 
+    /**
+     * Mat 对 Mat 匹配 — 完全避免 Bitmap→Mat 转换。
+     * 调用方负责 screenMat 和 templateMat 的生命周期。
+     */
+    fun matchMatWithMat(screenMat: Mat, templateMat: Mat, threshold: Float, templateWidth: Int, templateHeight: Int): MatchResult {
+        if (!OpenCVUtil.initOpenCV()) {
+            return MatchResult(false, 0f, 0f, 0f, 0f, 0f)
+        }
+        var resultMat: Mat? = null
+        try {
+            if (templateMat.cols() > screenMat.cols() || templateMat.rows() > screenMat.rows()) {
+                return MatchResult(false, 0f, 0f, 0f, 0f, 0f)
+            }
+            resultMat = Mat()
+            Imgproc.matchTemplate(screenMat, templateMat, resultMat, Imgproc.TM_CCOEFF_NORMED)
+            val minMaxLoc = Core.minMaxLoc(resultMat)
+            val similarity = minMaxLoc.maxVal.toFloat()
+            val isMatched = similarity >= threshold
+            val matchX = minMaxLoc.maxLoc.x.toFloat()
+            val matchY = minMaxLoc.maxLoc.y.toFloat()
+            return MatchResult(
+                isMatched, similarity, matchX, matchY,
+                matchX + templateWidth / 2f,
+                matchY + templateHeight / 2f
+            )
+        } catch (e: Exception) {
+            LogUtil.e(TAG, "模板匹配异常: ${e.message}", e)
+            return MatchResult(false, 0f, 0f, 0f, 0f, 0f)
+        } finally {
+            resultMat?.release()
+        }
+    }
+
     data class MatchResult(
         val isMatched: Boolean,
         val similarity: Float,

@@ -256,7 +256,7 @@ class SceneDetector(private val context: Context) {
         ScreenState.SETTLEMENT_POPUP to TemplateEntry("templates/settlement/black.png", 0.7f),
         ScreenState.CONFIRM_BUTTON to TemplateEntry("templates/settlement/confirm.png"),
         // ── 通用 ──
-        ScreenState.BACK_BUTTON to TemplateEntry("templates/other/backward.png"),
+        ScreenState.BACK_BUTTON to TemplateEntry("templates/other/backward.png", 0.5f),
         // ── TAB刷新（私聊页签） ──
         ScreenState.CHAT_TAB to TemplateEntry("templates/chat/private_chat.png"),
         // ── 组队邀请弹窗（任意节点可触发） ──
@@ -279,6 +279,7 @@ class SceneDetector(private val context: Context) {
     // ── 模板缓存 ──
     private val templateCache = mutableMapOf<String, Bitmap>()
     private val gradeIconCache = mutableMapOf<BountyGrade, Bitmap>()
+    private val gradeIconMatCache = mutableMapOf<BountyGrade, Mat>()
     private val levelIconCache = mutableMapOf<String, Bitmap>()
 
     private fun getTemplate(state: ScreenState): Bitmap? {
@@ -356,6 +357,43 @@ class SceneDetector(private val context: Context) {
         return Mat(mat, org.opencv.core.Rect(0, 0, mat.cols(), h))
     }
 
+    /** 裁剪 Mat 上方 1/4 区域（加载标识所在区域），全宽，调用方用完需 release */
+    fun cropTopQuarter(mat: Mat): Mat {
+        val h = mat.rows() / 4
+        return Mat(mat, org.opencv.core.Rect(0, 0, mat.cols(), h))
+    }
+
+    /** 裁剪 Mat 上方 1/5 区域（上限标识所在区域），全宽，调用方用完需 release */
+    fun cropTopFifth(mat: Mat): Mat {
+        val h = mat.rows() / 5
+        return Mat(mat, org.opencv.core.Rect(0, 0, mat.cols(), h))
+    }
+
+    /** 裁剪 Mat 上方 1/10 高度、中间 1/3 宽度（等级图标所在区域），调用方用完需 release */
+    fun cropTopMiddleTenth(mat: Mat): Mat {
+        val h = mat.rows() / 10
+        val w = mat.cols() / 3
+        val x = mat.cols() / 3
+        return Mat(mat, org.opencv.core.Rect(x, 0, w, h))
+    }
+
+    /** 裁剪 Mat 右下 1/4 区域（准备按钮所在区域），调用方用完需 release */
+    fun cropBottomRightQuarter(mat: Mat): Mat {
+        val w = mat.cols() / 2
+        val h = mat.rows() / 4
+        val x = mat.cols() - w
+        val y = mat.rows() - h
+        return Mat(mat, org.opencv.core.Rect(x, y, w, h))
+    }
+
+    /** 裁剪 Mat 右上角 1/10 区域（返回按钮所在区域），调用方用完需 release */
+    fun cropTopRightTenth(mat: Mat): Mat {
+        val w = mat.cols() / 10
+        val h = mat.rows() / 10
+        val x = mat.cols() - w
+        return Mat(mat, org.opencv.core.Rect(x, 0, w, h))
+    }
+
     /** 裁剪 Mat 左上角指定比例区域（Lv等级标识所在区域），调用方用完需 release */
     fun cropTopLeftRegion(mat: Mat, topFraction: Float = 0.2f, leftFraction: Float = 1f): Mat {
         val h = (mat.rows() * topFraction).toInt()
@@ -376,17 +414,32 @@ class SceneDetector(private val context: Context) {
         return null
     }
 
-    /** 使用预转换的 screen Mat 搜索多个等级图标 — 最佳匹配策略 */
+    /** 使用预转换的 screen Mat 搜索多个等级图标 — 使用缓存的 Mat 避免重复转换 */
     fun matchAnyGradeMat(screenMat: Mat, grades: List<BountyGrade>): Pair<BountyGrade, Pair<Float, Float>>? {
         val matches = mutableListOf<GradeMatch>()
         for (grade in grades) {
-            val cached = gradeIconCache[grade]
-            val template = if (cached != null && !cached.isRecycled) cached else {
-                val loaded = AssetUtil.loadBitmapFromAssets(context, grade.gradeIconPath()) ?: continue
-                gradeIconCache[grade] = loaded
-                loaded
+            // 获取或创建缓存的 Mat
+            val cachedMat = gradeIconMatCache[grade]
+            val templateMat: Mat
+            val templateW: Int
+            val templateH: Int
+            if (cachedMat != null && !cachedMat.empty()) {
+                templateMat = cachedMat
+                templateW = cachedMat.cols()
+                templateH = cachedMat.rows()
+            } else {
+                val cachedBmp = gradeIconCache[grade]
+                val bitmap = if (cachedBmp != null && !cachedBmp.isRecycled) cachedBmp else {
+                    val loaded = AssetUtil.loadBitmapFromAssets(context, grade.gradeIconPath()) ?: continue
+                    gradeIconCache[grade] = loaded
+                    loaded
+                }
+                templateMat = OpenCVUtil.bitmapToMat(bitmap)
+                gradeIconMatCache[grade] = templateMat
+                templateW = bitmap.width
+                templateH = bitmap.height
             }
-            val result = TemplateMatcher.matchWithMat(screenMat, template, 0.85f)
+            val result = TemplateMatcher.matchMatWithMat(screenMat, templateMat, 0.85f, templateW, templateH)
             if (result.isMatched) {
                 matches.add(GradeMatch(grade, result.similarity, result.centerX, result.centerY))
             }
@@ -468,6 +521,50 @@ class SceneDetector(private val context: Context) {
             if (matchBitmap !== screen) matchBitmap.recycle()
         }
         return bestMatch(matches, "matchAnyLevelIcon")
+    }
+
+    /** Mat 版等级图标匹配 — 避免每个等级重复 Bitmap→Mat 转换 */
+    fun matchLevelIconMat(screenMat: Mat, grade: BountyGrade): GradeMatch? {
+        val paths = grade.levelIconPaths()
+        if (paths.isEmpty()) return null
+
+        var bestMatch: GradeMatch? = null
+        for (path in paths) {
+            val level = path.removePrefix("templates/team_room/lv").removeSuffix(".png").toIntOrNull() ?: continue
+            val cacheKey = "${grade.key}_$level"
+            val cached = levelIconCache[cacheKey]
+            val template = if (cached != null && !cached.isRecycled) cached else {
+                val loaded = AssetUtil.loadBitmapFromAssets(context, path) ?: run {
+                    LogUtil.e(TAG, "等级图标模板加载失败: $path")
+                    return@run null
+                }
+                if (loaded != null) levelIconCache[cacheKey] = loaded
+                loaded
+            } ?: continue
+            val result = TemplateMatcher.matchWithMat(screenMat, template, 0.92f)
+            if (result.isMatched) {
+                val match = GradeMatch(grade, result.similarity, result.centerX, result.centerY)
+                if (bestMatch == null || result.similarity > bestMatch!!.similarity) {
+                    bestMatch = match
+                    LogUtil.i(TAG, "等级图标 ${grade.displayName}(lv$level): 匹配度 ${String.format("%.2f", result.similarity)}")
+                }
+            }
+        }
+        if (bestMatch == null) {
+            LogUtil.d(TAG, "等级图标 ${grade.displayName}: 所有级别变体均未匹配")
+        }
+        return bestMatch
+    }
+
+    /** Mat 版多等级匹配 — 一次 Mat 转换，所有等级共享 */
+    fun matchAnyLevelIconMat(screenMat: Mat, grades: List<BountyGrade>): GradeMatch? {
+        LogUtil.i(TAG, "matchAnyLevelIconMat: 检查 ${grades.joinToString { "${it.displayName}(lv${it.level})" }}")
+        val matches = mutableListOf<GradeMatch>()
+        for (grade in grades) {
+            val match = matchLevelIconMat(screenMat, grade) ?: continue
+            matches.add(match)
+        }
+        return bestMatch(matches, "matchAnyLevelIconMat")
     }
 
     /** 在截图中搜索多个等级图标（gradeIcon）— 最佳匹配策略 */

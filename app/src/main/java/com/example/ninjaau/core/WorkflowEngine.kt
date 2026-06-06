@@ -47,6 +47,8 @@ class WorkflowEngine(
     private val detector = SceneDetector(context)
     private val accessibility get() = NinjaAccessibilityService.getInstance()
     private var globalFailCount = 0
+    private var lastPhase: GamePhase? = null
+    private var phaseStuckCount = 0
 
     // ── 节点实例（每个游戏页面对应一个节点） ──
     private val hallNode: HallNode
@@ -85,6 +87,7 @@ class WorkflowEngine(
 
     companion object {
         private const val MAX_GLOBAL_FAIL = 3
+        private const val MAX_PHASE_STUCK = 5
     }
 
     // ══════════════════════════════════════════
@@ -101,6 +104,8 @@ class WorkflowEngine(
     ): Boolean {
         val ctx = buildContext(configs, dailyEnabled, personalBountyEnabled, personalConfigs, nsEnabled)
         globalFailCount = 0
+        lastPhase = null
+        phaseStuckCount = 0
         emitProgress(ctx, onProgress)
 
         log("业务线: 日常=${ctx.dailyEnabled}, 个人=${ctx.personalBountyEnabled}, 逆袭=${ctx.nsEnabled}")
@@ -124,8 +129,28 @@ class WorkflowEngine(
 
                 val nextPhase = dispatchPhase(ctx)
                 if (nextPhase != null) {
+                    // ═══ 阶段卡死检测：同一 phase 连续返回 MAX_PHASE_STUCK 次 → 强制恢复 ═══
+                    if (nextPhase == ctx.currentPhase) {
+                        phaseStuckCount++
+                        if (phaseStuckCount >= MAX_PHASE_STUCK) {
+                            log("⚠ 阶段卡死: ${ctx.currentPhase.name} 连续 $phaseStuckCount 次未转换，强制恢复")
+                            globalFailCount++
+                            log("整体判定失败 ($globalFailCount/$MAX_GLOBAL_FAIL)")
+                            ctx.currentPhase = GamePhase.RECOVERY
+                            phaseStuckCount = 0
+                            continue
+                        }
+                    } else {
+                        phaseStuckCount = 0
+                    }
+
                     ctx.currentPhase = nextPhase
-                    globalFailCount = 0
+
+                    // ═══ 只在真正前进时重置失败计数（恢复节点路由到非恢复阶段不算前进） ═══
+                    if (nextPhase != GamePhase.RECOVERY && nextPhase != GamePhase.IDLE) {
+                        globalFailCount = 0
+                    }
+
                     emitProgress(ctx, onProgress)
                     val pageEvent = phaseToEvent(nextPhase)
                     if (pageEvent != null) onPageEvent?.invoke(pageEvent)
@@ -147,6 +172,7 @@ class WorkflowEngine(
                 globalFailCount++
                 log("整体判定失败 ($globalFailCount/$MAX_GLOBAL_FAIL)")
                 ctx.currentPhase = GamePhase.RECOVERY
+                phaseStuckCount = 0
             }
         }
 
