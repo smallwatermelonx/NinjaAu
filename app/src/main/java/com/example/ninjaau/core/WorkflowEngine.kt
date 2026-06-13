@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.media.RingtoneManager
 import com.example.ninjaau.core.accessibility.NinjaAccessibilityService
 import com.example.ninjaau.core.capture.ScreenCapture
+import com.example.ninjaau.core.config.ScriptConfigRepository
 import com.example.ninjaau.core.node.*
 import com.example.ninjaau.core.recognition.SceneDetector
 import com.example.ninjaau.core.util.LogUtil
@@ -157,6 +158,7 @@ class WorkflowEngine(
                     // ═══ 只在真正前进时重置失败计数（恢复节点路由到非恢复阶段不算前进） ═══
                     if (nextPhase != GamePhase.RECOVERY && nextPhase != GamePhase.IDLE) {
                         globalFailCount = 0
+                        ctx.recoveryAttempt = 0
                     }
 
                     emitProgress(ctx, onProgress)
@@ -388,7 +390,7 @@ class WorkflowEngine(
      * @return true 表示检测到邀请并已处理，调用方应 continue 跳过本轮正常逻辑
      */
     private suspend fun handleInvitation(): Boolean {
-        if (!GameManager.inviteCheckEnabled.value) return false
+        if (!ScriptConfigRepository.inviteCheckEnabled.value) return false
         val screen = captureBitmap() ?: return false
         try {
             val inviteCoord = detector.matchTemplate(screen, ScreenState.TEAM_INVITATION)

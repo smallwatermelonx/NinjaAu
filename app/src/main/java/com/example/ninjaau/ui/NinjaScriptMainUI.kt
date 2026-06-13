@@ -24,11 +24,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.LifecycleEventObserver
+import com.example.ninjaau.core.config.ScriptConfigRepository
 import com.example.ninjaau.core.GameManager
 import com.example.ninjaau.core.ScriptState
 import com.example.ninjaau.core.floating.FloatingWindowService
 import com.example.ninjaau.core.capture.CapturePermissionActivity
-import com.example.ninjaau.core.util.BountyConfigStorage
 import com.example.ninjaau.core.util.LogUtil
 import com.example.ninjaau.core.util.PermissionManager
 import com.example.ninjaau.model.BountyConfig
@@ -121,27 +121,24 @@ fun NinjaScriptMainUI() {
     var selectedTab by remember { mutableStateOf(MainTab.HOME) }
     var configTarget by remember { mutableStateOf<ConfigTarget?>(null) }
 
-    var bountyConfigs by remember { mutableStateOf(BountyConfigStorage.load(context)) }
-    var personalConfigs by remember { mutableStateOf(BountyConfigStorage.loadPersonal(context)) }
-    var nsConfigs by remember { mutableStateOf(BountyConfigStorage.loadNs(context)) }
+    var bountyConfigs by remember { mutableStateOf(ScriptConfigRepository.bountyConfigs.value) }
+    var personalConfigs by remember { mutableStateOf(ScriptConfigRepository.personalConfigs.value) }
+    var nsConfigs by remember { mutableStateOf(ScriptConfigRepository.nsConfigs.value) }
     var enabledElements by remember { mutableStateOf(setOf<TreasureElement>()) }
     var enabledGrades by remember { mutableStateOf(setOf<TreasureGrade>()) }
     var chaseDreamGrades by remember { mutableStateOf(setOf<TreasureGrade>()) }
 
-    val savedBusiness = remember { BountyConfigStorage.loadBusinessEnabled(context) }
-    var dailyEnabled by remember { mutableStateOf(BountyConfigStorage.BUSINESS_DAILY in savedBusiness) }
-    var personalEnabled by remember { mutableStateOf(BountyConfigStorage.BUSINESS_PERSONAL in savedBusiness) }
-    var nsEnabled by remember { mutableStateOf(BountyConfigStorage.BUSINESS_NS in savedBusiness) }
-    var treasureEnabled by remember { mutableStateOf(BountyConfigStorage.BUSINESS_TREASURE in savedBusiness) }
-    var inviteCheckEnabled by remember { mutableStateOf(GameManager.inviteCheckEnabled.value) }
+    var dailyEnabled by remember { mutableStateOf(ScriptConfigRepository.dailyEnabled.value) }
+    var personalEnabled by remember { mutableStateOf(ScriptConfigRepository.personalEnabled.value) }
+    var nsEnabled by remember { mutableStateOf(ScriptConfigRepository.nsEnabled.value) }
+    var treasureEnabled by remember { mutableStateOf(ScriptConfigRepository.treasureEnabled.value) }
+    var inviteCheckEnabled by remember { mutableStateOf(ScriptConfigRepository.inviteCheckEnabled.value) }
 
-    fun saveBusinessEnabled() {
-        val set = mutableSetOf<String>()
-        if (dailyEnabled) set.add(BountyConfigStorage.BUSINESS_DAILY)
-        if (personalEnabled) set.add(BountyConfigStorage.BUSINESS_PERSONAL)
-        if (nsEnabled) set.add(BountyConfigStorage.BUSINESS_NS)
-        if (treasureEnabled) set.add(BountyConfigStorage.BUSINESS_TREASURE)
-        BountyConfigStorage.saveBusinessEnabled(context, set)
+    fun saveAll() {
+        ScriptConfigRepository.setDailyEnabled(dailyEnabled)
+        ScriptConfigRepository.setPersonalEnabled(personalEnabled)
+        ScriptConfigRepository.setNsEnabled(nsEnabled)
+        ScriptConfigRepository.setTreasureEnabled(treasureEnabled)
     }
 
     val timeFormatter = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
@@ -190,12 +187,12 @@ fun NinjaScriptMainUI() {
                 addLog("⚠️ 请至少勾选一条业务线")
             }
             else -> {
-                GameManager.updateBountyConfigs(bountyConfigs.filter { it.enabled })
-                GameManager.setDailyEnabled(dailyEnabled)
-                GameManager.setPersonalBountyEnabled(context, personalEnabled)
-                GameManager.setNsEnabled(nsEnabled)
-                if (personalEnabled) GameManager.updatePersonalBountyConfigs(personalConfigs.filter { it.enabled })
-                GameManager.setInviteCheckEnabled(context, inviteCheckEnabled)
+                ScriptConfigRepository.setBountyConfigs(bountyConfigs)
+                ScriptConfigRepository.setDailyEnabled(dailyEnabled)
+                ScriptConfigRepository.setPersonalEnabled(personalEnabled)
+                ScriptConfigRepository.setNsEnabled(nsEnabled)
+                ScriptConfigRepository.setInviteCheckEnabled(inviteCheckEnabled)
+                if (personalEnabled) ScriptConfigRepository.setPersonalConfigs(personalConfigs)
                 addLog("🚀 启动脚本...")
                 val intent = Intent(context, FloatingWindowService::class.java)
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
@@ -274,29 +271,28 @@ fun NinjaScriptMainUI() {
                                 Column(modifier = Modifier.padding(vertical = 4.dp, horizontal = 2.dp)) {
                                     TaskRow("日常悬赏", dailyEnabled, onToggle = {
                                         dailyEnabled = !dailyEnabled
-                                        saveBusinessEnabled()
+                                        saveAll()
                                         if (dailyEnabled && bountyConfigs.none { it.enabled }) {
                                             bountyConfigs = bountyConfigs.map { it.copy(enabled = true) }
-                                            GameManager.updateBountyConfigs(bountyConfigs)
-                                            BountyConfigStorage.save(context, bountyConfigs)
+                                            ScriptConfigRepository.setBountyConfigs(bountyConfigs)
                                         }
-                                        GameManager.updateBountyConfigs(bountyConfigs.filter { it.enabled })
+                                        ScriptConfigRepository.setBountyConfigs(bountyConfigs.filter { it.enabled })
                                     }, onGearClick = { configTarget = ConfigTarget.DAILY })
                                     HorizontalDivider(color = Theme.Border, modifier = Modifier.padding(horizontal = 8.dp))
                                     TaskRow("个人悬赏", personalEnabled, onToggle = {
                                         personalEnabled = !personalEnabled
-                                        saveBusinessEnabled()
-                                        GameManager.setPersonalBountyEnabled(context, personalEnabled)
+                                        saveAll()
+                                        ScriptConfigRepository.setPersonalEnabled(personalEnabled)
                                     }, onGearClick = { configTarget = ConfigTarget.PERSONAL })
                                     HorizontalDivider(color = Theme.Border, modifier = Modifier.padding(horizontal = 8.dp))
                                     TaskRow("逆袭悬赏", nsEnabled, onToggle = {
                                         nsEnabled = !nsEnabled
-                                        saveBusinessEnabled()
+                                        saveAll()
                                     }, onGearClick = { configTarget = ConfigTarget.NS })
                                     HorizontalDivider(color = Theme.Border, modifier = Modifier.padding(horizontal = 8.dp))
                                     TaskRow("藏宝图", treasureEnabled, onToggle = {
                                         treasureEnabled = !treasureEnabled
-                                        saveBusinessEnabled()
+                                        saveAll()
                                     }, onGearClick = { configTarget = ConfigTarget.TREASURE })
                                 }
                             }
@@ -357,25 +353,20 @@ fun NinjaScriptMainUI() {
                                         val enabledList = configs.filter { it.enabled }
                                         dailyEnabled = enabledList.any { !it.grade.isEvent }
                                         nsEnabled = enabledList.any { it.grade.isEvent }
-                                        saveBusinessEnabled()
-                                        GameManager.updateBountyConfigs(enabledList)
-                                        GameManager.setDailyEnabled(dailyEnabled)
-                                        GameManager.setNsEnabled(nsEnabled)
-                                        BountyConfigStorage.save(context, configs)
+                                        saveAll()
+                                        ScriptConfigRepository.setBountyConfigs(configs)
                                     },
                                     onPersonalConfigsChanged = { configs ->
                                         personalConfigs = configs
                                         val e = configs.any { it.enabled }; personalEnabled = e
-                                        GameManager.setPersonalBountyEnabled(context, e)
-                                        GameManager.updatePersonalBountyConfigs(configs.filter { it.enabled })
-                                        BountyConfigStorage.savePersonal(context, configs)
+                                        ScriptConfigRepository.setPersonalEnabled(e)
+                                        ScriptConfigRepository.setPersonalConfigs(configs)
                                     },
                                     onNsConfigsChanged = { configs ->
                                         nsConfigs = configs
                                         nsEnabled = configs.any { it.enabled }
-                                        saveBusinessEnabled()
-                                        GameManager.setNsEnabled(nsEnabled)
-                                        BountyConfigStorage.saveNs(context, configs)
+                                        saveAll()
+                                        ScriptConfigRepository.setNsConfigs(configs)
                                     },
                                     onEnabledElementsChanged = { enabledElements = it },
                                     onEnabledGradesChanged = { enabledGrades = it },

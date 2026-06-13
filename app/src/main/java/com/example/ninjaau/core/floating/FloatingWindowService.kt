@@ -15,6 +15,7 @@ import android.view.animation.OvershootInterpolator
 import android.widget.*
 import androidx.core.content.ContextCompat
 import com.example.ninjaau.R
+import com.example.ninjaau.core.config.ScriptConfigRepository
 import com.example.ninjaau.core.GameManager
 import com.example.ninjaau.core.ScriptState
 import com.example.ninjaau.core.util.Constant
@@ -385,7 +386,7 @@ class FloatingWindowService : Service() {
         val grades = BountyGrade.sorted()
         val items = grades.map { "${it.displayName}  (${it.defaultRuns}次)" }.toTypedArray()
         val checked = BooleanArray(grades.size) { i ->
-            GameManager.getSelectedGrades().contains(grades[i])
+            ScriptConfigRepository.bountyConfigs.value.filter { it.enabled }.map { it.grade }.contains(grades[i])
         }
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
             .setTitle("选择悬赏等级")
@@ -396,7 +397,7 @@ class FloatingWindowService : Service() {
                 val configs = grades.map { grade ->
                     BountyConfig(grade = grade, enabled = checked[grades.indexOf(grade)])
                 }
-                GameManager.updateBountyConfigs(configs)
+                ScriptConfigRepository.setBountyConfigs(configs)
                 val enabledNames = grades.filterIndexed { i, _ -> checked[i] }
                     .joinToString(", ") { it.displayName }
                 ToastUtil.show(this, "已选择: $enabledNames")

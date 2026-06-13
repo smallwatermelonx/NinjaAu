@@ -41,7 +41,9 @@ data class GameContext(
     /** 个人悬赏各等级目标次数 */
     val personalTargetRuns: Map<BountyGrade, Int> = emptyMap(),
     /** 逆袭悬赏用户勾选的等级列表（从 dailyEnabled configs 中筛选 isEvent） */
-    var nsActiveGrades: List<BountyGrade> = emptyList()
+    var nsActiveGrades: List<BountyGrade> = emptyList(),
+    /** 恢复节点连续尝试次数（进入 RECOVERY 时递增，正常前进时重置） */
+    var recoveryAttempt: Int = 0
 ) {
     /** 是否所有可完成的悬赏都已完成（追梦等级不参与判定，脚本持续运行） */
     val allCompleted: Boolean

@@ -663,4 +663,79 @@ class SceneDetector(private val context: Context) {
         return best
     }
 
+    // ═══ 规则化匹配 ═══
+
+    /**
+     * 应用一条 RecognitionRule 到截图，返回匹配坐标或 null。
+     * 自动处理 ROI 裁剪和阈值覆盖。
+     */
+    fun matchRule(screenMat: Mat, rule: com.example.ninjaau.core.config.RecognitionRule): Pair<Float, Float>? {
+        val cropped = if (rule.roi != null) cropForRegion(screenMat, rule.roi) else screenMat
+        try {
+            val entry = templates[rule.template] ?: return null
+            val template = getTemplate(rule.template) ?: return null
+            val threshold = rule.threshold ?: entry.threshold
+            val result = TemplateMatcher.matchWithMat(cropped, template, threshold)
+            if (result.isMatched) {
+                // 如果有 ROI 裁剪，需要把坐标映射回全屏坐标
+                val fullX: Float
+                val fullY: Float
+                if (rule.roi != null && cropped !== screenMat) {
+                    val offset = getRegionOffset(screenMat, rule.roi)
+                    fullX = result.centerX + offset.first
+                    fullY = result.centerY + offset.second
+                } else {
+                    fullX = result.centerX
+                    fullY = result.centerY
+                }
+                return Pair(fullX, fullY)
+            }
+        } finally {
+            if (cropped !== screenMat) cropped.release()
+        }
+        return null
+    }
+
+    private fun cropForRegion(mat: Mat, region: com.example.ninjaau.core.config.RoiRegion): Mat {
+        return when (region) {
+            com.example.ninjaau.core.config.RoiRegion.FULL -> mat
+            com.example.ninjaau.core.config.RoiRegion.LEFT_TENTH -> cropLeftTenth(mat)
+            com.example.ninjaau.core.config.RoiRegion.LEFT_MID_TENTH -> cropLeftMidTenth(mat)
+            com.example.ninjaau.core.config.RoiRegion.LEFT_THIRD -> cropLeftThird(mat)
+            com.example.ninjaau.core.config.RoiRegion.LEFT_QUARTER -> cropLeftQuarter(mat)
+            com.example.ninjaau.core.config.RoiRegion.LEFT_SIXTH -> cropLeftSixth(mat)
+            com.example.ninjaau.core.config.RoiRegion.TOP_TENTH -> cropTopTenth(mat)
+            com.example.ninjaau.core.config.RoiRegion.TOP_LEFT_EIGHTH -> cropTopLeftEighth(mat)
+            com.example.ninjaau.core.config.RoiRegion.TOP_FIFTH -> cropTopFifth(mat)
+            com.example.ninjaau.core.config.RoiRegion.TOP_QUARTER -> cropTopQuarter(mat)
+            com.example.ninjaau.core.config.RoiRegion.TOP_MIDDLE_TENTH -> cropTopMiddleTenth(mat)
+            com.example.ninjaau.core.config.RoiRegion.BOTTOM_MIDDLE_FIFTH -> cropBottomMiddleFifth(mat)
+            com.example.ninjaau.core.config.RoiRegion.BOTTOM_QUARTER -> cropBottomQuarter(mat)
+            com.example.ninjaau.core.config.RoiRegion.BOTTOM_LEFT_QUARTER -> cropBottomLeftQuarter(mat)
+            com.example.ninjaau.core.config.RoiRegion.BOTTOM_LEFT_FIFTH -> cropBottomLeftFifth(mat)
+            com.example.ninjaau.core.config.RoiRegion.BOTTOM_RIGHT_QUARTER -> cropBottomRightQuarter(mat)
+        }
+    }
+
+    private fun getRegionOffset(mat: Mat, region: com.example.ninjaau.core.config.RoiRegion): Pair<Float, Float> {
+        return when (region) {
+            com.example.ninjaau.core.config.RoiRegion.FULL -> Pair(0f, 0f)
+            com.example.ninjaau.core.config.RoiRegion.LEFT_TENTH -> Pair(0f, 0f)
+            com.example.ninjaau.core.config.RoiRegion.LEFT_MID_TENTH -> Pair(mat.cols() * 2f / 10, 0f)
+            com.example.ninjaau.core.config.RoiRegion.LEFT_THIRD -> Pair(0f, 0f)
+            com.example.ninjaau.core.config.RoiRegion.LEFT_QUARTER -> Pair(0f, 0f)
+            com.example.ninjaau.core.config.RoiRegion.LEFT_SIXTH -> Pair(0f, 0f)
+            com.example.ninjaau.core.config.RoiRegion.TOP_TENTH -> Pair(0f, 0f)
+            com.example.ninjaau.core.config.RoiRegion.TOP_LEFT_EIGHTH -> Pair(0f, 0f)
+            com.example.ninjaau.core.config.RoiRegion.TOP_FIFTH -> Pair(0f, 0f)
+            com.example.ninjaau.core.config.RoiRegion.TOP_QUARTER -> Pair(0f, 0f)
+            com.example.ninjaau.core.config.RoiRegion.TOP_MIDDLE_TENTH -> Pair(mat.cols() / 3f, 0f)
+            com.example.ninjaau.core.config.RoiRegion.BOTTOM_MIDDLE_FIFTH -> Pair(mat.cols() / 3f, mat.rows() * 4f / 5)
+            com.example.ninjaau.core.config.RoiRegion.BOTTOM_QUARTER -> Pair(0f, mat.rows() * 3f / 4)
+            com.example.ninjaau.core.config.RoiRegion.BOTTOM_LEFT_QUARTER -> Pair(0f, mat.rows() * 3f / 4)
+            com.example.ninjaau.core.config.RoiRegion.BOTTOM_LEFT_FIFTH -> Pair(0f, mat.rows() * 4f / 5)
+            com.example.ninjaau.core.config.RoiRegion.BOTTOM_RIGHT_QUARTER -> Pair(mat.cols() / 2f, mat.rows() * 3f / 4)
+        }
+    }
+
 }

@@ -6,7 +6,7 @@ import com.example.ninjaau.core.checkNodeTimeout
 import com.example.ninjaau.model.BountyGrade
 import com.example.ninjaau.model.GameContext
 import com.example.ninjaau.model.GamePhase
-import com.example.ninjaau.core.GameManager
+import com.example.ninjaau.core.config.ScriptConfigRepository
 import com.example.ninjaau.model.ScreenState
 import kotlinx.coroutines.isActive
 import kotlin.coroutines.coroutineContext
@@ -67,7 +67,7 @@ class BountyListNode(private val ctx: NodeContext) : GameNode {
                 val tMat = System.currentTimeMillis()
 
                 // ═══ 0. 组队邀请拦截（全屏检测，弹窗可能出现在任意位置） ═══
-                if (GameManager.inviteCheckEnabled.value) {
+                if (ScriptConfigRepository.inviteCheckEnabled.value) {
                     val inviteCoord = this.ctx.detector.matchTemplateMat(screenMat, ScreenState.TEAM_INVITATION)
                     if (inviteCoord != null) {
                         this.ctx.log("检测到组队邀请弹窗，拒绝")
