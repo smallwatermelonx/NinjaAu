@@ -25,8 +25,8 @@ object PermissionManager {
     private val lock = Any()
 
     // 授权原始数据（仅当前进程生命周期内有效）
-    var mResultCode: Int = -1
-    var mProjectionIntent: Intent? = null
+    private var mResultCode: Int = -1
+    private var mProjectionIntent: Intent? = null
 
     // 缓存全局唯一的 MediaProjection 实例
     private var _mediaProjection: MediaProjection? = null
@@ -63,20 +63,22 @@ object PermissionManager {
      * 仅检查内存中的数据，不读 SharedPreferences
      */
     fun hasProjectionPermission(): Boolean {
-        val isCodeValid = mResultCode == Activity.RESULT_OK
-        val isIntentValid = mProjectionIntent != null
+        synchronized(lock) {
+            val isCodeValid = mResultCode == Activity.RESULT_OK
+            val isIntentValid = mProjectionIntent != null
 
-        if (!isCodeValid || !isIntentValid) {
-            if (mResultCode == -1 && mProjectionIntent == null) {
-                LogUtil.w("PermissionManager", "尚未申请截图授权（正常状态，点击Link Start后会引导授权）")
-            } else {
-                LogUtil.e("PermissionManager", "截图授权数据异常: resultCode=$mResultCode, intent=${mProjectionIntent != null}")
+            if (!isCodeValid || !isIntentValid) {
+                if (mResultCode == -1 && mProjectionIntent == null) {
+                    LogUtil.w("PermissionManager", "尚未申请截图授权（正常状态，点击Link Start后会引导授权）")
+                } else {
+                    LogUtil.e("PermissionManager", "截图授权数据异常: resultCode=$mResultCode, intent=${mProjectionIntent != null}")
+                }
+                return false
             }
-            return false
-        }
 
-        LogUtil.i("PermissionManager", "截图授权数据有效")
-        return true
+            LogUtil.i("PermissionManager", "截图授权数据有效")
+            return true
+        }
     }
 
     /**
@@ -173,8 +175,10 @@ object PermissionManager {
      * 清空截图授权数据 + 清理 SharedPreferences
      */
     fun clearProjectionPermission(context: Context? = null) {
-        mResultCode = -1
-        mProjectionIntent = null
+        synchronized(lock) {
+            mResultCode = -1
+            mProjectionIntent = null
+        }
         isProjectionLost = false
         // 同时清理 SharedPreferences 防止下次启动读到脏数据
         if (context != null) {

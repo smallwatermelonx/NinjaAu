@@ -75,7 +75,8 @@ class SceneDetector(private val context: Context) {
         FIGHT("战斗", listOf(
             ScreenState.SLIDE_BUTTON, ScreenState.ULTIMATE_SKILL, ScreenState.LV_ICON,
             ScreenState.SETTLEMENT_POPUP, ScreenState.CONFIRM_BUTTON, ScreenState.DEFEAT_POPUP,
-            ScreenState.JUMP_BUTTON, ScreenState.SCROLL_UP, ScreenState.WEAPON_SKILL
+            ScreenState.JUMP_BUTTON, ScreenState.SCROLL_UP, ScreenState.WEAPON_SKILL,
+            ScreenState.BLOOD_CURSE
         ), false, false),
         SETTLEMENT("结算领奖", listOf(
             ScreenState.SETTLEMENT_POPUP, ScreenState.CONFIRM_BUTTON, ScreenState.CHAT_ICON
@@ -251,6 +252,7 @@ class SceneDetector(private val context: Context) {
         ScreenState.SCROLL_UP to TemplateEntry("templates/fight/scroll_up.png"),
         ScreenState.ULTIMATE_SKILL to TemplateEntry("templates/fight/role/shihara/r_shihara.png", 0.6f),
         ScreenState.WEAPON_SKILL to TemplateEntry("templates/fight/wopen/shedao.png", 0.6f),
+        ScreenState.BLOOD_CURSE to TemplateEntry("templates/fight/role/shihara/blood_curse.png", 0.85f),
         ScreenState.DEFEAT_POPUP to TemplateEntry("templates/fight/defeat_popup.png", 0.6f),
         // ── 结算 ──
         ScreenState.SETTLEMENT_POPUP to TemplateEntry("templates/settlement/black.png", 0.7f),
@@ -276,11 +278,11 @@ class SceneDetector(private val context: Context) {
         private const val DEFAULT_THRESHOLD = 0.8f
     }
 
-    // ── 模板缓存 ──
-    private val templateCache = mutableMapOf<String, Bitmap>()
-    private val gradeIconCache = mutableMapOf<BountyGrade, Bitmap>()
-    private val gradeIconMatCache = mutableMapOf<BountyGrade, Mat>()
-    private val levelIconCache = mutableMapOf<String, Bitmap>()
+    // ── 模板缓存（线程安全） ──
+    private val templateCache = java.util.concurrent.ConcurrentHashMap<String, Bitmap>()
+    private val gradeIconCache = java.util.concurrent.ConcurrentHashMap<BountyGrade, Bitmap>()
+    private val gradeIconMatCache = java.util.concurrent.ConcurrentHashMap<BountyGrade, Mat>()
+    private val levelIconCache = java.util.concurrent.ConcurrentHashMap<String, Bitmap>()
 
     private fun getTemplate(state: ScreenState): Bitmap? {
         val entry = templates[state] ?: return null
@@ -597,12 +599,12 @@ class SceneDetector(private val context: Context) {
                 if (loaded != null) levelIconCache[cacheKey] = loaded
                 loaded
             } ?: continue
-            val result = TemplateMatcher.matchWithMat(screenMat, template, 0.92f)
+            val result = TemplateMatcher.matchWithMat(screenMat, template, 0.85f)
+            LogUtil.i(TAG, "等级图标 ${grade.displayName}(lv$level): 相似度=${String.format("%.3f", result.similarity)} 阈值=0.850 ${if (result.isMatched) "✓" else "✗"}")
             if (result.isMatched) {
                 val match = GradeMatch(grade, result.similarity, result.centerX, result.centerY)
                 if (bestMatch == null || result.similarity > bestMatch!!.similarity) {
                     bestMatch = match
-                    LogUtil.i(TAG, "等级图标 ${grade.displayName}(lv$level): 匹配度 ${String.format("%.2f", result.similarity)}")
                 }
             }
         }

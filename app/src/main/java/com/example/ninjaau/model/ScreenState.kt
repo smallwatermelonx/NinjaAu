@@ -29,6 +29,7 @@ enum class ScreenState(val description: String) {
     SCROLL_UP("上翻按钮"),
     ULTIMATE_SKILL("大招图标"),
     WEAPON_SKILL("武器图标"),
+    BLOOD_CURSE("血咒技能"),
     DEFEAT_POPUP("失败弹窗"),
 
     // === 结算 ===

@@ -370,7 +370,12 @@ class WorkflowEngine(
     }
 
     private fun click(coord: Pair<Float, Float>) {
-        accessibility?.clickAt(coord.first, coord.second)
+        val service = accessibility
+        if (service == null) {
+            LogUtil.w(TAG, "点击失败: AccessibilityService 未连接 (${coord.first}, ${coord.second})")
+            return
+        }
+        service.clickAt(coord.first, coord.second)
     }
 
     private fun log(msg: String) {
@@ -406,6 +411,11 @@ class WorkflowEngine(
         try {
             val dir = File(context.filesDir, "crash_logs")
             dir.mkdirs()
+
+            // 清理超过7天的旧日志
+            val cutoff = System.currentTimeMillis() - 7 * 24 * 60 * 60 * 1000L
+            dir.listFiles()?.filter { it.isFile && it.lastModified() < cutoff }?.forEach { it.delete() }
+
             val time = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
             val file = File(dir, "crash_$time.log")
             FileWriter(file).use { w ->

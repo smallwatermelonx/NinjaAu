@@ -125,10 +125,18 @@ object GameManager {
         }
     }
 
+    @Synchronized
     fun startScript(context: Context) {
         if (_state.value != ScriptState.IDLE) return
         _state.value = ScriptState.RUNNING
         val appContext = context.applicationContext
+
+        // 快照配置，避免协程读取时被 UI 线程修改
+        val bountiesSnapshot = selectedBounties.toList()
+        val personalSnapshot = selectedPersonalBounties.toList()
+        val dailyEnabledSnapshot = _dailyEnabled.value
+        val personalEnabledSnapshot = _personalBountyEnabled.value
+        val nsEnabledSnapshot = _nsEnabled.value
 
         mainJob = scope.launch {
             postLog("⏳ 等待截图授权...")
@@ -161,11 +169,11 @@ object GameManager {
                     postLog = { msg -> postLog(msg) },
                     onPageEvent = { event -> _pageEvents.tryEmit(event) }
                 ).runLoop(
-                    selectedBounties,
-                    dailyEnabled = _dailyEnabled.value,
-                    personalBountyEnabled = _personalBountyEnabled.value,
-                    personalConfigs = selectedPersonalBounties,
-                    nsEnabled = _nsEnabled.value,
+                    bountiesSnapshot,
+                    dailyEnabled = dailyEnabledSnapshot,
+                    personalBountyEnabled = personalEnabledSnapshot,
+                    personalConfigs = personalSnapshot,
+                    nsEnabled = nsEnabledSnapshot,
                     onProgress = { progress -> _bountyProgress.value = progress }
                 )
             } catch (e: CancellationException) {

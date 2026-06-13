@@ -126,6 +126,8 @@ class ScreenCapture private constructor(context: Context) {
             image.height, Bitmap.Config.ARGB_8888
         )
         bitmap.copyPixelsFromBuffer(buffer)
-        return Bitmap.createBitmap(bitmap, 0, 0, image.width, image.height)
+        val result = Bitmap.createBitmap(bitmap, 0, 0, image.width, image.height)
+        bitmap.recycle()
+        return result
     }
 }

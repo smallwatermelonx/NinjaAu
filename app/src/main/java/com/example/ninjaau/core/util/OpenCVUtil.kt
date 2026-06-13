@@ -11,6 +11,7 @@ import org.opencv.imgproc.Imgproc
  */
 object OpenCVUtil {
     private const val TAG = "OpenCVUtil"
+    @Volatile
     private var isLoaded = false
 
     fun initOpenCV(): Boolean {

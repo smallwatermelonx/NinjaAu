@@ -36,8 +36,7 @@ class CapturePermissionActivity : Activity() {
             }
             Toast.makeText(this, "授权成功，服务已启动", Toast.LENGTH_SHORT).show()
         } else {
-            PermissionManager.mResultCode = -1
-            PermissionManager.mProjectionIntent = null
+            PermissionManager.clearProjectionPermission()
             Toast.makeText(this, "未授予截图权限", Toast.LENGTH_SHORT).show()
         }
         finish()
