@@ -21,15 +21,11 @@ import com.example.ninjaau.core.util.Constant
 import com.example.ninjaau.core.util.LogUtil
 import com.example.ninjaau.core.util.PermissionManager
 import com.example.ninjaau.core.util.ToastUtil
-import com.example.ninjaau.core.capture.ScreenCapture
 import com.example.ninjaau.core.recognition.SceneDetector
 import com.example.ninjaau.model.BountyConfig
 import com.example.ninjaau.model.BountyGrade
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.abs
 
@@ -39,51 +35,36 @@ class FloatingWindowService : Service() {
         private const val NOTIFICATION_ID = 102
         private const val AUTO_HIDE_MS = 5000L
         private const val ANIM_DURATION = 300L
-        private const val PANEL_WIDTH = 260
         private const val VISIBLE_TAB = 30
         private const val TOAST_DURATION_MS = 1500L
-        private const val HUD_ALPHA = 0.85f
     }
 
     private lateinit var windowManager: WindowManager
     private lateinit var floatingView: View
     private lateinit var layoutParams: WindowManager.LayoutParams
     private lateinit var flMainBall: View
-    private lateinit var llMenu: LinearLayout
-    private lateinit var ivControlIcon: ImageView
 
-    // ── 旧布局面板引用（保留 inflate 兼容，已隐藏不用） ──
-    private lateinit var llInfoPanel: LinearLayout
-    private lateinit var llProgress: LinearLayout
-    private lateinit var llLogs: LinearLayout
-    private lateinit var svLogs: ScrollView
+    private lateinit var llMenuLeft: LinearLayout
+    private lateinit var llMenuRight: LinearLayout
+    private lateinit var ivControlIconLeft: ImageView
+    private lateinit var ivControlIconRight: ImageView
 
-    // ── 独立信息面板（右侧悬浮层, NOT_TOUCHABLE） ──
-    private var infoPanelRoot: LinearLayout? = null
-    private var infoPanelParams: WindowManager.LayoutParams? = null
-    private var progressGrid: LinearLayout? = null
-    private var logContainer: LinearLayout? = null
-    private var logScroll: ScrollView? = null
-    private var isInfoPanelVisible = false
+    private val llMenu: LinearLayout get() = if (isBallOnRight()) llMenuLeft else llMenuRight
+    private val ivControlIcon: ImageView get() = if (isBallOnRight()) ivControlIconLeft else ivControlIconRight
 
-    // ── HUD 覆盖层（右上角进度矩形） ──
-    private var hudRoot: LinearLayout? = null
-    private var hudTvContent: TextView? = null
-    private var hudLayoutParams: WindowManager.LayoutParams? = null
+    private lateinit var hudManager: HudManager
 
-    // ── Toast 覆盖层（中上方页面跳转提示） ──
     private var toastTv: TextView? = null
     private var toastLayoutParams: WindowManager.LayoutParams? = null
     private val toastQueue = ConcurrentLinkedQueue<String>()
     private var isToastShowing = false
 
-    // ── 悬浮球 Y 轴边界 ──
     private var minY = 0
     private var maxY = 0
 
     private var isExpanded = false
     private var isSideHidden = false
-    private var isOnGameDataPage = false // 大厅或招募列表
+    private var isOnGameDataPage = false
     private var isReceiverRegistered = false
     private var screenWidth = 0
     private var screenHeight = 0
@@ -130,8 +111,7 @@ class FloatingWindowService : Service() {
 
         calcScreenBounds()
         initFloatingView()
-        initInfoPanel()
-        initHudOverlay()
+        hudManager = HudManager(this, windowManager)
         initToastOverlay()
         observeScriptState()
         observeDataFlows()
@@ -186,14 +166,14 @@ class FloatingWindowService : Service() {
             GameManager.state.collectLatest { state ->
                 when (state) {
                     ScriptState.RUNNING -> {
-                        ivControlIcon.setImageResource(android.R.drawable.ic_media_pause)
-                        showHud()
-                        updatePanelVisibility()
+                        ivControlIconLeft.setImageResource(android.R.drawable.ic_media_pause)
+                        ivControlIconRight.setImageResource(android.R.drawable.ic_media_pause)
+                        if (isOnGameDataPage) hudManager.show()
                     }
                     ScriptState.IDLE -> {
-                        ivControlIcon.setImageResource(android.R.drawable.ic_media_play)
-                        hideHud()
-                        hideInfoPanel()
+                        ivControlIconLeft.setImageResource(android.R.drawable.ic_media_play)
+                        ivControlIconRight.setImageResource(android.R.drawable.ic_media_play)
+                        hudManager.hide()
                     }
                 }
             }
@@ -201,295 +181,41 @@ class FloatingWindowService : Service() {
     }
 
     private fun observeDataFlows() {
-        // 悬赏完成进度 → HUD + 信息面板
         serviceScope.launch {
             GameManager.bountyProgress.collectLatest { progress ->
-                updateHudContent(progress)
-                updateProgressGrid(progress)
+                hudManager.updateProgress(progress)
             }
         }
-        // 运行日志 → 信息面板
-        serviceScope.launch {
-            GameManager.logEvents.collectLatest { msg ->
-                addLogEntry(msg)
-            }
-        }
-        // 页面跳转事件 → Toast + 面板可见性
         serviceScope.launch {
             GameManager.pageEvents.collectLatest { event ->
                 showPageToast(event)
+                val wasOnPage = isOnGameDataPage
                 isOnGameDataPage = event == "进入大厅" || event == "进入招募列表"
-                updatePanelVisibility()
-            }
-        }
-    }
-
-    // ══════════════════════════════════════════
-    //  独立信息面板（纯日志面板）
-    // ══════════════════════════════════════════
-
-    private fun initInfoPanel() {
-        val density = resources.displayMetrics.density
-        val panelWidth = (screenWidth * 0.38).toInt()
-        val panelHeight = (screenHeight * 0.22).toInt()
-        // HUD 位于 y=minY+50，高度约 60-80dp，infoPanel 放在 HUD 下方留 12dp 间距
-        val panelY = minY + (130 * density).toInt()
-
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            val bg = GradientDrawable().apply {
-                setColor(0x991A1A2E.toInt())
-                cornerRadius = 10f * density
-            }
-            background = bg
-        }
-
-        // ── 标题行 ──
-        root.addView(TextView(this).apply {
-            text = "运行日志"
-            setTextColor(0xFFB388FF.toInt())
-            textSize = 11f
-            setTypeface(null, Typeface.BOLD)
-            setPadding((10 * density).toInt(), (6 * density).toInt(),
-                (10 * density).toInt(), (2 * density).toInt())
-        })
-
-        // ── 日志区域（全宽） ──
-        val scroll = ScrollView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0
-            ).apply { weight = 1f }
-        }
-        logScroll = scroll
-        val inner = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        logContainer = inner
-        scroll.addView(inner)
-        root.addView(scroll)
-
-        infoPanelRoot = root
-
-        infoPanelParams = WindowManager.LayoutParams(
-            panelWidth,
-            panelHeight,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.END
-            x = 12
-            y = panelY
-        }
-    }
-
-    private fun showInfoPanel() {
-        if (isInfoPanelVisible) return
-        val root = infoPanelRoot ?: return
-        if (root.parent == null) {
-            try {
-                windowManager.addView(root, infoPanelParams)
-            } catch (e: Exception) {
-                LogUtil.e("FloatingWindowService", "添加信息面板失败: ${e.message}")
-                return
-            }
-        }
-        isInfoPanelVisible = true
-    }
-
-    private fun hideInfoPanel() {
-        if (!isInfoPanelVisible) return
-        infoPanelRoot?.let {
-            if (it.parent != null) {
-                try { windowManager.removeView(it) } catch (_: Exception) {}
-            }
-        }
-        isInfoPanelVisible = false
-    }
-
-    private fun updatePanelVisibility() {
-        if (GameManager.state.value == ScriptState.RUNNING && isOnGameDataPage) {
-            showInfoPanel()
-        } else {
-            hideInfoPanel()
-        }
-    }
-
-    private fun updateProgressGrid(progress: Map<BountyGrade, Pair<Int, Int>>) {
-        val grid = progressGrid ?: return
-        grid.removeAllViews()
-
-        if (progress.isEmpty()) {
-            grid.addView(infoText("暂无数据", "#FF9E9E9E"))
-            return
-        }
-
-        val entries = mutableListOf<Pair<String, String>>()
-        for (grade in BountyGrade.sorted()) {
-            val counts = progress[grade] ?: continue
-            val (completed, target) = counts
-            if (target <= 0) continue
-            val done = completed >= target
-            val label = "${grade.displayName} ${completed}/${target}${if (done) " ✓" else ""}"
-            val color = if (done) "#FF4CAF50" else "#FFE0E0E0"
-            entries.add(label to color)
-        }
-
-        for (chunk in entries.chunked(2)) {
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-            }
-            for ((text, color) in chunk) {
-                row.addView(infoText(text, color).apply {
-                    layoutParams = LinearLayout.LayoutParams(
-                        0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
-                    )
-                })
-            }
-            if (chunk.size < 2) {
-                row.addView(Space(this).apply {
-                    layoutParams = LinearLayout.LayoutParams(0, 1, 1f)
-                })
-            }
-            grid.addView(row)
-        }
-    }
-
-    private fun infoText(text: String, colorHex: String): TextView {
-        return TextView(this).apply {
-            this.text = text
-            textSize = 12f
-            setTextColor(android.graphics.Color.parseColor(colorHex))
-            setPadding(0, 3, 0, 3)
-        }
-    }
-
-    private fun addLogEntry(msg: String) {
-        val container = logContainer ?: return
-        val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-        val tv = TextView(this).apply {
-            text = "$time - $msg"
-            textSize = 12f
-            setTextColor(0xFFE0E0E0.toInt())
-            setPadding(0, 2, 0, 2)
-        }
-        container.addView(tv)
-        while (container.childCount > 30) {
-            container.removeViewAt(0)
-        }
-        logScroll?.post { logScroll?.fullScroll(View.FOCUS_DOWN) }
-    }
-
-    // ══════════════════════════════════════════
-    //  HUD 覆盖层（右上角进度矩形）
-    // ══════════════════════════════════════════
-
-    private fun initHudOverlay() {
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(10, 8, 10, 8)
-            val bg = GradientDrawable().apply {
-                setColor(0xAA1A1A2E.toInt())
-                cornerRadius = 8f
-            }
-            background = bg
-            alpha = HUD_ALPHA
-        }
-        val title = TextView(this).apply {
-            text = "◆ 进度"
-            setTextColor(0xFFB388FF.toInt())
-            textSize = 14f
-            setTypeface(null, Typeface.BOLD)
-        }
-        root.addView(title)
-        val content = TextView(this).apply {
-            textSize = 14f
-            setLineSpacing(2f, 1f)
-            setTextColor(android.graphics.Color.WHITE)
-            setPadding(0, 4, 0, 2)
-        }
-        root.addView(content)
-        hudTvContent = content
-        hudRoot = root
-
-        val maxW = (150 * resources.displayMetrics.density).toInt()
-        hudLayoutParams = WindowManager.LayoutParams(
-            maxW,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.END
-            x = 12
-            y = minY + 50
-        }
-    }
-
-    private fun showHud() {
-        hudRoot?.let { v ->
-            if (v.parent == null && hudLayoutParams != null) {
-                try {
-                    windowManager.addView(v, hudLayoutParams)
-                } catch (e: Exception) {
-                    LogUtil.e("FloatingWindowService", "添加HUD失败: ${e.message}")
+                if (isOnGameDataPage && !wasOnPage && GameManager.state.value == ScriptState.RUNNING) {
+                    hudManager.show()
+                } else if (!isOnGameDataPage && wasOnPage) {
+                    hudManager.hide()
                 }
             }
-            v.animate().alpha(HUD_ALPHA).setDuration(300).start()
-            v.visibility = View.VISIBLE
         }
-    }
-
-    private fun hideHud() {
-        hudRoot?.let { v ->
-            v.animate().alpha(0f).setDuration(200).withEndAction {
-                if (v.parent != null) {
-                    try { windowManager.removeView(v) } catch (_: Exception) {}
-                }
-                v.visibility = View.GONE
-            }.start()
-        }
-    }
-
-    private fun updateHudContent(progress: Map<BountyGrade, Pair<Int, Int>>) {
-        if (progress.isEmpty()) {
-            hudTvContent?.text = "暂无"
-            return
-        }
-        val sb = StringBuilder()
-        var count = 0
-        for (grade in BountyGrade.sorted()) {
-            val counts = progress[grade] ?: continue
-            val (completed, target) = counts
-            if (target <= 0) continue
-            val done = completed >= target
-            val label = "${grade.displayName} ${completed}/${target}${if (done) "✓" else ""}"
-            if (count > 0) sb.append(' ')
-            sb.append(label)
-            count++
-        }
-        hudTvContent?.text = sb.toString()
     }
 
     // ══════════════════════════════════════════
-    //  Toast 覆盖层（中上方页面跳转提示）
+    //  Toast 覆盖层
     // ══════════════════════════════════════════
 
     private fun initToastOverlay() {
+        val density = resources.displayMetrics.density
         val tv = TextView(this).apply {
-            textSize = 14f
+            textSize = 16f
             gravity = Gravity.CENTER
-            setPadding(28, 12, 28, 12)
+            setPadding((32 * density).toInt(), (14 * density).toInt(),
+                (32 * density).toInt(), (14 * density).toInt())
             setTextColor(android.graphics.Color.WHITE)
+            setTypeface(null, android.graphics.Typeface.BOLD)
             val bg = GradientDrawable().apply {
-                setColor(0xCC1A1A2E.toInt())
-                cornerRadius = 22f
+                setColor(0xBB222222.toInt())
+                cornerRadius = 24f * density
             }
             background = bg
             visibility = View.GONE
@@ -556,14 +282,10 @@ class FloatingWindowService : Service() {
     private fun initFloatingView() {
         floatingView = LayoutInflater.from(this).inflate(R.layout.layout_floating_window, null)
         flMainBall = floatingView.findViewById(R.id.fl_main_ball)
-        llMenu = floatingView.findViewById(R.id.ll_menu)
-        ivControlIcon = floatingView.findViewById(R.id.iv_control_icon)
-        // 旧布局面板引用保留用于 inflate 兼容，强制隐藏
-        llInfoPanel = floatingView.findViewById(R.id.ll_info_panel)
-        llProgress = floatingView.findViewById(R.id.ll_progress)
-        llLogs = floatingView.findViewById(R.id.ll_logs)
-        svLogs = floatingView.findViewById(R.id.sv_logs)
-        llInfoPanel.visibility = View.GONE
+        llMenuLeft = floatingView.findViewById(R.id.ll_menu_left)
+        llMenuRight = floatingView.findViewById(R.id.ll_menu_right)
+        ivControlIconLeft = floatingView.findViewById(R.id.iv_control_icon_left)
+        ivControlIconRight = floatingView.findViewById(R.id.iv_control_icon_right)
 
         layoutParams = WindowManager.LayoutParams().apply {
             type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -594,7 +316,7 @@ class FloatingWindowService : Service() {
     }
 
     // ══════════════════════════════════════════
-    //  触摸交互 + Y 轴钳制
+    //  触摸交互
     // ══════════════════════════════════════════
 
     private fun setupTouchInteraction() {
@@ -604,7 +326,7 @@ class FloatingWindowService : Service() {
         var initialY = 0
         var isMoving = false
 
-        floatingView.setOnTouchListener { v, event ->
+        flMainBall.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     handler.removeCallbacks(sideHideRunnable)
@@ -629,7 +351,6 @@ class FloatingWindowService : Service() {
                 }
                 MotionEvent.ACTION_UP -> {
                     if (!isMoving) {
-                        v.performClick()
                         toggleMenu()
                     } else {
                         snapToEdge()
@@ -642,25 +363,22 @@ class FloatingWindowService : Service() {
         }
     }
 
-    // ── 菜单点击 ──
+    // ── 菜单点击（左右各一套，统一行为） ──
 
     private fun setupMenuClicks() {
-        floatingView.findViewById<View>(R.id.btn_start).setOnClickListener {
-            resetHideTimer()
-            GameManager.toggleScript(this)
-        }
-        floatingView.findViewById<View>(R.id.btn_bounty).setOnClickListener {
-            resetHideTimer()
-            showBountySelectionDialog()
-        }
-        floatingView.findViewById<View>(R.id.iv_close).setOnClickListener {
-            GameManager.stopScript()
-            stopSelf()
-        }
-        floatingView.findViewById<View>(R.id.btn_test).setOnClickListener {
-            resetHideTimer()
-            showNodeTestDialog()
-        }
+        val startAction = { resetHideTimer(); GameManager.toggleScript(this) }
+        val bountyAction = { resetHideTimer(); showBountySelectionDialog() }
+        val closeAction = { GameManager.stopScript(); stopSelf() }
+        val testAction = { resetHideTimer(); showNodeTestDialog() }
+
+        floatingView.findViewById<View>(R.id.btn_start_left).setOnClickListener { startAction() }
+        floatingView.findViewById<View>(R.id.btn_start_right).setOnClickListener { startAction() }
+        floatingView.findViewById<View>(R.id.btn_bounty_left).setOnClickListener { bountyAction() }
+        floatingView.findViewById<View>(R.id.btn_bounty_right).setOnClickListener { bountyAction() }
+        floatingView.findViewById<View>(R.id.iv_close_left).setOnClickListener { closeAction() }
+        floatingView.findViewById<View>(R.id.iv_close_right).setOnClickListener { closeAction() }
+        floatingView.findViewById<View>(R.id.btn_test_left).setOnClickListener { testAction() }
+        floatingView.findViewById<View>(R.id.btn_test_right).setOnClickListener { testAction() }
     }
 
     private fun showBountySelectionDialog() {
@@ -732,7 +450,6 @@ class FloatingWindowService : Service() {
             orientation = LinearLayout.VERTICAL
         }
 
-        // 汇总行
         val passed = results.count { it.passed }
         val total = results.size
         container.addView(TextView(this).apply {
@@ -743,7 +460,6 @@ class FloatingWindowService : Service() {
             setPadding(0, 0, 0, (8 * density).toInt())
         })
 
-        // 分隔线
         container.addView(View(this).apply {
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, (1 * density).toInt()
@@ -751,7 +467,6 @@ class FloatingWindowService : Service() {
             setBackgroundColor(0x33FFFFFF)
         })
 
-        // 每条结果
         for (r in results) {
             val icon = if (r.passed) "✅" else "❌"
             val color = when {
@@ -782,135 +497,96 @@ class FloatingWindowService : Service() {
             }
     }
 
-    // ── 展开/收起 ──
+    // ══════════════════════════════════════════
+    //  菜单展开/收起
+    // ══════════════════════════════════════════
+
+    private fun isBallOnRight(): Boolean {
+        return layoutParams.x + ballWidth / 2 > screenWidth / 2
+    }
 
     private fun toggleMenu() {
         isExpanded = !isExpanded
-        if (isExpanded) {
-            snapToEdgeForPanel()
-            showMenu()
-            updatePanelVisibility()
-        } else {
-            hideMenu()
-            hideInfoPanel()
-        }
+        if (isExpanded) showMenu() else hideMenu()
         resetHideTimer()
     }
 
-    /**
-     * 展开前将球吸附到最近边缘，确保菜单可见。
-     * 球在左半 → 吸左边缘；右半 → 吸右边缘。
-     */
-    private fun snapToEdgeForPanel() {
-        if (ballWidth == 0) ballWidth = flMainBall.width
-        if (ballWidth == 0) return
-        val leftEdge = 0
-        val rightEdge = screenWidth - ballWidth
-        layoutParams.x = if (layoutParams.x + ballWidth / 2 < screenWidth / 2) leftEdge else rightEdge
-        windowManager.updateViewLayout(floatingView, layoutParams)
-    }
-
-    // ── 菜单动画（滚动式逐个出现） ──
-
     private fun showMenu() {
-        llMenu.visibility = View.VISIBLE
-        llMenu.alpha = 1f
+        val onRight = isBallOnRight()
+        val activeMenu = llMenu
         val density = resources.displayMetrics.density
         val slidePx = 180f * density
-        val isOnRight = layoutParams.x + ballWidth / 2 > screenWidth / 2
 
-        // 动态测量实际菜单宽度
-        llMenu.measure(
-            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
-            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
-        )
-        val measuredWidth = llMenu.measuredWidth
+        activeMenu.visibility = View.VISIBLE
+        activeMenu.alpha = 1f
+        animateMenuIn(slidePx, onRight)
+    }
 
-        // 逐个按钮滚动出现
-        val childCount = llMenu.childCount
-        for (i in 0 until childCount) {
-            val child = llMenu.getChildAt(i)
-            child.translationX = if (isOnRight) slidePx else -slidePx
+    private fun animateMenuIn(slidePx: Float, onRight: Boolean) {
+        val activeMenu = llMenu
+        for (i in 0 until activeMenu.childCount) {
+            val child = activeMenu.getChildAt(i)
+            child.translationX = if (onRight) -slidePx else slidePx
             child.alpha = 0f
             child.animate()
                 .translationX(0f)
                 .alpha(1f)
                 .setDuration(ANIM_DURATION)
-                .setStartDelay(i * 50L)
-                .setInterpolator(DecelerateInterpolator(2f))
+                .setStartDelay(i * 60L)
+                .setInterpolator(DecelerateInterpolator(2.5f))
                 .start()
-        }
-
-        // 整体菜单位移（右侧时移到球左侧）
-        if (isOnRight) {
-            llMenu.translationX = 0f
-            llMenu.animate()
-                .translationX(-(measuredWidth - ballWidth).toFloat())
-                .setDuration(ANIM_DURATION)
-                .setInterpolator(DecelerateInterpolator(2f))
-                .start()
-        } else {
-            llMenu.translationX = 0f
         }
     }
 
     private fun hideMenu() {
+        val onRight = isBallOnRight()
+        val activeMenu = llMenu
         val density = resources.displayMetrics.density
         val slidePx = 180f * density
-        val isOnRight = layoutParams.x + ballWidth / 2 > screenWidth / 2
 
-        // 所有按钮同时收起
-        for (i in 0 until llMenu.childCount) {
-            val child = llMenu.getChildAt(i)
+        for (i in 0 until activeMenu.childCount) {
+            val child = activeMenu.getChildAt(i)
             child.animate()
-                .translationX(if (isOnRight) slidePx else -slidePx)
+                .translationX(if (onRight) -slidePx else slidePx)
                 .alpha(0f)
                 .setDuration(ANIM_DURATION / 2)
                 .setInterpolator(AccelerateInterpolator())
                 .start()
         }
-
-        // 菜单整体归位
-        llMenu.animate()
-            .translationX(0f)
+        activeMenu.animate()
             .alpha(0f)
             .setDuration(ANIM_DURATION / 2)
             .withEndAction {
-                llMenu.visibility = View.GONE
-                llMenu.translationX = 0f
-                // 重置子 view 状态
-                for (i in 0 until llMenu.childCount) {
-                    llMenu.getChildAt(i).translationX = 0f
-                    llMenu.getChildAt(i).alpha = 1f
+                activeMenu.visibility = View.GONE
+                for (i in 0 until activeMenu.childCount) {
+                    activeMenu.getChildAt(i).translationX = 0f
+                    activeMenu.getChildAt(i).alpha = 1f
                 }
             }
             .start()
     }
 
-    // ── 吸附与隐藏 ──
+    // ══════════════════════════════════════════
+    //  吸附边缘 + 侧边隐藏
+    // ══════════════════════════════════════════
 
-    /**
-     * 拖动结束后吸附到最近的屏幕边缘。
-     * 使用 ballWidth（而非 floatingView.width）判断中心位置，
-     * 防止菜单展开时误判方向。
-     */
     private fun snapToEdge() {
         if (ballWidth == 0) ballWidth = flMainBall.width
-        val leftEdge = 0
-        val rightEdge = screenWidth - ballWidth
-        val targetX = if (layoutParams.x + ballWidth / 2 < screenWidth / 2) leftEdge else rightEdge
-        val targetY = clampY(layoutParams.y)
+        if (ballWidth == 0) return
 
+        val goRight = layoutParams.x + ballWidth / 2 >= screenWidth / 2
         val startX = layoutParams.x
         val startY = layoutParams.y
+        val targetY = clampY(layoutParams.y)
+        val targetX = if (goRight) screenWidth - ballWidth else 0
 
         ValueAnimator.ofFloat(0f, 1f).apply {
             setDuration(250)
             interpolator = OvershootInterpolator(1.0f)
             addUpdateListener { a ->
-                val fraction = (a as ValueAnimator).animatedFraction
-                layoutParams.x = (startX + (targetX - startX) * fraction).toInt()
-                layoutParams.y = (startY + (targetY - startY) * fraction).toInt()
+                val f = (a as ValueAnimator).animatedFraction
+                layoutParams.x = (startX + (targetX - startX) * f).toInt()
+                layoutParams.y = (startY + (targetY - startY) * f).toInt()
                 windowManager.updateViewLayout(floatingView, layoutParams)
             }
             start()
@@ -921,14 +597,15 @@ class FloatingWindowService : Service() {
         if (isExpanded || isSideHidden) return
         if (ballWidth == 0) ballWidth = flMainBall.width
         if (ballWidth == 0) return
-        val targetX = if (layoutParams.x <= 0) -(ballWidth - VISIBLE_TAB) else screenWidth - VISIBLE_TAB
+
         val startX = layoutParams.x
+        val targetX = -(ballWidth - VISIBLE_TAB)
 
         ValueAnimator.ofFloat(0f, 1f).apply {
             setDuration(300)
             addUpdateListener { a ->
-                val fraction = (a as ValueAnimator).animatedFraction
-                layoutParams.x = (startX + (targetX - startX) * fraction).toInt()
+                val f = (a as ValueAnimator).animatedFraction
+                layoutParams.x = (startX + (targetX - startX) * f).toInt()
                 windowManager.updateViewLayout(floatingView, layoutParams)
             }
             start()
@@ -940,14 +617,13 @@ class FloatingWindowService : Service() {
     private fun restoreFromSide() {
         if (!isSideHidden) return
         if (ballWidth == 0) ballWidth = flMainBall.width
-        val targetX = if (layoutParams.x < 0) 0 else screenWidth - ballWidth
-        val startX = layoutParams.x
 
+        val startX = layoutParams.x
         ValueAnimator.ofFloat(0f, 1f).apply {
             setDuration(200)
             addUpdateListener { a ->
-                val fraction = (a as ValueAnimator).animatedFraction
-                layoutParams.x = (startX + (targetX - startX) * fraction).toInt()
+                val f = (a as ValueAnimator).animatedFraction
+                layoutParams.x = (startX * (1 - f)).toInt()
                 windowManager.updateViewLayout(floatingView, layoutParams)
             }
             start()
@@ -985,20 +661,14 @@ class FloatingWindowService : Service() {
 
     private fun addAllViews() {
         addFloatingView()
-        if (GameManager.state.value != ScriptState.IDLE) {
-            showHud()
-            updatePanelVisibility()
+        if (GameManager.state.value != ScriptState.IDLE && isOnGameDataPage) {
+            hudManager.show()
         }
     }
 
     private fun removeAllViews() {
         removeFloatingView()
-        hideInfoPanel()
-        hudRoot?.let {
-            if (it.parent != null) {
-                try { windowManager.removeView(it) } catch (_: Exception) {}
-            }
-        }
+        hudManager.hide()
         toastTv?.let {
             if (it.parent != null) {
                 try { windowManager.removeView(it) } catch (_: Exception) {}
