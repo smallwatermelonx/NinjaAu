@@ -109,9 +109,10 @@ class WorkflowEngine(
         personalBountyEnabled: Boolean = false,
         personalConfigs: List<BountyConfig> = emptyList(),
         nsEnabled: Boolean = false,
+        savedRunCounts: Map<BountyGrade, Int> = emptyMap(),
         onProgress: ((Map<BountyGrade, Pair<Int, Int>>) -> Unit)? = null
     ): Boolean {
-        val ctx = buildContext(configs, dailyEnabled, personalBountyEnabled, personalConfigs, nsEnabled)
+        val ctx = buildContext(configs, dailyEnabled, personalBountyEnabled, personalConfigs, nsEnabled, savedRunCounts)
         globalFailCount = 0
         lastPhase = null
         phaseStuckCount = 0
@@ -291,7 +292,8 @@ class WorkflowEngine(
         dailyEnabled: Boolean = true,
         personalBountyEnabled: Boolean = false,
         personalConfigs: List<BountyConfig> = emptyList(),
-        nsEnabled: Boolean = false
+        nsEnabled: Boolean = false,
+        savedRunCounts: Map<BountyGrade, Int> = emptyMap()
     ): GameContext {
         val enabled = configs.filter { it.enabled }
         val (dailyConfigs, nsConfigs) = enabled.partition { !it.grade.isEvent }
@@ -333,7 +335,7 @@ class WorkflowEngine(
             currentPhase = startPhase,
             activeGrades = startGrades,
             totalGrades = dailyGrades + personalGrades + nsGrades,
-            runCounts = (dailyGrades + nsGrades).associate { it to 0 }.toMutableMap(),
+            runCounts = (dailyGrades + nsGrades).associateWith { grade -> savedRunCounts[grade] ?: 0 }.toMutableMap(),
             targetRuns = enabled.associate { it.grade to it.targetRuns },
             chaseDreamGrades = chaseDreamGrades,
             personalBountyEnabled = personalBountyEnabled,

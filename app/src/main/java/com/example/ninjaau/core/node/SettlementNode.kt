@@ -57,6 +57,7 @@ class SettlementNode(private val ctx: NodeContext) : GameNode {
                     // 先检测结算弹窗（点空白处关闭）
                     val settlementCoord = this.ctx.detector.matchTemplateMat(bottomMiddle, ScreenState.SETTLEMENT_POPUP)
                     if (settlementCoord != null) {
+                        this.ctx.delay(500)
                         this.ctx.click(Pair(settlementCoord.first + x, settlementCoord.second + y))
                         this.ctx.log("点击空白处关闭结算弹窗")
                         lastMatchMs = System.currentTimeMillis()
@@ -67,6 +68,7 @@ class SettlementNode(private val ctx: NodeContext) : GameNode {
                     // 再检测确认按钮（点击领奖）
                     val confirmCoord = this.ctx.detector.matchTemplateMat(bottomMiddle, ScreenState.CONFIRM_BUTTON)
                     if (confirmCoord != null) {
+                        this.ctx.delay(500)
                         this.ctx.click(Pair(confirmCoord.first + x, confirmCoord.second + y))
                         this.ctx.log("点击确认领奖")
                         confirmClicked = true
@@ -97,6 +99,9 @@ class SettlementNode(private val ctx: NodeContext) : GameNode {
             val count = ctx.runCounts[grade] ?: 0
             ctx.runCounts[grade] = count + 1
             ctx.totalCycles++
+
+            // 持久化进度
+            com.example.ninjaau.core.config.ScriptConfigRepository.saveRunCounts(ctx.runCounts)
 
             val group = grade.group
             val groupTotal = group.totalRuns(ctx.runCounts)

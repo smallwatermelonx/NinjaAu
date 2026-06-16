@@ -1,6 +1,5 @@
 package com.example.ninjaau
 
-import android.media.projection.MediaProjectionManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -8,11 +7,9 @@ import com.example.ninjaau.ui.NinjaScriptMainUI
 import com.example.ninjaau.ui.theme.NinjaAuTheme
 
 class MainActivity : ComponentActivity() {
-    private lateinit var mediaProjectionManager: MediaProjectionManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        mediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
 
         setContent {
             NinjaAuTheme {

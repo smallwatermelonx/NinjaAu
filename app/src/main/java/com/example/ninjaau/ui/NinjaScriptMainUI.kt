@@ -18,12 +18,10 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.LifecycleEventObserver
 import com.example.ninjaau.core.config.ScriptConfigRepository
 import com.example.ninjaau.core.GameManager
 import com.example.ninjaau.core.ScriptState
@@ -143,13 +141,6 @@ fun NinjaScriptMainUI() {
 
     val timeFormatter = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
     var logEntries by remember { mutableStateOf(listOf(System.currentTimeMillis() to "就绪，等待启动...")) }
-
-    val lifecycleOwner = LocalLifecycleOwner.current.lifecycle
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event -> }
-        lifecycleOwner.addObserver(observer)
-        onDispose { lifecycleOwner.removeObserver(observer) }
-    }
 
     LaunchedEffect(Unit) {
         GameManager.logEvents.collect { msg ->
@@ -352,7 +343,6 @@ fun NinjaScriptMainUI() {
                                         bountyConfigs = configs
                                         val enabledList = configs.filter { it.enabled }
                                         dailyEnabled = enabledList.any { !it.grade.isEvent }
-                                        nsEnabled = enabledList.any { it.grade.isEvent }
                                         saveAll()
                                         ScriptConfigRepository.setBountyConfigs(configs)
                                     },

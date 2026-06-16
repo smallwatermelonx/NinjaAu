@@ -4,7 +4,6 @@ import com.example.ninjaau.core.GameNode
 import com.example.ninjaau.core.NodeContext
 import com.example.ninjaau.model.GameContext
 import com.example.ninjaau.model.GamePhase
-import com.example.ninjaau.model.ScreenState
 
 /**
  * 失败节点 — 处理战斗失败后的流程。

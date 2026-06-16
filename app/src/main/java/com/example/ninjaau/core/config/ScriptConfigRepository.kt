@@ -93,8 +93,38 @@ object ScriptConfigRepository {
             dailyEnabled = _dailyEnabled.value,
             personalEnabled = _personalEnabled.value,
             nsEnabled = _nsEnabled.value,
-            inviteCheckEnabled = _inviteCheckEnabled.value
+            inviteCheckEnabled = _inviteCheckEnabled.value,
+            savedRunCounts = loadRunCounts()
         )
+    }
+
+    // ═══ runCounts 持久化 ═══
+
+    fun saveRunCounts(counts: Map<com.example.ninjaau.model.BountyGrade, Int>) {
+        val sb = StringBuilder()
+        for ((grade, count) in counts) {
+            if (count > 0) sb.append("${grade.key}=$count,")
+        }
+        prefs.edit().putString("run_counts", sb.toString()).apply()
+    }
+
+    private fun loadRunCounts(): Map<com.example.ninjaau.model.BountyGrade, Int> {
+        val raw = prefs.getString("run_counts", "") ?: ""
+        if (raw.isEmpty()) return emptyMap()
+        val result = mutableMapOf<com.example.ninjaau.model.BountyGrade, Int>()
+        for (entry in raw.split(",")) {
+            val parts = entry.split("=")
+            if (parts.size == 2) {
+                val grade = com.example.ninjaau.model.BountyGrade.entries.find { it.key == parts[0] }
+                val count = parts[1].toIntOrNull() ?: 0
+                if (grade != null && count > 0) result[grade] = count
+            }
+        }
+        return result
+    }
+
+    fun clearRunCounts() {
+        prefs.edit().remove("run_counts").apply()
     }
 
     // ═══ 持久化 ═══
@@ -107,7 +137,9 @@ object ScriptConfigRepository {
         _inviteCheckEnabled.value = prefs.getBoolean("invite_check", false)
         _bountyConfigs.value = loadGradeConfigs("cfg_bounty_enabled", "cfg_bounty_chase_dream")
         _personalConfigs.value = loadGradeConfigs("cfg_personal_enabled", null)
-        _nsConfigs.value = loadGradeConfigs("cfg_ns_enabled", null)
+        // NS 只加载事件等级（NSS+, NS, NA），过滤掉非事件等级
+        val rawNs = loadGradeConfigs("cfg_ns_enabled", null)
+        _nsConfigs.value = rawNs.filter { it.grade.isEvent }
     }
 
     private fun loadGradeConfigs(enabledKey: String, chaseDreamKey: String?): List<BountyConfig> {
@@ -146,7 +178,8 @@ data class ScriptSnapshot(
     val dailyEnabled: Boolean,
     val personalEnabled: Boolean,
     val nsEnabled: Boolean,
-    val inviteCheckEnabled: Boolean
+    val inviteCheckEnabled: Boolean,
+    val savedRunCounts: Map<com.example.ninjaau.model.BountyGrade, Int> = emptyMap()
 ) {
     val enabledBountyConfigs get() = bountyConfigs.filter { it.enabled }
     val enabledPersonalConfigs get() = personalConfigs.filter { it.enabled }

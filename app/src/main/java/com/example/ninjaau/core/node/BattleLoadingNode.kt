@@ -8,7 +8,6 @@ import com.example.ninjaau.model.GamePhase
 import com.example.ninjaau.model.ScreenState
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
-import kotlin.coroutines.coroutineContext
 
 /**
  * 战斗加载节点 — 等待战斗加载完成。

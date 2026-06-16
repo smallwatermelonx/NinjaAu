@@ -4,7 +4,6 @@ import com.example.ninjaau.core.GameNode
 import com.example.ninjaau.core.NodeContext
 import com.example.ninjaau.model.GameContext
 import com.example.ninjaau.model.GamePhase
-import com.example.ninjaau.model.ScreenState
 
 /**
  * 招募邀请节点 — 处理悬赏邀请弹窗。

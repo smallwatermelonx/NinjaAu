@@ -87,6 +87,7 @@ object GameManager {
                     personalBountyEnabled = snapshot.personalEnabled,
                     personalConfigs = snapshot.enabledPersonalConfigs,
                     nsEnabled = snapshot.nsEnabled,
+                    savedRunCounts = snapshot.savedRunCounts,
                     onProgress = { progress -> _bountyProgress.value = progress }
                 )
             } catch (e: CancellationException) {
@@ -94,6 +95,7 @@ object GameManager {
             } catch (e: Exception) {
                 LogUtil.e(TAG, "脚本执行异常", e)
             }
+            ScriptConfigRepository.clearRunCounts()
             _state.value = ScriptState.IDLE
         }
     }

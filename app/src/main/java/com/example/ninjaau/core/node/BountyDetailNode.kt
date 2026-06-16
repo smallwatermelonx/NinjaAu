@@ -64,8 +64,6 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                 val topFifth = this.ctx.detector.cropTopFifth(screenMat)
                 // ═══ 上方 1/10 高度、中间 1/3 宽度：等级图标检测 ═══
                 val topMiddleTenth = this.ctx.detector.cropTopMiddleTenth(screenMat)
-                // ═══ 上方 1/4 区域：加载/大厅检测 ═══
-                val topQuarter = this.ctx.detector.cropTopQuarter(screenMat)
                 // ═══ 右下 1/4 区域：准备按钮检测 ═══
                 val bottomRight = this.ctx.detector.cropBottomRightQuarter(screenMat)
 
@@ -235,7 +233,6 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                     checkNodeTimeout(lastMatchMs)
                 } finally {
                     bottomRight.release()
-                    topQuarter.release()
                     topMiddleTenth.release()
                     topFifth.release()
                 }

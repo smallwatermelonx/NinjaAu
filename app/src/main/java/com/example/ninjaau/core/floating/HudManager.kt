@@ -120,8 +120,10 @@ class HudManager(
         for (group in displayOrder) {
             val members = group.members().filter { progress.containsKey(it) }
             if (members.isEmpty()) continue
-            val totalCompleted = members.sumOf { progress[it]?.first ?: 0 }
-            val target = members.firstNotNullOfOrNull { progress[it]?.second } ?: continue
+            // 同组共享计数：completed 取组内最大值（S 和 S+ 共享同一份进度）
+            val totalCompleted = members.maxOfOrNull { progress[it]?.first ?: 0 } ?: 0
+            // target 用组的 defaultRuns，不用单个成员的 targetRuns
+            val target = group.defaultRuns
             if (target <= 0) continue
             val done = totalCompleted >= target
             val displayName = when (group) {
