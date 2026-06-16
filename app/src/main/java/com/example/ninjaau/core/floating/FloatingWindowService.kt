@@ -36,8 +36,34 @@ class FloatingWindowService : Service() {
         private const val NOTIFICATION_ID = 102
         private const val AUTO_HIDE_MS = 5000L
         private const val ANIM_DURATION = 300L
-        private const val VISIBLE_TAB = 30
+        const val VISIBLE_TAB = 30
         private const val TOAST_DURATION_MS = 1500L
+
+        fun isBallOnRight(ballScreenX: Int, ballWidth: Int, screenWidth: Int): Boolean {
+            return ballScreenX + ballWidth / 2 > screenWidth / 2
+        }
+
+        fun calcRootX(ballScreenX: Int, ballWidth: Int, screenWidth: Int, menuVisible: Boolean, menuWidth: Int): Int {
+            return if (menuVisible && isBallOnRight(ballScreenX, ballWidth, screenWidth))
+                ballScreenX - menuWidth else ballScreenX
+        }
+
+        fun calcSnapTarget(ballScreenX: Int, ballWidth: Int, screenWidth: Int): Int {
+            return if (isBallOnRight(ballScreenX, ballWidth, screenWidth))
+                screenWidth - ballWidth else 0
+        }
+
+        fun calcSideHideTarget(ballScreenX: Int, ballWidth: Int, screenWidth: Int): Int {
+            return if (isBallOnRight(ballScreenX, ballWidth, screenWidth))
+                screenWidth - VISIBLE_TAB
+            else
+                -(ballWidth - VISIBLE_TAB)
+        }
+
+        fun calcRestoreTarget(ballScreenX: Int, ballWidth: Int, screenWidth: Int): Int {
+            return if (isBallOnRight(ballScreenX, ballWidth, screenWidth))
+                screenWidth - ballWidth else 0
+        }
     }
 
     private lateinit var windowManager: WindowManager
@@ -65,11 +91,13 @@ class FloatingWindowService : Service() {
 
     private var isExpanded = false
     private var isSideHidden = false
+    private var restoringFromSide = false
     private var isOnGameDataPage = false
     private var isReceiverRegistered = false
     private var screenWidth = 0
     private var screenHeight = 0
     private var ballWidth = 0
+    private var ballScreenX = 0
     private val handler = Handler(Looper.getMainLooper())
     private val sideHideRunnable = Runnable { sideHide() }
 
@@ -300,6 +328,7 @@ class FloatingWindowService : Service() {
             x = 0
             y = minY + 50
         }
+        ballScreenX = 0
 
         floatingView.viewTreeObserver.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener {
             override fun onGlobalLayout() {
@@ -326,17 +355,36 @@ class FloatingWindowService : Service() {
         var initialX = 0
         var initialY = 0
         var isMoving = false
+        var closedMenuThisTap = false
 
         flMainBall.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     handler.removeCallbacks(sideHideRunnable)
-                    if (isSideHidden) restoreFromSide()
+                    if (isSideHidden) {
+                        restoreFromSide()
+                        restoringFromSide = true
+                        startX = event.rawX
+                        startY = event.rawY
+                        initialX = layoutParams.x
+                        initialY = layoutParams.y
+                        isMoving = false
+                        closedMenuThisTap = true
+                        return@setOnTouchListener true
+                    }
                     startX = event.rawX
                     startY = event.rawY
                     initialX = layoutParams.x
                     initialY = layoutParams.y
                     isMoving = false
+                    closedMenuThisTap = false
+                    if (isExpanded) {
+                        isExpanded = false
+                        llMenuLeft.visibility = View.GONE
+                        llMenuRight.visibility = View.GONE
+                        closedMenuThisTap = true
+                        updateMenuOffset()
+                    }
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -344,14 +392,16 @@ class FloatingWindowService : Service() {
                     val dy = event.rawY - startY
                     if (abs(dx) > 10 || abs(dy) > 10) {
                         isMoving = true
+                        restoringFromSide = false
                         layoutParams.x = (initialX + dx).toInt()
                         layoutParams.y = clampY((initialY + dy).toInt())
+                        ballScreenX = layoutParams.x
                         windowManager.updateViewLayout(floatingView, layoutParams)
                     }
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    if (!isMoving) {
+                    if (!isMoving && !closedMenuThisTap) {
                         toggleMenu()
                     } else {
                         snapToEdge()
@@ -503,7 +553,23 @@ class FloatingWindowService : Service() {
     // ══════════════════════════════════════════
 
     private fun isBallOnRight(): Boolean {
-        return layoutParams.x + ballWidth / 2 > screenWidth / 2
+        return ballScreenX + ballWidth / 2 > screenWidth / 2
+    }
+
+    private fun getMenuContainerWidth(): Int {
+        return if (isBallOnRight()) llMenuLeft.width else llMenuRight.width
+    }
+
+    private fun updateMenuOffset() {
+        val targetX = calcRootX(ballScreenX, ballWidth, screenWidth, isExpanded, getMenuContainerWidth())
+        if (targetX == layoutParams.x) return
+        if (restoringFromSide) {
+            layoutParams.x = targetX
+            try { windowManager.updateViewLayout(floatingView, layoutParams) } catch (_: Exception) {}
+            return
+        }
+        layoutParams.x = targetX
+        try { windowManager.updateViewLayout(floatingView, layoutParams) } catch (_: Exception) {}
     }
 
     private fun toggleMenu() {
@@ -521,13 +587,14 @@ class FloatingWindowService : Service() {
         activeMenu.visibility = View.VISIBLE
         activeMenu.alpha = 1f
         animateMenuIn(slidePx, onRight)
+        activeMenu.post { updateMenuOffset() }
     }
 
     private fun animateMenuIn(slidePx: Float, onRight: Boolean) {
         val activeMenu = llMenu
         for (i in 0 until activeMenu.childCount) {
             val child = activeMenu.getChildAt(i)
-            child.translationX = if (onRight) -slidePx else slidePx
+            child.translationX = if (onRight) slidePx else -slidePx
             child.alpha = 0f
             child.animate()
                 .translationX(0f)
@@ -548,7 +615,7 @@ class FloatingWindowService : Service() {
         for (i in 0 until activeMenu.childCount) {
             val child = activeMenu.getChildAt(i)
             child.animate()
-                .translationX(if (onRight) -slidePx else slidePx)
+                .translationX(if (onRight) slidePx else -slidePx)
                 .alpha(0f)
                 .setDuration(ANIM_DURATION / 2)
                 .setInterpolator(AccelerateInterpolator())
@@ -563,6 +630,7 @@ class FloatingWindowService : Service() {
                     activeMenu.getChildAt(i).translationX = 0f
                     activeMenu.getChildAt(i).alpha = 1f
                 }
+                updateMenuOffset()
             }
             .start()
     }
@@ -590,6 +658,13 @@ class FloatingWindowService : Service() {
                 layoutParams.y = (startY + (targetY - startY) * f).toInt()
                 windowManager.updateViewLayout(floatingView, layoutParams)
             }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    ballScreenX = targetX
+                    layoutParams.x = targetX
+                    windowManager.updateViewLayout(floatingView, layoutParams)
+                }
+            })
             start()
         }
     }
@@ -600,7 +675,8 @@ class FloatingWindowService : Service() {
         if (ballWidth == 0) return
 
         val startX = layoutParams.x
-        val targetX = -(ballWidth - VISIBLE_TAB)
+        val onRight = ballScreenX + ballWidth / 2 > screenWidth / 2
+        val targetX = if (onRight) screenWidth - VISIBLE_TAB else -(ballWidth - VISIBLE_TAB)
 
         ValueAnimator.ofFloat(0f, 1f).apply {
             setDuration(300)
@@ -620,13 +696,24 @@ class FloatingWindowService : Service() {
         if (ballWidth == 0) ballWidth = flMainBall.width
 
         val startX = layoutParams.x
+        val onRight = ballScreenX + ballWidth / 2 > screenWidth / 2
+        val targetX = if (onRight) screenWidth - ballWidth else 0
+
         ValueAnimator.ofFloat(0f, 1f).apply {
             setDuration(200)
             addUpdateListener { a ->
                 val f = (a as ValueAnimator).animatedFraction
-                layoutParams.x = (startX * (1 - f)).toInt()
+                layoutParams.x = (startX + (targetX - startX) * f).toInt()
                 windowManager.updateViewLayout(floatingView, layoutParams)
             }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    ballScreenX = targetX
+                    layoutParams.x = targetX
+                    restoringFromSide = false
+                    windowManager.updateViewLayout(floatingView, layoutParams)
+                }
+            })
             start()
         }
         isSideHidden = false

@@ -1,129 +1,131 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## 核心规则（必须遵守）
 
 1. **不要乱改已有业务逻辑。** 修改/重构已有功能必须先完全理解业务上下文。不要凭假设修改。已经正常工作的代码，如果没有明确的 bug 证据，不要动它。
 2. **优化前必须先确认原始行为。** 要优化某个模块，先用 `git show` 读取历史版本，理解原始设计意图，再做针对性改进。不要把"重构"当"优化"。
 3. **改动后必须验证。** 每次改动都要编译、安装、实际运行验证，不能只看代码就认为正确。
+4. **新增/修改代码必须用 Kotlin。** 不允许用 Java 写新代码。
+5. **不要引入未经确认的第三方库。** 项目当前依赖 OpenCV 和 Kotlin 协程，新增依赖必须先询问。
+6. **Spec-First 开发。** 新增/修改功能前，必须先写或更新对应的 Spec 文档（`docs/nodes/` 目录）。Spec 不写，代码不动。修改功能时，先更新 Spec 再改代码，两者必须同步。
 
-## Build Commands
+## 反模式清单（禁止事项）
+
+- 不要用 `Thread` / `Handler` 做异步，统一用 Kotlin 协程 (`CoroutineScope` + `Dispatchers`)
+- 不要硬编码屏幕坐标，坐标必须通过模板匹配或配置获取
+- 不要在 `GameNode.execute()` 里直接捕获所有异常后静默吞掉，要抛出或记录
+- 不要用 `Thread.sleep()` 做延迟，用 `kotlinx.coroutines.delay()`
+- 不要在 UI 线程做截图/模板匹配操作
+- 不要手动管理 Bitmap 回收，让 GC 处理或用 `use {}` 自动释放
+- 不要绕过 `GameManager.toggleScript()` 直接修改 `ScriptState`
+- 不要在 `NodeContext` 外部直接调用 `NinjaAccessibilityService` 的方法
+- 不要修改模板图片文件名，文件名就是 `ScreenState` 映射的 key
+
+## 构建命令
 
 ```bash
-# Build debug APK (requires JDK 11+, Android Studio JBR works)
+# 构建 debug APK（需要 JDK 11+，Android Studio 自带的 JBR 即可）
 export JAVA_HOME="/d/Android/Android Studio/jbr"
 ./gradlew assembleDebug
 
-# APK output: app/build/outputs/apk/debug/app-debug.apk
+# APK 输出路径
+# app/build/outputs/apk/debug/app-debug.apk
 ```
 
-No unit tests exist yet. `app/src/test/` and `app/src/androidTest/` are empty.
+无单元测试。`app/src/test/` 和 `app/src/androidTest/` 为空。
 
-## Project Overview
-
-Android automation tool for the game "Ninja Must Die 3" (忍者必须死3). Automates bounty hunting: navigation → recruit scanning → team joining → combat → reward collection.
-
-**Package**: `com.example.ninjaau` | **Min SDK**: 28 | **Target SDK**: 34
-
-## Architecture: MAA-Inspired Node Pattern
-
-The core pipeline follows a node-based automation pattern:
+## 项目目录结构
 
 ```
-GameManager (singleton) → WorkflowEngine → GameNode implementations
+app/src/main/java/com/example/ninjaau/
+├── MainActivity.kt              # 应用入口 Activity
+├── NinjaApp.kt                  # Application 类
+├── core/
+│   ├── GameManager.kt           # 全局单例，管理脚本状态和启动流程
+│   ├── GameNode.kt              # GameNode 接口 + NodeContext 定义
+│   ├── WorkflowEngine.kt        # 主循环，按 GamePhase 分发节点
+│   ├── node/                    # 所有 GameNode 实现
+│   │   ├── HallNode.kt          # 大厅导航
+│   │   ├── BountyListNode.kt    # 悬赏列表扫描
+│   │   ├── BountyDetailNode.kt  # 悬赏详情/组队
+│   │   ├── BattleLoadingNode.kt # 战斗加载
+│   │   ├── FightNode.kt         # 战斗逻辑
+│   │   ├── SettlementNode.kt    # 结算
+│   │   ├── RecoveryNode.kt      # 异常恢复
+│   │   ├── PersonalBountyCenterNode.kt  # 个人悬赏中心
+│   │   ├── PersonalBountyDetailNode.kt  # 个人悬赏详情
+│   │   ├── DefeatNode.kt        # TODO 桩
+│   │   └── RecruitInviteNode.kt # TODO 桩
+│   ├── recognition/
+│   │   ├── SceneDetector.kt     # 场景检测（模板匹配入口）
+│   │   └── TemplateMatcher.kt   # OpenCV 模板匹配实现
+│   ├── capture/
+│   │   ├── ScreenCapture.kt     # 截图服务
+│   │   └── CapturePermissionActivity.kt  # 截图权限申请
+│   ├── floating/
+│   │   ├── FloatingWindowService.kt  # 悬浮窗前台服务
+│   │   └── HudManager.kt       # HUD 进度显示
+│   ├── accessibility/
+│   │   └── NinjaAccessibilityService.kt  # 无障碍服务（手势模拟）
+│   ├── config/
+│   │   └── ScriptConfigRepository.kt  # 脚本配置读写
+│   └── util/
+│       ├── Constant.kt          # 常量定义
+│       ├── LogUtil.kt           # 日志工具
+│       ├── ToastUtil.kt         # Toast 工具
+│       ├── AssetUtil.kt         # Assets 读取
+│       ├── OpenCVUtil.kt        # OpenCV 工具
+│       └── PermissionManager.kt # 权限管理
+├── model/
+│   ├── GameContext.kt           # 运行时状态上下文
+│   ├── GamePhase.kt            # 游戏阶段枚举
+│   ├── ScreenState.kt          # 屏幕状态枚举（29种）
+│   ├── BountyGrade.kt          # 悬赏等级定义
+│   └── BountyConfig.kt         # 悬赏配置
+└── ui/
+    ├── NinjaScriptMainUI.kt    # Compose 主界面
+    └── theme/
+        └── Theme.kt            # 主题定义
 ```
 
-### Core Flow
+模板资源路径：`app/src/main/assets/templates/`，按场景分子目录（`bounty_list/`、`fight/`、`lobby/`、`team_room/` 等）。
 
-1. **`GameManager`** — Global singleton managing script state (IDLE/RUNNING). Launches `WorkflowEngine`, exposes `StateFlow`s for UI binding. Manages three business lines: daily bounties, personal bounties, and NS (逆袭) event bounties.
+## Spec 文档
 
-2. **`WorkflowEngine`** — Main loop dispatches to `GameNode.execute()` based on `GamePhase`. Has `globalFailCount` (max 3 failures → script stops). Each node has 30s timeout via `checkNodeTimeout()`. Supports automatic switching from daily → personal bounties when daily completes.
-
-3. **`GameNode` interface** — Single method: `execute(ctx: GameContext): GamePhase?`. 11 implementations (9 functional + 2 stubs: DefeatNode, RecruitInviteNode).
-
-### Node Execution Order
+功能规格说明书位于 `docs/` 目录：
 
 ```
-HALL → RECRUIT_LIST → BOUNTY_DETAIL → BATTLE_LOADING → FIGHT → SETTLEMENT → IDLE (loop)
-Personal: PERSONAL_BOUNTY_CENTER → PERSONAL_BOUNTY_DETAIL
+docs/
+├── SRS.md              # 总纲：全局规范、状态机、模块清单
+├── nodes/
+│   ├── HallNode.md     # 大厅导航 Spec
+│   ├── BountyListNode.md
+│   ├── BountyDetailNode.md
+│   ├── BattleLoadingNode.md
+│   ├── FightNode.md
+│   ├── SettlementNode.md
+│   └── RecoveryNode.md
+├── ui.md               # 悬浮窗/HUD/配置面板 Spec
+└── Config.md           # 配置系统 Spec
 ```
 
-### Key Dependencies Injected via `NodeContext`
+修改功能时必须同步更新对应 Spec。Spec 是 AI 生成代码的依据。
 
-- `detector: SceneDetector` — Template matching
-- `captureBitmap(): Bitmap?` — Screen capture via `ScreenCapture`
-- `click(x, y)` — Gesture simulation via `NinjaAccessibilityService`
-- `log(msg)` — Logging to UI
-- `onPageEvent(event)` — Toast notifications
+## 关键配置修改指南
 
-## Business Lines
+| 要改什么 | 去哪个文件 |
+|---------|-----------|
+| 模板匹配阈值 | `SceneDetector.kt` 的 `templates` map |
+| 新增屏幕状态 | `ScreenState.kt` 枚举 + `SceneDetector.kt` 添加模板映射 |
+| 新增 GameNode | `core/node/` 下新建类 + `WorkflowEngine.kt` 注册分发 |
+| 新增悬赏等级 | `BountyGrade.kt` |
+| 修改悬浮窗行为 | `FloatingWindowService.kt` |
+| 修改 UI 布局 | `NinjaScriptMainUI.kt` |
 
-Three independent bounty automation lines:
+## 已知问题
 
-1. **日常悬赏 (Daily)** — Standard bounty grades (D through SS+). Default 3-5 runs per grade group.
-2. **个人悬赏 (Personal)** — Personal bounty center. SS+ is locked/unavailable. Auto-starts after daily completes.
-3. **逆袭悬赏 (NS)** — Event bounty grades (NSS+, NS, NA). Independent toggle.
-
-Additionally, **藏宝图 (Treasure Map)** UI exists but automation is not yet implemented.
-
-## Screen Capture & Recognition
-
-### Critical: Android 12+ MediaProjection Constraint
-
-**MediaProjection MUST be created from a foreground service context with `FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION`**, not from Application context. `FloatingWindowService.onCreate()` handles this. `GameManager.startScript()` only waits for the projection to become available — it does NOT create it.
-
-### Template Matching Pipeline
-
-```
-ScreenCapture.capture() → Bitmap → SceneDetector.matchTemplate() → TemplateMatcher (OpenCV TM_CCOEFF_NORMED)
-```
-
-- Templates stored in `app/src/main/assets/templates/`
-- Per-template thresholds (0.5–0.92) configured in `SceneDetector.templates` map
-- `SceneDetector` caches loaded bitmaps in memory
-- Test method: `SceneDetector.testNodeTemplates(screen, group)` for debugging template matches by node
-
-### ScreenState Enum
-
-29 states covering all game screens. Each maps to a template path + threshold in `SceneDetector.templates`.
-
-## Key Models
-
-- **`BountyGrade`** — 12 grades (D through NSS+), organized into `GradeGroup` (A/A+ share 3 runs, S/S+ share 5 runs). Has `canChaseDream` property for grades that support dream-chasing mode.
-- **`GameContext`** — Mutable runtime state: `currentPhase`, `activeGrades`, `runCounts`, `currentBounty`, `actualGrade`, `businessLine` (DAILY/PERSONAL), `personalActiveGrades`, `chaseDreamGrades`
-- **`GamePhase`** — 14 phases including personal bounty phases (PERSONAL_BOUNTY_CENTER, PERSONAL_BOUNTY_DETAIL)
-- **`BountyConfig`** — User-selected bounty configuration per grade with `chaseDream` flag
-
-## UI Architecture
-
-Jetpack Compose with Material3. Two-tab layout (首页/设置) with 2:6:2 split:
-
-- **Left 20%**: Task list (daily/personal/NS/treasure toggles + gear config buttons) + Link Start button
-- **Center 60%**: Config panel showing grade selections for the active business line
-- **Right 20%**: Log viewer
-
-Theme: VS Code Dark+ / IntelliJ Light with runtime toggle.
-
-## Floating Window Architecture
-
-`FloatingWindowService` is a foreground service creating overlay windows via `WindowManager`:
-
-1. **Floating ball** — Draggable, edge-snaps to left/right, auto-hides after 5s
-2. **Menu** — Staggered button animation, expands from ball position
-3. **HUD** — Top-right progress display (always visible when running)
-4. **Toast** — Page navigation notifications (queued, auto-dismiss)
-
-## Permissions Required
-
-- `SYSTEM_ALERT_WINDOW` — Floating window overlay
-- `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_MEDIA_PROJECTION` — Screen capture
-- Accessibility service — Gesture simulation (bound to `com.pandadagames.ninja.global`)
-
-## Known Issues
-
-1. `globalFailCount` never resets — 3 scattered transient exceptions stop the script permanently
-2. `DefeatNode` and `RecruitInviteNode` are TODO stubs (return to previous phase)
-3. `PermissionManager.resumeMediaProjection()` requires Service context on Android 12+
-4. Treasure map automation not yet implemented (UI only)
-5. Personal bounty center/detail nodes are framework stubs
+1. `globalFailCount` 永不重置 — 3次分散的瞬态异常就会永久停止脚本
+2. `DefeatNode` 和 `RecruitInviteNode` 是 TODO 桩（直接返回上一阶段）
+3. `PermissionManager.resumeMediaProjection()` 在 Android 12+ 需要 Service context
+4. 藏宝图自动化未实现（只有 UI）
+5. 个人悬赏中心/详情节点是框架桩
