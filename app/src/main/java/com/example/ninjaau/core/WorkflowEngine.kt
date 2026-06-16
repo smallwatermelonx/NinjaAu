@@ -270,9 +270,9 @@ class WorkflowEngine(
 
     private fun phaseToEvent(phase: GamePhase): String? {
         return when (phase) {
-            GamePhase.LOBBY, GamePhase.IDLE -> "进入大厅"
-            GamePhase.RECRUIT_LIST -> "进入招募列表"
-            GamePhase.BOUNTY_DETAIL -> "队伍房间准备就绪"
+            GamePhase.LOBBY, GamePhase.IDLE -> "大厅"
+            GamePhase.RECRUIT_LIST -> "招募列表"
+            GamePhase.BOUNTY_DETAIL -> "悬赏详情"
             GamePhase.BATTLE_LOADING -> "战斗加载"
             GamePhase.FIGHT -> "⚔ 战斗开始"
             GamePhase.SETTLEMENT -> "结算领奖"
