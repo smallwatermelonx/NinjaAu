@@ -219,7 +219,7 @@ class FloatingWindowService : Service() {
             GameManager.pageEvents.collectLatest { event ->
                 showPageToast(event)
                 val wasOnPage = isOnGameDataPage
-                isOnGameDataPage = event == "进入大厅" || event == "进入招募列表"
+                isOnGameDataPage = event == "大厅" || event == "招募列表"
                 if (isOnGameDataPage && !wasOnPage && GameManager.state.value == ScriptState.RUNNING) {
                     hudManager.show()
                 } else if (!isOnGameDataPage && wasOnPage) {
