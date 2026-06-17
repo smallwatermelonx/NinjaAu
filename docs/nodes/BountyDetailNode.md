@@ -15,22 +15,20 @@
 | 1 | 点击准备按钮 | 全屏 | READY_BUTTON | 匹配坐标点击 | 1000ms | 准备按钮出现 |
 | 2 | 确认退出队伍 | 全屏 | EXIT_CONFIRM | 匹配坐标点击 | 500ms | 退出确认弹窗 |
 | 3 | 点击返回按钮 | 全屏 | BACK_BUTTON | 匹配坐标点击 | 500ms | 需要退出时 |
-| 4 | 检测已达上限 | 全屏 | DAILY_LIMIT | - | - | 今日次数用完 |
-| 5 | 处理组队邀请弹窗 | 全屏 | TEAM_INVITATION / INVITE_REJECT | 点击拒绝 | 500ms | 邀请弹窗出现 |
 
 ## 决策逻辑
 
 ```
 循环扫描（500ms间隔）:
   → 匹配 EXIT_CONFIRM → 点击确认退出
-  → 匹配 DAILY_LIMIT → 退出队伍，回到大厅
   → 匹配 READY_BUTTON → 等级校验通过后点击准备
     → 等级校验失败 → 退出队伍
   → 匹配 BATTLE_LOADING → 返回 BATTLE_LOADING
   → 匹配 CHAT_ICON / RECRUIT_TAB → 已回到大厅，返回 LOBBY
-  → 匹配 TEAM_INVITATION → 点击拒绝邀请
   → 无匹配 → 检查超时（30s）→ 抛 NodeTimeoutException
 ```
+
+> 注意：TEAM_INVITATION 和 DAILY_LIMIT 由 WorkflowEngine 的全局邀请拦截处理，不在本节点内。
 
 ## 等级校验逻辑
 

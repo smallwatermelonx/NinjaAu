@@ -69,27 +69,29 @@ GameManager (单例)
         └── GameNode (11个节点实现)
 ```
 
-### 3.3 节点流程（哨兵链）
+### 3.3 节点流程
 
 ```
 HALL → RECRUIT_LIST → BOUNTY_DETAIL → BATTLE_LOADING → FIGHT → SETTLEMENT → HALL (循环)
-                                              ↑                    ↓
-                                              └────────────────────┘
+                        ↑                                      ↓
+                        └──────────────────────────────────────┘
+              RECRUIT_INVITE (TODO 桩)    DEFEAT (TODO 桩)
+              个人悬赏: PERSONAL_BOUNTY_CENTER → PERSONAL_BOUNTY_DETAIL
 ```
 
-每个节点包含：
-- **入口哨兵**: 确认当前页面（每秒检测）
-- **出口哨兵**: 检测下一页面（每轮检测）
-- **业务逻辑**: 具体操作
-
-| 节点 | 入口哨兵 | 出口哨兵 | 返回 Phase |
-|------|---------|---------|-----------|
-| HallNode | CHAT_ICON | RECRUIT_TAB | RECRUIT_LIST |
-| BountyListNode | RECRUIT_TAB_BLACK | READY_BUTTON | BOUNTY_DETAIL |
-| BountyDetailNode | READY_BUTTON | BATTLE_LOADING | BATTLE_LOADING |
-| BattleLoadingNode | BATTLE_LOADING(存在) | BATTLE_LOADING(消失) | FIGHT |
-| FightNode | SLIDE_BUTTON | SETTLEMENT_POPUP | SETTLEMENT |
-| SettlementNode | SETTLEMENT_POPUP | CHAT_ICON | LOBBY (闭环) |
+| 节点 | 入口 Phase | 出口 Phase | 状态 |
+|------|-----------|-----------|------|
+| HallNode | IDLE / LOBBY / CHAT | RECRUIT_LIST | 已实现 |
+| BountyListNode | RECRUIT_LIST | BOUNTY_DETAIL | 已实现 |
+| RecruitInviteNode | RECRUIT_INVITE | RECRUIT_LIST | TODO 桩 |
+| BountyDetailNode | BOUNTY_DETAIL | BATTLE_LOADING | 已实现 |
+| BattleLoadingNode | BATTLE_LOADING | FIGHT | 已实现 |
+| FightNode | FIGHT | SETTLEMENT | 已实现 |
+| DefeatNode | DEFEAT | LOBBY | TODO 桩 |
+| SettlementNode | SETTLEMENT | LOBBY / DONE | 已实现 |
+| RecoveryNode | RECOVERY | 各正常阶段 | 已实现 |
+| PersonalBountyCenterNode | PERSONAL_BOUNTY_CENTER | PERSONAL_BOUNTY_DETAIL / DONE | 已实现 |
+| PersonalBountyDetailNode | PERSONAL_BOUNTY_DETAIL | BATTLE_LOADING / PERSONAL_BOUNTY_CENTER | 已实现 |
 
 ### 3.4 异常恢复
 
@@ -119,16 +121,16 @@ RecoveryNode 匹配优先级：
 
 | 模板 | 路径 | 阈值 | 用途 |
 |------|------|------|------|
-| 聊天图标 | lobby/chat.png | 0.8 | 大厅识别 |
-| 招募页签 | bounty_list/recruit_tab.png | 0.7 | 招募列表入口 |
-| 准备按钮 | team_room/ready.png | 0.7 | 队伍房间 |
+| 聊天图标 | lobby/hall_chat.png | 0.75 | 大厅识别 |
+| 招募页签 | chat/team_recruit.png | 0.8 | 招募列表入口 |
+| 准备按钮 | team_room/prepare.png | 0.8 | 队伍房间 |
 | 战斗加载 | battle_loading/smile.png | 0.7 | 加载界面 |
 | 滑铲按钮 | fight/slide.png | 0.7 | 战斗-下滑 |
 | 跳跃按钮 | fight/jump.png | 0.7 | 战斗-跳跃 |
 | 大招图标 | fight/role/shihara/r_shihara.png | 0.6 | 战斗-大招 |
 | 武器图标 | fight/wopen/shedao.png | 0.6 | 战斗-武器 |
 | 血咒技能 | fight/role/shihara/blood_curse.png | 0.85 | 战斗-血咒(buff) |
-| 等级图标 | team_room/lv{level}.png | 0.85 | 队伍等级识别 |
+| 等级图标 | team_room/lv{level}.png | 0.9 | 队伍等级识别 |
 | 结算弹窗 | settlement/black.png | 0.7 | 结算界面 |
 
 ---

@@ -13,12 +13,14 @@
 
 | 识别到的页面 | 目标 Phase | 说明 |
 |-------------|-----------|------|
-| CHAT_ICON / RECRUIT_TAB | LOBBY | 在大厅，重新导航 |
-| RECRUIT_LIST_SCREEN | BOUNTY_LIST | 在招募列表，继续扫描 |
+| SETTLEMENT_POPUP | SETTLEMENT | 在结算中，继续领奖 |
+| CONFIRM_BUTTON | SETTLEMENT | 在结算中，继续领奖 |
 | READY_BUTTON | BOUNTY_DETAIL | 在详情页，继续组队 |
 | BATTLE_LOADING | BATTLE_LOADING | 在加载中，等待 |
-| Lv图标 / JUMP_BUTTON | FIGHT | 在战斗中，继续战斗 |
-| SETTLEMENT_POPUP / CONFIRM_BUTTON | SETTLEMENT | 在结算中，继续领奖 |
+| SLIDE_BUTTON / JUMP_BUTTON | FIGHT | 在战斗中，继续战斗 |
+| PERSONAL_BOUNTY_LIST_SCREEN | PERSONAL_BOUNTY_CENTER | 在个人悬赏列表 |
+| RECRUIT_LIST_SCREEN | RECRUIT_LIST | 在招募列表，继续扫描 |
+| CHAT_ICON | LOBBY | 在大厅，重新导航 |
 
 ### 策略2：关闭弹窗
 
@@ -45,7 +47,7 @@
 ```
 recoveryAttempt++
 
-if recoveryAttempt > 5:
+if recoveryAttempt > MAX_RECOVERY_ATTEMPTS (5):
   → 强制重置，返回 IDLE（重新导航）
 
 截图 → 识别当前页面:
@@ -67,5 +69,5 @@ if recoveryAttempt > 5:
 | 异常 | 处理 |
 |------|------|
 | 截图返回 null | 等待 1500ms 后重试 |
-| 连续5次恢复失败 | 重置 recoveryAttempt，强制返回 IDLE |
-| 恢复到 IDLE 后再次失败 | 由 globalFailCount 处理（3次后停止脚本） |
+| 连续 >5 次恢复失败 | 重置 recoveryAttempt，强制返回 IDLE |
+| 恢复到 IDLE 后再次失败 | 由 WorkflowEngine 的 globalFailCount 处理（3次后停止脚本） |

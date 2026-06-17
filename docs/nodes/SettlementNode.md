@@ -42,15 +42,10 @@
 1. `runCounts[grade]++` — 该等级完成次数+1
 2. 检查 `runCounts[grade] >= maxRuns` — 是否达到该等级最大次数
 3. 达到上限 → 从 `activeGrades` 移除该等级
-4. `activeGrades` 为空 → 所有等级完成，返回 DONE
+4. `activeGrades` 为空 → 返回 DONE
 5. 否则 → 返回 LOBBY 继续下一轮
 
-## 业务线切换
-
-SettlementNode 负责在每日悬赏完成后切换到个人悬赏：
-- 每日悬赏全部完成 → 切换到个人悬赏业务线
-- 个人悬赏全部完成 → 检查是否有NS事件悬赏
-- 全部完成 → 返回 DONE
+> 注意：业务线切换（每日→个人→逆袭）由 `WorkflowEngine.switchToNextBusinessLine()` 处理，不在 SettlementNode 内。
 
 ## 异常处理
 

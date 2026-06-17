@@ -4,8 +4,8 @@
 
 | 方向 | ScreenState | 说明 |
 |------|-------------|------|
-| 进入 | LOBBY / 任意状态恢复后 | 从大厅或异常恢复后进入 |
-| 退出 | RECRUIT_LIST_SCREEN | 匹配到招募列表页面后切换到 BountyListNode |
+| 进入 | IDLE / LOBBY / CHAT | 从初始状态、大厅或聊天页面进入 |
+| 退出 | RECRUIT_LIST | 导航到招募列表后切换到 BountyListNode |
 
 ## 交互动作
 
