@@ -7,6 +7,9 @@ import com.example.ninjaau.core.util.LogUtil
 import com.example.ninjaau.core.util.OpenCVUtil
 import com.example.ninjaau.model.BountyGrade
 import com.example.ninjaau.model.ScreenState
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import org.opencv.core.Mat
 
 /**
@@ -448,39 +451,45 @@ class SceneDetector(private val context: Context) {
         return null
     }
 
-    /** 使用预转换的 screen Mat 搜索等级图标 — 匹配到第一个即返回（保持原始快速行为） */
-    fun matchAnyGradeMat(screenMat: Mat, grades: List<BountyGrade>): Pair<BountyGrade, Pair<Float, Float>>? {
-        for (grade in grades) {
-            // 获取或创建缓存的 Mat
+    /** 使用预转换的 screen Mat 并行搜索等级图标 — 匹配到第一个即返回 */
+    suspend fun matchAnyGradeMat(screenMat: Mat, grades: List<BountyGrade>): Pair<BountyGrade, Pair<Float, Float>>? {
+        // 预加载所有模板 Mat（串行，仅首次有开销）
+        data class GradeTemplate(val grade: BountyGrade, val templateMat: Mat, val w: Int, val h: Int)
+        val templates = grades.mapNotNull { grade ->
             val cachedMat = gradeIconMatCache[grade]
-            val templateMat: Mat
-            val templateW: Int
-            val templateH: Int
             if (cachedMat != null && !cachedMat.empty()) {
-                templateMat = cachedMat
-                templateW = cachedMat.cols()
-                templateH = cachedMat.rows()
+                GradeTemplate(grade, cachedMat, cachedMat.cols(), cachedMat.rows())
             } else {
                 val cachedBmp = gradeIconCache[grade]
                 val bitmap = if (cachedBmp != null && !cachedBmp.isRecycled) cachedBmp else {
-                    val loaded = AssetUtil.loadBitmapFromAssets(context, grade.gradeIconPath()) ?: continue
+                    val loaded = AssetUtil.loadBitmapFromAssets(context, grade.gradeIconPath()) ?: return@mapNotNull null
                     gradeIconCache[grade] = loaded
                     loaded
                 }
-                templateMat = OpenCVUtil.bitmapToMat(bitmap)
-                gradeIconMatCache[grade] = templateMat
-                templateW = bitmap.width
-                templateH = bitmap.height
-            }
-            val result = TemplateMatcher.matchMatWithMat(screenMat, templateMat, 0.85f, templateW, templateH)
-            if (result.isMatched) {
-                LogUtil.i(TAG, "matchAnyGradeMat → 选中 ${grade.displayName} (相似度=${String.format("%.2f", result.similarity)})")
-                return Pair(grade, Pair(result.centerX, result.centerY))
+                val mat = OpenCVUtil.bitmapToMat(bitmap)
+                gradeIconMatCache[grade] = mat
+                GradeTemplate(grade, mat, bitmap.width, bitmap.height)
             }
         }
 
-        LogUtil.d(TAG, "matchAnyGradeMat: ${grades.size}个等级均未匹配")
-        return null
+        // 并行匹配所有等级
+        return coroutineScope {
+            val results = templates.map { t ->
+                async {
+                    val result = TemplateMatcher.matchMatWithMat(screenMat, t.templateMat, 0.85f, t.w, t.h)
+                    if (result.isMatched) Pair(t.grade, Pair(result.centerX, result.centerY)) else null
+                }
+            }.awaitAll().filterNotNull()
+
+            if (results.isNotEmpty()) {
+                val best = results.first()
+                LogUtil.i(TAG, "matchAnyGradeMat → 选中 ${best.first.displayName} (相似度=并行匹配)")
+                best
+            } else {
+                LogUtil.d(TAG, "matchAnyGradeMat: ${grades.size}个等级均未匹配")
+                null
+            }
+        }
     }
 
     /** 在截图中匹配队伍房间内的建议等级标识，支持多级别变体（如 SS+ 的 lv105~lv130） */
@@ -577,15 +586,15 @@ class SceneDetector(private val context: Context) {
         return bestMatch
     }
 
-    /** Mat 版多等级匹配 — 一次 Mat 转换，所有等级共享 */
-    fun matchAnyLevelIconMat(screenMat: Mat, grades: List<BountyGrade>): GradeMatch? {
+    /** Mat 版多等级并行匹配 — 一次 Mat 转换，所有等级并行匹配 */
+    suspend fun matchAnyLevelIconMat(screenMat: Mat, grades: List<BountyGrade>): GradeMatch? {
         LogUtil.i(TAG, "matchAnyLevelIconMat: 检查 ${grades.joinToString { "${it.displayName}(lv${it.level})" }}")
-        val matches = mutableListOf<GradeMatch>()
-        for (grade in grades) {
-            val match = matchLevelIconMat(screenMat, grade) ?: continue
-            matches.add(match)
+        return coroutineScope {
+            val matches = grades.map { grade ->
+                async { matchLevelIconMat(screenMat, grade) }
+            }.awaitAll().filterNotNull()
+            bestMatch(matches.toMutableList(), "matchAnyLevelIconMat")
         }
-        return bestMatch(matches, "matchAnyLevelIconMat")
     }
 
     /** 在截图中搜索多个等级图标（gradeIcon）— 最佳匹配策略 */

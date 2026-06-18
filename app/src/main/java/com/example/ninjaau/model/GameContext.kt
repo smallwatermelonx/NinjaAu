@@ -43,7 +43,9 @@ data class GameContext(
     /** 逆袭悬赏用户勾选的等级列表（从 dailyEnabled configs 中筛选 isEvent） */
     var nsActiveGrades: List<BountyGrade> = emptyList(),
     /** 恢复节点连续尝试次数（进入 RECOVERY 时递增，正常前进时重置） */
-    var recoveryAttempt: Int = 0
+    var recoveryAttempt: Int = 0,
+    /** 当前轮次开始时间（HallNode 进入时记录，SettlementNode 领奖后输出耗时） */
+    var roundStartTime: Long = 0L
 ) {
     /** 是否所有可完成的悬赏都已完成（追梦等级不参与判定，脚本持续运行） */
     val allCompleted: Boolean

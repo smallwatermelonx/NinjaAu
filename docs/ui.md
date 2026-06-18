@@ -163,13 +163,21 @@ targetX = calcRootX(ballScreenX, ballWidth, screenWidth, menuVisible, menuWidth)
 
 ## 菜单功能
 
-### 开始/停止按钮
+### 开始/暂停/恢复按钮
 
 | 属性 | 值 | 说明 |
 |------|-----|------|
-| 调用 | `GameManager.toggleScript(context)` | 切换 RUNNING/IDLE |
-| 图标切换 | RUNNING → `ic_media_pause`，IDLE → `ic_media_play` | 左右两侧同步更新 |
+| 调用 | `GameManager.toggleScript(context)` | 三态切换 |
+| 图标切换 | RUNNING → `ic_media_pause`，IDLE/PAUSED → `ic_media_play` | 左右两侧同步更新 |
 | 点击时 | 重置自动隐藏计时器 | |
+
+三态行为：
+
+| 当前状态 | 点击后 | 效果 |
+|---------|--------|------|
+| IDLE | RUNNING | 启动脚本，清空之前的进度 |
+| RUNNING | PAUSED | 暂停脚本，保留进度和 runCounts |
+| PAUSED | RUNNING | 恢复脚本，从暂停处继续 |
 
 ### 悬赏等级选择
 

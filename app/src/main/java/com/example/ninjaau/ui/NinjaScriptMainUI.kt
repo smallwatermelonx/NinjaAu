@@ -296,14 +296,15 @@ fun NinjaScriptMainUI() {
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(Brush.horizontalGradient(
                                         colors = when (scriptState) {
-                                            ScriptState.IDLE -> listOf(Theme.Accent, Theme.AccentLight)
+                                            ScriptState.IDLE, ScriptState.PAUSED -> listOf(Theme.Accent, Theme.AccentLight)
                                             ScriptState.RUNNING -> listOf(Theme.Danger, Color(0xFFFF7675))
                                         }
                                     ))
                                     .clickable {
                                         when (scriptState) {
                                             ScriptState.IDLE -> onStart()
-                                            ScriptState.RUNNING -> { GameManager.stopScript(); addLog("⏹ 停止") }
+                                            ScriptState.RUNNING -> { GameManager.toggleScript(context); addLog("⏸ 暂停") }
+                                            ScriptState.PAUSED -> { GameManager.toggleScript(context); addLog("▶ 恢复") }
                                         }
                                     },
                                 contentAlignment = Alignment.Center
@@ -311,7 +312,8 @@ fun NinjaScriptMainUI() {
                                 Text(
                                     when (scriptState) {
                                         ScriptState.IDLE -> "Link Start!"
-                                        ScriptState.RUNNING -> "停止"
+                                        ScriptState.RUNNING -> "暂停"
+                                        ScriptState.PAUSED -> "恢复"
                                     },
                                     fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White, letterSpacing = 1.sp
                                 )

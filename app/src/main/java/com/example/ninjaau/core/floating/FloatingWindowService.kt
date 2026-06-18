@@ -199,6 +199,11 @@ class FloatingWindowService : Service() {
                         ivControlIconRight.setImageResource(android.R.drawable.ic_media_pause)
                         if (isOnGameDataPage) hudManager.show()
                     }
+                    ScriptState.PAUSED -> {
+                        ivControlIconLeft.setImageResource(android.R.drawable.ic_media_play)
+                        ivControlIconRight.setImageResource(android.R.drawable.ic_media_play)
+                        hudManager.hide()
+                    }
                     ScriptState.IDLE -> {
                         ivControlIconLeft.setImageResource(android.R.drawable.ic_media_play)
                         ivControlIconRight.setImageResource(android.R.drawable.ic_media_play)

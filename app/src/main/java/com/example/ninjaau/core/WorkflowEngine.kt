@@ -51,6 +51,8 @@ class WorkflowEngine(
     private var globalFailCount = 0
     private var lastPhase: GamePhase? = null
     private var phaseStuckCount = 0
+    var lastContext: GameContext? = null
+        private set
 
     // ── 节点实例（每个游戏页面对应一个节点） ──
     private val hallNode: HallNode
@@ -120,6 +122,8 @@ class WorkflowEngine(
 
         log("业务线: 日常=${ctx.dailyEnabled}, 个人=${ctx.personalBountyEnabled}, 逆袭=${ctx.nsEnabled}")
 
+        var phaseStartTime = System.currentTimeMillis()
+
         while (coroutineContext.isActive &&
             ctx.currentPhase != GamePhase.DONE &&
             globalFailCount < MAX_GLOBAL_FAIL
@@ -156,6 +160,10 @@ class WorkflowEngine(
 
                     ctx.currentPhase = nextPhase
 
+                    val phaseElapsed = System.currentTimeMillis() - phaseStartTime
+                    log("[耗时] ${nextPhase.name} 阶段耗时 ${phaseElapsed}ms")
+                    phaseStartTime = System.currentTimeMillis()
+
                     // ═══ 只在真正前进时重置失败计数（恢复节点路由到非恢复阶段不算前进） ═══
                     if (nextPhase != GamePhase.RECOVERY && nextPhase != GamePhase.IDLE) {
                         globalFailCount = 0
@@ -187,6 +195,7 @@ class WorkflowEngine(
             }
         }
 
+        lastContext = ctx
         val allDone = isAllBusinessLinesDone(ctx)
         if (globalFailCount >= MAX_GLOBAL_FAIL) {
             val msg = "整体判定3次失败，脚本停止"
@@ -195,6 +204,100 @@ class WorkflowEngine(
             writeCrashLog(ctx)
         }
         LogUtil.i(TAG, "流水线结束: allCompleted=$allDone, globalFailCount=$globalFailCount")
+        return allDone
+    }
+
+    /**
+     * 恢复暂停的脚本 — 使用已保存的 GameContext 继续执行。
+     */
+    suspend fun resumeLoop(
+        ctx: GameContext,
+        onProgress: ((Map<BountyGrade, Pair<Int, Int>>) -> Unit)? = null
+    ): Boolean {
+        globalFailCount = 0
+        lastPhase = null
+        phaseStuckCount = 0
+        lastContext = null
+        emitProgress(ctx, onProgress)
+        log("脚本恢复: Phase=${ctx.currentPhase.name}, 已完成=${ctx.runCounts}")
+
+        var phaseStartTime = System.currentTimeMillis()
+
+        while (coroutineContext.isActive &&
+            ctx.currentPhase != GamePhase.DONE &&
+            globalFailCount < MAX_GLOBAL_FAIL
+        ) {
+            try {
+                val phaseName = ctx.currentPhase.name
+                log("Phase: $phaseName")
+
+                if (handleInvitation()) continue
+
+                if (PermissionManager.isProjectionLost) {
+                    log("⚠ 截图权限已被系统回收，脚本停止")
+                    break
+                }
+
+                val nextPhase = dispatchPhase(ctx)
+                if (nextPhase != null) {
+                    if (nextPhase == ctx.currentPhase) {
+                        phaseStuckCount++
+                        if (phaseStuckCount >= MAX_PHASE_STUCK) {
+                            log("⚠ 阶段卡死: ${ctx.currentPhase.name} 连续 $phaseStuckCount 次未转换，强制恢复")
+                            globalFailCount++
+                            log("整体判定失败 ($globalFailCount/$MAX_GLOBAL_FAIL)")
+                            ctx.currentPhase = GamePhase.RECOVERY
+                            phaseStuckCount = 0
+                            continue
+                        }
+                    } else {
+                        phaseStuckCount = 0
+                    }
+
+                    ctx.currentPhase = nextPhase
+
+                    val phaseElapsed = System.currentTimeMillis() - phaseStartTime
+                    log("[耗时] ${nextPhase.name} 阶段耗时 ${phaseElapsed}ms")
+                    phaseStartTime = System.currentTimeMillis()
+
+                    if (nextPhase != GamePhase.RECOVERY && nextPhase != GamePhase.IDLE) {
+                        globalFailCount = 0
+                        ctx.recoveryAttempt = 0
+                    }
+
+                    emitProgress(ctx, onProgress)
+                    val pageEvent = phaseToEvent(nextPhase)
+                    if (pageEvent != null) onPageEvent?.invoke(pageEvent)
+
+                    if (nextPhase == GamePhase.DONE) {
+                        val next = switchToNextBusinessLine(ctx)
+                        if (next != null) {
+                            ctx.currentPhase = next
+                            emitProgress(ctx, onProgress)
+                        }
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log("Pipeline 异常于 ${ctx.currentPhase}: ${e.message}")
+                LogUtil.e(TAG, "Pipeline 异常", e)
+                globalFailCount++
+                log("整体判定失败 ($globalFailCount/$MAX_GLOBAL_FAIL)")
+                ctx.currentPhase = GamePhase.RECOVERY
+                phaseStuckCount = 0
+            }
+        }
+
+        lastContext = ctx
+        val allDone = isAllBusinessLinesDone(ctx)
+        if (globalFailCount >= MAX_GLOBAL_FAIL) {
+            val msg = "整体判定3次失败，脚本停止"
+            log(msg)
+            LogUtil.e(TAG, msg)
+            writeCrashLog(ctx)
+        }
+        LogUtil.i(TAG, "流水线恢复结束: allCompleted=$allDone, globalFailCount=$globalFailCount")
         return allDone
     }
 

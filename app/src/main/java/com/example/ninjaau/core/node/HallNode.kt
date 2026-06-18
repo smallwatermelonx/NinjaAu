@@ -27,6 +27,9 @@ class HallNode(private val ctx: NodeContext) : GameNode {
      * 按优先级依次检测当前界面元素并执行对应操作。
      */
     override suspend fun execute(ctx: GameContext): GamePhase? {
+        if (ctx.roundStartTime == 0L) {
+            ctx.roundStartTime = System.currentTimeMillis()
+        }
         var lastMatchMs = System.currentTimeMillis()
 
         while (currentCoroutineContext().isActive) {
@@ -46,6 +49,7 @@ class HallNode(private val ctx: NodeContext) : GameNode {
                     if (chatIcon != null) {
                         this.ctx.log("导航: 聊天按钮，点击进入招募")
                         this.ctx.click(chatIcon)
+                        // 点击chat图标会有侧边框弹出动作，需要一定延迟后再识别点击
                         this.ctx.delay(NORMAL_INTERVAL_MS)
                         lastMatchMs = System.currentTimeMillis(); continue
                     }
@@ -60,7 +64,6 @@ class HallNode(private val ctx: NodeContext) : GameNode {
                     if (recruitTab != null) {
                         this.ctx.log("导航: 招募页签，点击")
                         this.ctx.click(recruitTab)
-                        this.ctx.delay(NORMAL_INTERVAL_MS)
                         return GamePhase.RECRUIT_LIST
                     }
                 } finally {

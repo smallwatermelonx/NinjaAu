@@ -26,7 +26,7 @@ import org.opencv.core.Mat
 class BountyDetailNode(private val ctx: NodeContext) : GameNode {
 
     companion object {
-        private const val POST_CLICK_DELAY = 1000L
+        private const val POST_CLICK_DELAY = 500L
         private const val WAIT_BATTLE_TIMEOUT_MS = 30_000L
     }
 
@@ -68,52 +68,21 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                 val bottomRight = this.ctx.detector.cropBottomRightQuarter(screenMat)
 
                 try {
-                    // ═══ ② 已达上限 → 二次确认后标记对应组完成 ═══
+                    // ═══ ② 已达上限 → 标记对应组完成 ═══
                     val isChaseDream = ctx.chaseDreamGrades.contains(targetGrade)
                     if (!isChaseDream && this.ctx.detector.matchTemplateMat(
-                            topFifth,
-                            ScreenState.DAILY_LIMIT
+                            topFifth, ScreenState.DAILY_LIMIT
                         ) != null
                     ) {
-                        this.ctx.delay(500)
-                        val recheckScreen = this.ctx.captureBitmap()
-                        if (recheckScreen != null) {
-                            try {
-                                val recheckMat = this.ctx.detector.screenToMat(recheckScreen)
-                                try {
-                                    val recheckTopFifth = this.ctx.detector.cropTopFifth(recheckMat)
-                                    try {
-                                        if (this.ctx.detector.matchTemplateMat(
-                                                recheckTopFifth,
-                                                ScreenState.DAILY_LIMIT
-                                            ) == null
-                                        ) {
-                                            this.ctx.log("DAILY_LIMIT 二次确认未命中，忽略")
-                                            lastMatchMs = System.currentTimeMillis()
-                                            continue
-                                        }
-                                    } finally {
-                                        recheckTopFifth.release()
-                                    }
-                                } finally {
-                                    recheckMat.release()
-                                }
-                            } finally {
-                                recheckScreen.recycle()
-                            }
-                        }
-
                         val levelMatch = this.ctx.detector.matchAnyLevelIconMat(
-                            topMiddleTenth,
-                            com.example.ninjaau.model.BountyGrade.entries
+                            topMiddleTenth, com.example.ninjaau.model.BountyGrade.entries
                         )
                         if (levelMatch != null) {
                             val limitGrade = levelMatch.grade
                             this.ctx.log(
                                 "上限检测等级匹配相似度: ${
                                     String.format(
-                                        "%.3f",
-                                        levelMatch.similarity
+                                        "%.3f", levelMatch.similarity
                                     )
                                 }"
                             )
@@ -144,13 +113,11 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                     // ═══ ③ 准备按钮 + 等级校验（右下1/4匹配准备，上方1/4匹配等级） ═══
                     if (battleWaitStart == 0L) {
                         val readyCoord = this.ctx.detector.matchTemplateMat(
-                            bottomRight,
-                            ScreenState.READY_BUTTON
+                            bottomRight, ScreenState.READY_BUTTON
                         )
                         if (readyCoord != null) {
                             val levelMatch = this.ctx.detector.matchAnyLevelIconMat(
-                                topMiddleTenth,
-                                ctx.activeGrades
+                                topMiddleTenth, ctx.activeGrades
                             )
                             if (levelMatch == null) {
                                 this.ctx.log("⚠ 等级识别失败(activeGrades=${ctx.activeGrades.joinToString { it.displayName }})，队伍级别不在勾选范围内，退出队伍")
@@ -163,8 +130,7 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                             this.ctx.log(
                                 "等级匹配相似度: ${
                                     String.format(
-                                        "%.3f",
-                                        levelMatch.similarity
+                                        "%.3f", levelMatch.similarity
                                     )
                                 }"
                             )
@@ -179,8 +145,7 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                             val offsetH = screen.height * 3f / 4f
                             this.ctx.click(
                                 Pair(
-                                    readyCoord.first + halfW,
-                                    readyCoord.second + offsetH
+                                    readyCoord.first + halfW, readyCoord.second + offsetH
                                 )
                             )
                             this.ctx.delay(POST_CLICK_DELAY)
@@ -196,8 +161,7 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                         val bottomLeft = this.ctx.detector.cropBottomLeft(screenMat)
                         try {
                             if (this.ctx.detector.matchTemplateMat(
-                                    bottomLeft,
-                                    ScreenState.BATTLE_LOADING
+                                    bottomLeft, ScreenState.BATTLE_LOADING
                                 ) != null
                             ) {
                                 this.ctx.log("检测到战斗加载界面，切换至加载节点")
@@ -219,8 +183,7 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
 
                     // ═══ ⑤ 回到大厅 ═══
                     if (this.ctx.detector.matchTemplateMat(
-                            screenMat,
-                            ScreenState.CHAT_ICON
+                            screenMat, ScreenState.CHAT_ICON
                         ) != null
                     ) {
                         this.ctx.log("已回到大厅")
@@ -282,9 +245,11 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
             val h = screenMat2.rows() / 2
             val rightBottom = Mat(screenMat2, org.opencv.core.Rect(x, y, w, h))
             try {
-                val localCoord = this.ctx.detector.matchTemplateMat(rightBottom, ScreenState.EXIT_CONFIRM)
+                val localCoord =
+                    this.ctx.detector.matchTemplateMat(rightBottom, ScreenState.EXIT_CONFIRM)
                 if (localCoord != null) {
-                    val clickCoord = Pair(localCoord.first + x.toFloat(), localCoord.second + y.toFloat())
+                    val clickCoord =
+                        Pair(localCoord.first + x.toFloat(), localCoord.second + y.toFloat())
                     this.ctx.click(clickCoord)
                     this.ctx.log("点击确认退出")
                 }

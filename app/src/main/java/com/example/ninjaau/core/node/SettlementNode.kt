@@ -83,6 +83,11 @@ class SettlementNode(private val ctx: NodeContext) : GameNode {
                 // 确认按钮点击后不再检测到 → 回到大厅
                 if (confirmClicked) {
                     this.ctx.log("确认按钮消失，回到大厅")
+                    if (ctx.roundStartTime > 0) {
+                        val roundElapsed = System.currentTimeMillis() - ctx.roundStartTime
+                        this.ctx.log("[耗时] 本轮总耗时 ${roundElapsed}ms (${String.format("%.1f", roundElapsed / 1000.0)}s)")
+                        ctx.roundStartTime = 0L
+                    }
                     break
                 }
 
