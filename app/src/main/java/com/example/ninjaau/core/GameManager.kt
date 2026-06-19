@@ -91,7 +91,6 @@ object GameManager {
                     personalBountyEnabled = snapshot.personalEnabled,
                     personalConfigs = snapshot.enabledPersonalConfigs,
                     nsEnabled = snapshot.nsEnabled,
-                    savedRunCounts = snapshot.savedRunCounts,
                     onProgress = { progress -> _bountyProgress.value = progress }
                 )
                 savedContext = engine.lastContext

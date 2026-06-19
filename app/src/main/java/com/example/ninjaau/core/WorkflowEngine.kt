@@ -16,6 +16,7 @@ import com.example.ninjaau.model.BountyGrade
 import com.example.ninjaau.model.GameContext
 import com.example.ninjaau.model.GamePhase
 import com.example.ninjaau.model.ScreenState
+import android.media.Ringtone
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -54,6 +55,17 @@ class WorkflowEngine(
     var lastContext: GameContext? = null
         private set
 
+    // ── SS+ 铃声控制 ──
+    private var currentRingtone: Ringtone? = null
+
+    /** 停止 SS+ 铃声（外部调用，如暂停/停止脚本时） */
+    fun stopAlarm() {
+        try {
+            currentRingtone?.stop()
+            currentRingtone = null
+        } catch (_: Exception) {}
+    }
+
     // ── 节点实例（每个游戏页面对应一个节点） ──
     private val hallNode: HallNode
     private val bountyListNode: BountyListNode
@@ -77,9 +89,17 @@ class WorkflowEngine(
             delay = { delay(it) },
             playAlarm = {
                 try {
+                    currentRingtone?.stop()
                     val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
                     val ringtone = RingtoneManager.getRingtone(context, alarmUri)
                     ringtone?.play()
+                    currentRingtone = ringtone
+                } catch (_: Exception) {}
+            },
+            stopAlarm = {
+                try {
+                    currentRingtone?.stop()
+                    currentRingtone = null
                 } catch (_: Exception) {}
             }
         )

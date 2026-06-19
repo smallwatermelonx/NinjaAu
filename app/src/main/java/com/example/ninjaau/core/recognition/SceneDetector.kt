@@ -385,10 +385,38 @@ class SceneDetector(private val context: Context) {
         return Mat(mat, org.opencv.core.Rect(x, y, w, h))
     }
 
-    /** 裁剪 Mat 左侧 1/6 区域（大招按钮所在区域），高度不动，调用方用完需 release */
+    /** 裁剪 Mat 右半边下方 1/2 区域（退出确认弹窗所在区域），调用方用完需 release */
+    fun cropBottomRightHalf(mat: Mat): Mat {
+        val w = mat.cols() / 2
+        val x = mat.cols() / 2
+        val h = mat.rows() / 2
+        val y = mat.rows() / 2
+        return Mat(mat, org.opencv.core.Rect(x, y, w, h))
+    }
+
+    /** 裁剪 Mat 左侧 1/4 宽度、下方 1/4 高度（下滑按钮精确区域），调用方用完需 release */
+    fun cropBottomLeftFourth(mat: Mat): Mat {
+        val w = mat.cols() / 4
+        val h = mat.rows() / 4
+        val y = mat.rows() - h
+        return Mat(mat, org.opencv.core.Rect(0, y, w, h))
+    }
+
+    /** 裁剪 Mat 右侧 1/4 宽度、下方 1/4 高度（跳跃按钮精确区域），调用方用完需 release */
+    fun cropBottomRightFourth(mat: Mat): Mat {
+        val w = mat.cols() / 4
+        val x = mat.cols() * 3 / 4
+        val h = mat.rows() / 4
+        val y = mat.rows() - h
+        return Mat(mat, org.opencv.core.Rect(x, y, w, h))
+    }
+
+    /** 裁剪 Mat 左侧 1/6 宽度、中间 1/3 高度（大招按钮所在区域），调用方用完需 release */
     fun cropLeftSixth(mat: Mat): Mat {
         val w = mat.cols() / 6
-        return Mat(mat, org.opencv.core.Rect(0, 0, w, mat.rows()))
+        val h = mat.rows() / 3
+        val y = mat.rows() / 3
+        return Mat(mat, org.opencv.core.Rect(0, y, w, h))
     }
 
     /** 裁剪 Mat 左半边上 1/8 区域（Boss Lv图标所在区域），调用方用完需 release */

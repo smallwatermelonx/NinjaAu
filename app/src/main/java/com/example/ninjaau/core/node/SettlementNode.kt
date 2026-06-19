@@ -105,9 +105,6 @@ class SettlementNode(private val ctx: NodeContext) : GameNode {
             ctx.runCounts[grade] = count + 1
             ctx.totalCycles++
 
-            // 持久化进度
-            com.example.ninjaau.core.config.ScriptConfigRepository.saveRunCounts(ctx.runCounts)
-
             val group = grade.group
             val groupTotal = group.totalRuns(ctx.runCounts)
             this.ctx.log("${grade.displayName} 完成 ${groupTotal}/${group.defaultRuns}")

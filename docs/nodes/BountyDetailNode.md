@@ -1,5 +1,9 @@
 # BountyDetailNode - 悬赏详情/组队模块规格
 
+## 核心原则
+
+**LV 图标是唯一的等级来源。** 悬赏列表点击不可靠（刷新/滑动可能导致点错），进入详情后必须通过 LV 图标判断实际字母等级，以此作为所有后续决策的依据。
+
 ## 屏幕状态
 
 | 方向 | ScreenState | 说明 |
@@ -12,53 +16,69 @@
 
 | # | 动作 | 裁剪区域 | 匹配模板 | 坐标/偏移 | 延迟 | 条件 |
 |---|------|----------|----------|----------|------|------|
-| 1 | 上限检测 | 上方 1/5 | DAILY_LIMIT | 无点击，仅检测 | - | 非 chaseDream 且上限标识出现 |
-| 2 | 点击准备按钮 | 右下 1/4 | READY_BUTTON | 匹配坐标 + 偏移(halfW, 3/4 height) | 500ms | 准备按钮出现且等级校验通过 |
-| 3 | 战斗等待检测 | 左下 1/3 | BATTLE_LOADING | 匹配坐标点击 | - | 点击准备后 |
-| 4 | 回到大厅检测 | 全屏 | CHAT_ICON | 匹配坐标点击 | - | 异常退出后回到大厅 |
-| 5 | 点击返回按钮 | 左上 1/8 | BACK_BUTTON | 匹配坐标点击 | 1000ms | 退出队伍时 |
-| 6 | 确认退出弹窗 | 右半下半 | EXIT_CONFIRM | 匹配坐标 + 偏移(halfW, halfH) | - | 返回按钮点击后 |
+| 1 | LV 图标检测 | 上方 1/10 | matchAnyLevelIconMat(activeGrades) | - | - | 每轮首先执行，确定实际等级 |
+| 2 | 上限检测 | 上方 1/5 | DAILY_LIMIT | 无点击，仅检测 | - | LV 确认为非 chaseDream 后 |
+| 3 | 点击准备按钮 | 右下 1/4 | READY_BUTTON | 匹配坐标 + 偏移(halfW, 3/4 height) | 500ms | LV 确认 + 准备按钮出现 |
+| 4 | 战斗等待检测 | 左下 1/3 | BATTLE_LOADING | 匹配坐标点击 | - | 点击准备后 |
+| 5 | 回到大厅检测 | 全屏 | CHAT_ICON | 匹配坐标点击 | - | 异常退出后回到大厅 |
+| 6 | 点击返回按钮 | 左上 1/8 | BACK_BUTTON | 匹配坐标点击 | 1000ms | 退出队伍时 |
+| 7 | 确认退出弹窗 | 右半下半 | EXIT_CONFIRM | 匹配坐标 + 偏移(halfW, halfH) | - | 返回按钮点击后 |
 
 ## 决策逻辑
 
 ```
-循环扫描（无显式间隔，依赖截图+匹配开销）:
+循环扫描:
   → 截图 null → 等待 500ms 后重试
-  → 匹配 DAILY_LIMIT（上方1/5）→ 匹配等级图标 → 标记对应组完成 → exitTeam → 返回 LOBBY
-  → battleWaitStart == 0 时匹配 READY_BUTTON（右下1/4）
-    → 匹配到 → 匹配等级图标（activeGrades）
-      → 等级匹配失败 → exitTeam → 返回 LOBBY
-      → 等级匹配成功 → 坐标偏移点击准备 → 启动战斗等待计时
-      → SS+ (lv105-130) → 播放提醒铃声
-  → battleWaitStart > 0 时匹配 BATTLE_LOADING（左下1/3）
-    → 匹配到 → 返回 BATTLE_LOADING
-    → 超过 30s → exitTeam → 返回 LOBBY
-  → 匹配 CHAT_ICON（全屏）→ 已回到大厅 → 返回 LOBBY
-  → 无匹配 → checkNodeTimeout 超时检测
+
+  ① LV 图标检测（上方1/10，matchAnyLevelIconMat + activeGrades）:
+    → 匹配失败 → 等待界面加载，重试
+    → 匹配成功 → 确定 actualGrade，记录到 ctx.actualGrade
+
+  ② LV 不在 activeGrades → 列表点错，exitTeam → LOBBY
+
+  ③ LV 确认后，根据实际等级决定是否检测上限:
+    → chaseDream 等级 → 跳过上限检测
+    → 普通等级 → 匹配 DAILY_LIMIT（上方1/5）
+      → 匹配到 → 标记该组完成 → exitTeam → LOBBY
+
+  ④ 准备按钮检测（右下1/4）:
+    → 匹配到 READY_BUTTON → 点击准备 → 启动战斗等待计时
+    → SS+ (lv105-130) → 播放提醒铃声
+
+  ⑤ 战斗等待中（左下1/3）:
+    → 匹配到 BATTLE_LOADING → 返回 BATTLE_LOADING
+    → 超过 30s → exitTeam → LOBBY
+
+  ⑥ 匹配 CHAT_ICON（全屏）→ 已回到大厅 → LOBBY
+
+  ⑦ 无匹配 → checkNodeTimeout 超时检测
 ```
 
-> 注意：TEAM_INVITATION 由 WorkflowEngine 的全局邀请拦截处理，不在本节点内。
-> DAILY_LIMIT 由本节点自行检测（含二次确认机制）。
+> TEAM_INVITATION 由 WorkflowEngine 的全局邀请拦截处理，不在本节点内。
 
 ## 等级校验逻辑
 
-点击准备前需校验当前队伍等级是否在 `activeGrades` 范围内：
-- 匹配等级图标（`matchAnyLevelIconMat`，并行匹配所有 activeGrades）→ 获取等级信息
-- 等级匹配失败（不在勾选范围内）→ 退出队伍
-- 等级在范围内 → 记录 `ctx.actualGrade` → 点击准备
-- SS+ 悬赏（lv105-130）→ 播放提醒铃声
+进入详情后的第一件事是通过 LV 图标确定实际等级：
+
+1. 匹配 LV 图标（`matchAnyLevelIconMat`，并行匹配所有 activeGrades）
+2. 匹配失败 → 等待界面加载后重试
+3. 匹配成功 → 得到 actualGrade
+4. actualGrade 不在 activeGrades → 列表点错，退出队伍
+5. actualGrade 在 activeGrades → 记录 `ctx.actualGrade`，继续后续流程
+6. actualGrade 是 chaseDream → 跳过上限检测
+7. actualGrade 是普通等级 → 检测上限
+
+**不信任悬赏列表的点击判断。** 列表可能因刷新/滑动导致点错，只有详情页内的 LV 图标才是准确的。
 
 ## DAILY_LIMIT 上限检测
 
-检测到达今日上限的特殊情况：
+仅在 LV 确认为非 chaseDream 等级后执行：
+
 1. 匹配 DAILY_LIMIT 标识（上方 1/5 区域），不点击
-2. 匹配等级图标确定哪个组达上限
+2. 匹配到 → 使用 actualGrade 的 group 信息标记完成
 3. 标记该组所有成员 `runCounts = defaultRuns`
 4. 从 `activeGrades` 移除该组
 5. `exitTeam()` 退出队伍 → 返回 LOBBY
-
-> chaseDream 等级跳过上限检测（追梦悬赏不检查上限）。
-> 等级匹配失败时用 `currentBounty` 兜底标记完成。
 
 ## 战斗等待
 
@@ -79,8 +99,9 @@
 | 异常 | 处理 |
 |------|------|
 | 截图返回 null | 等待 500ms (POST_CLICK_DELAY) 后重试 |
+| LV 检测失败 | 等待界面加载后重试 |
+| LV 不在 activeGrades | exitTeam，回到大厅 |
 | 30s 无匹配 | checkNodeTimeout 超时检测 |
-| 等级匹配失败 | exitTeam，回到大厅 |
 | 战斗等待超时 30s | exitTeam，回到大厅 |
 | SS+ 悬赏 (lv105-130) | 播放提醒铃声 |
 
@@ -88,7 +109,7 @@
 
 | 指标 | 目标 | 说明 |
 |------|------|------|
+| LV 图标匹配 | ≤ 200ms | 多等级×多变体并行匹配（`SceneDetector.matchAnyLevelIconMat`） |
 | 等级匹配+点击准备 | ≤ 500ms | 从检测到准备按钮到点击准备完成 |
-| 等级图标匹配 | ≤ 200ms | 多等级×多变体并行匹配（`SceneDetector.matchAnyLevelIconMat`） |
 
 等级匹配使用协程并行化：所有等级的所有级别变体同时匹配，取最佳结果。
