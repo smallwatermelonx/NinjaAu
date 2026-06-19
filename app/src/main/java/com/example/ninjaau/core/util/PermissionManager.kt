@@ -88,6 +88,7 @@ object PermissionManager {
         synchronized(lock) {
             mResultCode = resultCode
             mProjectionIntent = data
+            isProjectionLost = false
             LogUtil.i("PermissionManager", "授权数据已设置: resultCode=$resultCode, hasData=${data != null}")
         }
     }
