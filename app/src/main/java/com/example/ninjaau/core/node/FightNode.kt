@@ -13,11 +13,11 @@ import kotlinx.coroutines.isActive
  * 战斗节点 — 下滑 → Boss战 → 结算。
  *
  * 流程：
- * ① 下滑阶段（500ms间隔）：左下1/4识别下滑按钮并点击，
- *    连续3次无匹配 → Boss阶段
+ * ① 下滑阶段（300ms间隔）：左下1/4识别下滑按钮并点击，
+ *    左1/2×下1/4识别血咒并点击（仅首次），连续3次无匹配 → Boss阶段
  * ②③ Boss检测+战斗（统一循环）：
  *    - Lv未出现时：100ms快速扫描左上1/8 Lv图标
- *    - Lv出现后：检测跳跃(右下1/4)/大招(左1/6,记住坐标连点10次)/武器(下方1/4,记住坐标连点10次)
+ *    - Lv出现后：大招(左1/6,记住坐标连点24次)优先 → 跳跃(右下1/4)/上翻 → 武器(下方1/4,记住坐标连点24次)
  *    - 出口：连续3次未识别跳跃+上翻 → 结算节点
  * ④ 30秒无匹配 → 抛 NodeTimeoutException 回到主流程
  */
@@ -29,13 +29,13 @@ class FightNode(private val ctx: NodeContext) : GameNode {
         private const val BOSS_LOOP_INTERVAL_MS = 1000L
         private const val MAX_SLIDE_MISS = 3
         private const val MAX_JUMP_MISS = 3
-        private const val MAX_SKILL_CLICKS = 52
+        private const val MAX_SKILL_CLICKS = 10
         private const val SKILL_CLICK_INTERVAL_MS = 240L
     }
 
     override suspend fun execute(ctx: GameContext): GamePhase? {
         this.ctx.log("战斗 Phase — 下滑阶段")
-        this.ctx.delay(5000)
+        this.ctx.delay(6000)
 
         // ═════════════════════════════════════
         //  ① 下滑阶段（左下1/4）
@@ -44,7 +44,7 @@ class FightNode(private val ctx: NodeContext) : GameNode {
         var bloodCurseClicked = false
         while (currentCoroutineContext().isActive && slideMissCount < MAX_SLIDE_MISS) {
             val screen = this.ctx.captureBitmap()
-            if (screen == null) { this.ctx.delay(SLIDE_INTERVAL_MS); continue }
+            if (screen == null) { this.ctx.delay(1000L); continue }
             var slideMat: org.opencv.core.Mat? = null
             try {
                 slideMat = this.ctx.detector.screenToMat(screen)
@@ -59,19 +59,24 @@ class FightNode(private val ctx: NodeContext) : GameNode {
                     } else {
                         slideMissCount++
                     }
+                } finally {
+                    crop.release()
+                }
 
-                    // ── 血咒（左下1/4，点一次即停） ──
-                    if (!bloodCurseClicked) {
-                        val curseCoord = this.ctx.detector.matchTemplateMat(crop, ScreenState.BLOOD_CURSE)
+                // ── 血咒（左1/2 × 下1/4，点一次即停） ──
+                if (!bloodCurseClicked) {
+                    val curseCrop = this.ctx.detector.cropBottomLeftHalf(slideMat)
+                    try {
+                        val curseCoord = this.ctx.detector.matchTemplateMat(curseCrop, ScreenState.BLOOD_CURSE)
                         if (curseCoord != null) {
                             val fullY = curseCoord.second + slideMat.rows() * 3 / 4
                             this.ctx.click(Pair(curseCoord.first, fullY))
                             this.ctx.log("血咒")
                             bloodCurseClicked = true
                         }
+                    } finally {
+                        curseCrop.release()
                     }
-                } finally {
-                    crop.release()
                 }
             } finally {
                 slideMat?.release()
@@ -129,7 +134,7 @@ class FightNode(private val ctx: NodeContext) : GameNode {
                     continue
                 }
 
-                // ── Boss已出现：大招优先（左1/6） ──
+                // ── Boss已出现：大招优先（左1/6），点完再检测跳跃 ──
                 if (ultimateClickCount == 0) {
                     val ultCrop = this.ctx.detector.cropLeftSixth(screenMat)
                     try {
@@ -147,10 +152,14 @@ class FightNode(private val ctx: NodeContext) : GameNode {
                     this.ctx.log("大招 (${ultimateClickCount}/$MAX_SKILL_CLICKS)")
                     lastMatchMs = System.currentTimeMillis()
                     if (ultimateClickCount == 1) {
-                        this.ctx.delay(500)
+                        this.ctx.delay(250)
                     } else {
                         this.ctx.delay(SKILL_CLICK_INTERVAL_MS)
                     }
+                    // 大招未点完，跳过跳跃/武器检测，下轮继续点大招
+                    checkNodeTimeout(lastMatchMs)
+                    this.ctx.delay(BOSS_LOOP_INTERVAL_MS)
+                    continue
                 }
 
                 // ── 跳跃/上翻检测（右下1/4） ──

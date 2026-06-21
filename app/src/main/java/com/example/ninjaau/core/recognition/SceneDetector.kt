@@ -402,6 +402,14 @@ class SceneDetector(private val context: Context) {
         return Mat(mat, org.opencv.core.Rect(0, y, w, h))
     }
 
+    /** 裁剪 Mat 左侧 1/2 宽度、下方 1/4 高度（血咒技能所在区域），调用方用完需 release */
+    fun cropBottomLeftHalf(mat: Mat): Mat {
+        val w = mat.cols() / 2
+        val h = mat.rows() / 4
+        val y = mat.rows() - h
+        return Mat(mat, org.opencv.core.Rect(0, y, w, h))
+    }
+
     /** 裁剪 Mat 右侧 1/4 宽度、下方 1/4 高度（跳跃按钮精确区域），调用方用完需 release */
     fun cropBottomRightFourth(mat: Mat): Mat {
         val w = mat.cols() / 4
