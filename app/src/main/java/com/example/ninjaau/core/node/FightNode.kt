@@ -17,7 +17,7 @@ import kotlinx.coroutines.isActive
  *    左1/2×下1/4识别血咒并点击（仅首次），连续3次无匹配 → Boss阶段
  * ②③ Boss检测+战斗（统一循环）：
  *    - Lv未出现时：100ms快速扫描左上1/8 Lv图标
- *    - Lv出现后：大招(左1/6,记住坐标连点24次)优先 → 跳跃(右下1/4)/上翻 → 武器(下方1/4,记住坐标连点24次)
+ *    - Lv出现后：大招(左1/6,识别则点击，放完后) → 跳跃(右下1/4)/上翻 → 武器(下方1/4,记住坐标连点10次)
  *    - 出口：连续3次未识别跳跃+上翻 → 结算节点
  * ④ 30秒无匹配 → 抛 NodeTimeoutException 回到主流程
  */
@@ -95,12 +95,9 @@ class FightNode(private val ctx: NodeContext) : GameNode {
         //  出口：连续3次无跳跃+上翻 → 结算
         // ═════════════════════════════════════
         var bossAppeared = false
+        var ultimateActive = false
         var jumpMissCount = 0
         var lastMatchMs = System.currentTimeMillis()
-
-        // 大招：记住坐标，连续点击
-        var ultimateCoord: Pair<Float, Float>? = null
-        var ultimateClickCount = 0
 
         // 武器：记住坐标，连续点击
         var weaponCoord: Pair<Float, Float>? = null
@@ -134,30 +131,27 @@ class FightNode(private val ctx: NodeContext) : GameNode {
                     continue
                 }
 
-                // ── Boss已出现：大招优先（左1/6），点完再检测跳跃 ──
-                if (ultimateClickCount == 0) {
-                    val ultCrop = this.ctx.detector.cropLeftSixth(screenMat)
-                    try {
-                        val ultCoord = this.ctx.detector.matchTemplateMat(ultCrop, ScreenState.ULTIMATE_SKILL)
-                        if (ultCoord != null) {
-                            ultimateCoord = Pair(ultCoord.first, ultCoord.second + screenMat.rows() / 3)
-                        }
-                    } finally {
-                        ultCrop.release()
+                // ── Boss已出现：大招优先（左1/6） ──
+                val ultCrop = this.ctx.detector.cropLeftSixth(screenMat)
+                try {
+                    val ultCoord = this.ctx.detector.matchTemplateMat(ultCrop, ScreenState.ULTIMATE_SKILL)
+                    if (ultCoord != null) {
+                        val fullY = ultCoord.second + screenMat.rows() / 3
+                        this.ctx.click(Pair(ultCoord.first, fullY))
+                        this.ctx.log("大招")
+                        lastMatchMs = System.currentTimeMillis()
+                        ultimateActive = true
+                        checkNodeTimeout(lastMatchMs)
+                        this.ctx.delay(BOSS_LOOP_INTERVAL_MS)
+                        continue
                     }
+                } finally {
+                    ultCrop.release()
                 }
-                if (ultimateCoord != null && ultimateClickCount < MAX_SKILL_CLICKS) {
-                    this.ctx.click(ultimateCoord!!)
-                    ultimateClickCount++
-                    this.ctx.log("大招 (${ultimateClickCount}/$MAX_SKILL_CLICKS)")
-                    lastMatchMs = System.currentTimeMillis()
-                    if (ultimateClickCount == 1) {
-                        this.ctx.delay(250)
-                    } else {
-                        this.ctx.delay(SKILL_CLICK_INTERVAL_MS)
-                    }
-                    // 大招未点完，跳过跳跃/武器检测，下轮继续点大招
-                    checkNodeTimeout(lastMatchMs)
+
+                // 大招曾出现但现在未检测到 → 大招放完，跳过本轮再检测跳跃
+                if (ultimateActive) {
+                    ultimateActive = false
                     this.ctx.delay(BOSS_LOOP_INTERVAL_MS)
                     continue
                 }

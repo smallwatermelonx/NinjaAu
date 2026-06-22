@@ -140,7 +140,7 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                                 for (member in group.members()) {
                                     ctx.runCounts[member] = group.defaultRuns
                                 }
-                                ctx.activeGrades = ctx.activeGrades.filter { it.group != group }
+                                ctx.activeGrades = ctx.activeGrades.filter { it.group != group || it in ctx.chaseDreamGrades }
                                 this.ctx.log("${actualGrade.displayName} ${group.name} 标记为完成")
                                 exitTeam()
                                 ctx.currentBounty = null

@@ -110,7 +110,7 @@ class SettlementNode(private val ctx: NodeContext) : GameNode {
             this.ctx.log("${grade.displayName} 完成 ${groupTotal}/${group.defaultRuns}")
 
             if (group.isComplete(ctx.runCounts)) {
-                ctx.activeGrades = ctx.activeGrades.filter { it.group != group }
+                ctx.activeGrades = ctx.activeGrades.filter { it.group != group || it in ctx.chaseDreamGrades }
                 this.ctx.log("${group.name} 全部完成，从集合移除")
             }
         }
