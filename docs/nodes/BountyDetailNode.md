@@ -77,7 +77,7 @@
 1. 匹配 DAILY_LIMIT 标识（上方 1/5 区域），不点击
 2. 匹配到 → 使用 actualGrade 的 group 信息标记完成
 3. 标记该组所有成员 `runCounts = defaultRuns`
-4. 从 `activeGrades` 移除该组
+4. 从 `activeGrades` 移除该组内**非追梦**等级（追梦等级保留）
 5. `exitTeam()` 退出队伍 → 返回 LOBBY
 
 ## 战斗等待

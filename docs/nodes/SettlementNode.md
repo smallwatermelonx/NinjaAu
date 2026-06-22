@@ -40,8 +40,8 @@
 
 领奖完成后需更新状态：
 1. `runCounts[grade]++` — 该等级完成次数+1
-2. 检查 `runCounts[grade] >= maxRuns` — 是否达到该等级最大次数
-3. 达到上限 → 从 `activeGrades` 移除该等级
+2. 检查组内是否完成（`group.isComplete`）
+3. 组完成 → 从 `activeGrades` 移除该组内**非追梦**等级（追梦等级保留）
 4. `activeGrades` 为空 → 返回 DONE
 5. 否则 → 返回 LOBBY 继续下一轮
 

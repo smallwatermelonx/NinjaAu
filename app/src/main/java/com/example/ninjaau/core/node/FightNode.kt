@@ -10,15 +10,16 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 
 /**
- * 战斗节点 — 下滑 → Boss战 → 结算。
+ * 战斗节点 — 下滑 → 上翻 → Boss战 → 结算。
  *
  * 流程：
  * ① 下滑阶段（300ms间隔）：左下1/4识别下滑按钮并点击，
- *    左1/2×下1/4识别血咒并点击（仅首次），连续3次无匹配 → Boss阶段
- * ②③ Boss检测+战斗（统一循环）：
+ *    左1/2×下1/4识别血咒并点击（仅首次），连续3次无匹配 → 下滑结束
+ * ② 下滑结束后立即检测一次上翻（右下1/4），有则点击
+ * ③ Boss检测+战斗（统一循环）：
  *    - Lv未出现时：100ms快速扫描左上1/8 Lv图标
- *    - Lv出现后：大招(左1/6,识别则点击，放完后) → 跳跃(右下1/4)/上翻 → 武器(下方1/4,记住坐标连点10次)
- *    - 出口：连续3次未识别跳跃+上翻 → 结算节点
+ *    - Lv出现后：大招(左1/6,识别则点击，放完后) → 跳跃(右下1/4) → 武器(下方1/4,记住坐标连点10次)
+ *    - 出口：连续3次未识别跳跃 → 结算节点
  * ④ 30秒无匹配 → 抛 NodeTimeoutException 回到主流程
  */
 class FightNode(private val ctx: NodeContext) : GameNode {
@@ -86,7 +87,33 @@ class FightNode(private val ctx: NodeContext) : GameNode {
         }
 
         if (!currentCoroutineContext().isActive) return null
-        this.ctx.log("下滑结束，进入Boss检测")
+        this.ctx.log("下滑结束")
+
+        // ═══ 下滑结束后立即检测一次上翻 ═══
+        val scrollScreen = this.ctx.captureBitmap()
+        if (scrollScreen != null) {
+            var scrollMat: org.opencv.core.Mat? = null
+            try {
+                scrollMat = this.ctx.detector.screenToMat(scrollScreen)
+                val scrollCrop = this.ctx.detector.cropBottomRightFourth(scrollMat)
+                try {
+                    val scrollCoord = this.ctx.detector.matchTemplateMat(scrollCrop, ScreenState.SCROLL_UP)
+                    if (scrollCoord != null) {
+                        val fullX = scrollCoord.first + scrollMat.cols() * 3 / 4
+                        val fullY = scrollCoord.second + scrollMat.rows() * 3 / 4
+                        this.ctx.click(Pair(fullX, fullY))
+                        this.ctx.log("上翻")
+                    }
+                } finally {
+                    scrollCrop.release()
+                }
+            } finally {
+                scrollMat?.release()
+                scrollScreen.recycle()
+            }
+        }
+
+        this.ctx.log("进入Boss检测")
 
         // ═════════════════════════════════════
         //  ②③ Boss检测 + Boss战斗（统一循环）
@@ -156,7 +183,7 @@ class FightNode(private val ctx: NodeContext) : GameNode {
                     continue
                 }
 
-                // ── 跳跃/上翻检测（右下1/4） ──
+                // ── 跳跃检测（右下1/4） ──
                 val jumpCrop = this.ctx.detector.cropBottomRightFourth(screenMat)
                 try {
                     val jumpCoord = this.ctx.detector.matchTemplateMat(jumpCrop, ScreenState.JUMP_BUTTON)
@@ -168,20 +195,10 @@ class FightNode(private val ctx: NodeContext) : GameNode {
                         jumpMissCount = 0
                         lastMatchMs = System.currentTimeMillis()
                     } else {
-                        val scrollCoord = this.ctx.detector.matchTemplateMat(jumpCrop, ScreenState.SCROLL_UP)
-                        if (scrollCoord != null) {
-                            val fullX = scrollCoord.first + screenMat.cols() * 3 / 4
-                            val fullY = scrollCoord.second + screenMat.rows() * 3 / 4
-                            this.ctx.click(Pair(fullX, fullY))
-                            this.ctx.log("上翻")
-                            jumpMissCount = 0
-                            lastMatchMs = System.currentTimeMillis()
-                        } else {
-                            jumpMissCount++
-                            if (jumpMissCount >= MAX_JUMP_MISS) {
-                                this.ctx.log("连续3次未识别跳跃/上翻，进入结算")
-                                return GamePhase.SETTLEMENT
-                            }
+                        jumpMissCount++
+                        if (jumpMissCount >= MAX_JUMP_MISS) {
+                            this.ctx.log("连续3次未识别跳跃，进入结算")
+                            return GamePhase.SETTLEMENT
                         }
                     }
                 } finally {
