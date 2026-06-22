@@ -34,8 +34,8 @@ IDLE → LOBBY → CHAT → RECRUIT_LIST → RECRUIT_INVITE → BOUNTY_DETAIL
 | Phase | 负责节点 | 说明 |
 |-------|---------|------|
 | IDLE | - | 初始状态，等待启动 |
-| LOBBY | HallNode | 大厅导航 |
-| CHAT | HallNode | 大厅聊天页面 |
+| LOBBY | LobbyNode | 大厅导航 |
+| CHAT | LobbyNode | 大厅聊天页面 |
 | RECRUIT_LIST | BountyListNode | 招募列表扫描 |
 | RECRUIT_INVITE | RecruitInviteNode | 招募邀请处理（TODO 桩） |
 | BOUNTY_DETAIL | BountyDetailNode | 悬赏详情/组队 |
@@ -56,7 +56,7 @@ IDLE → LOBBY → CHAT → RECRUIT_LIST → RECRUIT_INVITE → BOUNTY_DETAIL
 
 | 模块 | Spec 文件 | 职责 |
 |------|----------|------|
-| HallNode | [nodes/HallNode.md](nodes/HallNode.md) | 大厅导航，进入招募列表 |
+| LobbyNode | [nodes/LobbyNode.md](nodes/LobbyNode.md) | 大厅导航，进入招募列表/个人悬赏 |
 | BountyListNode | [nodes/BountyListNode.md](nodes/BountyListNode.md) | 扫描招募列表，选择悬赏等级 |
 | BountyDetailNode | [nodes/BountyDetailNode.md](nodes/BountyDetailNode.md) | 悬赏详情页，组队/准备/退出 |
 | BattleLoadingNode | [nodes/BattleLoadingNode.md](nodes/BattleLoadingNode.md) | 等待战斗加载完成 |

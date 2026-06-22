@@ -63,7 +63,7 @@ class SceneDetector(private val context: Context) {
         /** 测试时的裁剪方式（与实际识别一致） */
         val testCrop: TestCrop = TestCrop.FULL
     ) {
-        HALL("大厅导航", listOf(
+        LOBBY("大厅导航", listOf(
             ScreenState.CHAT_ICON, ScreenState.RECRUIT_LIST_SCREEN
         ), false, false),
         RECRUIT_LIST("悬赏列表扫描", listOf(
@@ -235,7 +235,7 @@ class SceneDetector(private val context: Context) {
 
     private val templates: Map<ScreenState, TemplateEntry> = mapOf(
         // ── 大厅 ──
-        ScreenState.CHAT_ICON to TemplateEntry("templates/lobby/hall_chat.png", 0.75f),
+        ScreenState.CHAT_ICON to TemplateEntry("templates/lobby/lobby_chat.png", 0.75f),
         // ── 聊天/招募 ──
         ScreenState.RECRUIT_TAB to TemplateEntry("templates/chat/team_recruit.png"),
         ScreenState.RECRUIT_TAB_BLACK to TemplateEntry("templates/chat/team_recruit_black.png", 0.75f),
@@ -285,6 +285,7 @@ class SceneDetector(private val context: Context) {
     private val templateCache = java.util.concurrent.ConcurrentHashMap<String, Bitmap>()
     private val gradeIconCache = java.util.concurrent.ConcurrentHashMap<BountyGrade, Bitmap>()
     private val gradeIconMatCache = java.util.concurrent.ConcurrentHashMap<BountyGrade, Mat>()
+    private val personalGradeIconCache = java.util.concurrent.ConcurrentHashMap<BountyGrade, Bitmap>()
     private val levelIconCache = java.util.concurrent.ConcurrentHashMap<String, Bitmap>()
 
     private fun getTemplate(state: ScreenState): Bitmap? {
@@ -649,6 +650,24 @@ class SceneDetector(private val context: Context) {
             }
         }
         return bestMatch(matches, "matchAnyGradeIcon")
+    }
+
+    /** 在截图中搜索个人悬赏等级图标 — 使用 bounty_list_personal 模板 */
+    fun matchAnyPersonalGradeIcon(screen: Bitmap, grades: List<BountyGrade>): GradeMatch? {
+        val matches = mutableListOf<GradeMatch>()
+        for (grade in grades) {
+            val cached = personalGradeIconCache[grade]
+            val template = if (cached != null && !cached.isRecycled) cached else {
+                val loaded = AssetUtil.loadBitmapFromAssets(context, grade.personalGradeIconPath()) ?: continue
+                personalGradeIconCache[grade] = loaded
+                loaded
+            }
+            val result = TemplateMatcher.match(screen, template, 0.85f)
+            if (result.isMatched) {
+                matches.add(GradeMatch(grade, result.similarity, result.centerX, result.centerY))
+            }
+        }
+        return bestMatch(matches, "matchAnyPersonalGradeIcon")
     }
 
     /** 从多个 GradeMatch 中选出最佳匹配，含冲突检测 */

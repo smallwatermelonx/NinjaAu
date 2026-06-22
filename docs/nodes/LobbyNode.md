@@ -1,18 +1,24 @@
-# HallNode - 大厅导航模块规格
+# LobbyNode - 大厅导航模块规格
+
+## 核心职责
+
+从大厅导航到目标页面：日常悬赏走招募流程，个人悬赏走入口点击。
 
 ## 屏幕状态
 
 | 方向 | ScreenState | 说明 |
 |------|-------------|------|
 | 进入 | IDLE / LOBBY / CHAT | 从初始状态、大厅或聊天页面进入 |
-| 退出 | RECRUIT_LIST | 导航到招募列表后切换到 BountyListNode |
+| 退出 | RECRUIT_LIST | 日常悬赏：导航到招募列表 |
+| 退出 | PERSONAL_BOUNTY_CENTER | 个人悬赏：点击入口后进入个人悬赏列表 |
 
 ## 交互动作
 
 | # | 动作 | 裁剪区域 | 匹配模板 | 坐标/偏移 | 延迟 | 条件 |
 |---|------|----------|----------|----------|------|------|
-| 1 | 点击聊天图标进入招募 | 左侧 1/10 区域 | CHAT_ICON | 匹配坐标点击 | 500ms | 当前在大厅 |
-| 2 | 点击招募页签 | 上方 1/10 区域 | RECRUIT_TAB | 匹配坐标点击 | 500ms | 在招募子页面 |
+| 1 | 点击聊天图标进入招募 | 左侧 1/10 区域 | CHAT_ICON | 匹配坐标点击 | 500ms | dailyEnabled=true |
+| 2 | 点击招募页签 | 上方 1/10 区域 | RECRUIT_TAB | 匹配坐标点击 | 500ms | dailyEnabled=true |
+| 3 | 点击个人悬赏入口 | 全屏 | PERSONAL_BOUNTY_ENTRY | 匹配坐标点击 | 1500ms | personalBountyEnabled=true |
 
 ## 裁剪区域说明
 
@@ -26,8 +32,11 @@
 ```
 进入时记录 roundStartTime（首次进入时）
 循环扫描（500ms间隔）:
-  → 匹配 CHAT_ICON（左侧1/10）→ 点击 → 继续循环
-  → 匹配 RECRUIT_TAB（上方1/10）→ 点击 → 返回 RECRUIT_LIST
+  → dailyEnabled=true 时:
+    → 匹配 CHAT_ICON（左侧1/10）→ 点击 → 继续循环
+    → 匹配 RECRUIT_TAB（上方1/10）→ 点击 → 返回 RECRUIT_LIST
+  → personalBountyEnabled=true 时:
+    → 匹配 PERSONAL_BOUNTY_ENTRY（全屏）→ 点击 → 返回 PERSONAL_BOUNTY_CENTER
   → 无匹配 → 检查超时（30s）→ 抛 NodeTimeoutException
 ```
 

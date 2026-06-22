@@ -76,6 +76,11 @@ object PermissionManager {
                 return false
             }
 
+            if (isProjectionLost) {
+                LogUtil.w("PermissionManager", "MediaProjection已被系统回收，需要重新授权")
+                return false
+            }
+
             LogUtil.i("PermissionManager", "截图授权数据有效")
             return true
         }

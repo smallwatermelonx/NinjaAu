@@ -93,7 +93,7 @@ com.example.ninjaau/
 │   │   ├── FloatingWindowService.kt      # 悬浮窗前台 Service
 │   │   └── HudManager.kt                # HUD 进度覆盖层
 │   ├── node/
-│   │   ├── HallNode.kt                   # 大厅导航
+│   │   ├── LobbyNode.kt                   # 大厅导航
 │   │   ├── BountyListNode.kt             # 招募列表扫描
 │   │   ├── BountyDetailNode.kt           # 悬赏详情/队伍房间
 │   │   ├── BattleLoadingNode.kt          # 战斗加载
@@ -579,7 +579,7 @@ B    0/4
                     │                 │                 │
                     ▼                 ▼                 ▼
             ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-            │  HallNode    │  │ BountyDetail │  │   FightNode  │
+            │  LobbyNode   │  │ BountyDetail │  │   FightNode  │
             │  (IDLE/LOBBY │  │ Node         │  │              │
             │   /CHAT)     │  │ (BOUNTY_     │  │  释放技能    │
             │              │  │  DETAIL)     │  │  检测结算    │
@@ -610,7 +610,7 @@ B    0/4
 
 ```
 dispatchPhase(currentPhase):
-  IDLE/LOBBY/CHAT → HallNode → 导航到招募列表
+  IDLE/LOBBY/CHAT → LobbyNode → 导航到招募列表/个人悬赏
   RECRUIT_LIST → BountyListNode → 扫描匹配等级
   RECRUIT_INVITE → RecruitInviteNode → 处理邀请（TODO）
   BOUNTY_DETAIL → BattleDetailNode → 等级校验/准备

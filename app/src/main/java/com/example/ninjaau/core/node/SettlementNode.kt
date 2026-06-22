@@ -99,8 +99,8 @@ class SettlementNode(private val ctx: NodeContext) : GameNode {
             this.ctx.delay(NORMAL_INTERVAL_MS)
         }
 
-        // 更新完成计数（仅递增实际完成的等级）
-        if (grade != null) {
+        // 更新完成计数（仅递增实际完成的等级，个人悬赏无次数限制）
+        if (grade != null && ctx.businessLine != BusinessLine.PERSONAL) {
             val count = ctx.runCounts[grade] ?: 0
             ctx.runCounts[grade] = count + 1
             ctx.totalCycles++
@@ -113,6 +113,9 @@ class SettlementNode(private val ctx: NodeContext) : GameNode {
                 ctx.activeGrades = ctx.activeGrades.filter { it.group != group || it in ctx.chaseDreamGrades }
                 this.ctx.log("${group.name} 全部完成，从集合移除")
             }
+        } else if (grade != null) {
+            ctx.totalCycles++
+            this.ctx.log("${grade.displayName} 完成（个人悬赏无次数限制）")
         }
         ctx.currentBounty = null
         ctx.actualGrade = null

@@ -55,6 +55,9 @@ enum class BountyGrade(
     /** 等级图标在 assets 中的完整路径（聊天招募列表中的字母等级图标） */
     fun gradeIconPath() = "templates/bounty_list/${displayName}.png"
 
+    /** 个人悬赏列表中的等级图标路径 */
+    fun personalGradeIconPath() = "templates/bounty_list_personal/${displayName}.png"
+
     /** 队伍房间中建议等级图标的路径（lv30 / lv40 / lv60 / lv80 / lv90 / lv125 等） */
     fun levelIconPath(): String? = levelToPath(level)
 

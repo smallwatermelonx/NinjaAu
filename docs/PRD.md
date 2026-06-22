@@ -81,7 +81,7 @@ HALL → RECRUIT_LIST → BOUNTY_DETAIL → BATTLE_LOADING → FIGHT → SETTLEM
 
 | 节点 | 入口 Phase | 出口 Phase | 状态 |
 |------|-----------|-----------|------|
-| HallNode | IDLE / LOBBY / CHAT | RECRUIT_LIST | 已实现 |
+| LobbyNode | IDLE / LOBBY / CHAT | RECRUIT_LIST / PERSONAL_BOUNTY_CENTER | 已实现 |
 | BountyListNode | RECRUIT_LIST | BOUNTY_DETAIL | 已实现 |
 | RecruitInviteNode | RECRUIT_INVITE | RECRUIT_LIST | TODO 桩 |
 | BountyDetailNode | BOUNTY_DETAIL | BATTLE_LOADING | 已实现 |

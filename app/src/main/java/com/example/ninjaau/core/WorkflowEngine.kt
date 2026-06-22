@@ -34,7 +34,7 @@ import kotlin.coroutines.coroutineContext
  * 参考 MAA (MeoAssistanceArknights) 的节点模式设计。
  *
  * 页面 → 节点映射:
- *   大厅/聊天 → [HallNode] → 招募列表 → [BountyListNode] → 悬赏详情 → [BountyDetailNode]
+ *   大厅/聊天 → [LobbyNode] → 招募列表 → [BountyListNode] → 悬赏详情 → [BountyDetailNode]
  *   → 战斗 → [BattleNode] → 结算 → [SettlementNode] → 大厅 → ...
  *
  * 异常兜底: 3次连续失败 → 整体判定 → 3次整体判定失败 → 停止脚本并写日志
@@ -67,7 +67,7 @@ class WorkflowEngine(
     }
 
     // ── 节点实例（每个游戏页面对应一个节点） ──
-    private val hallNode: HallNode
+    private val lobbyNode: LobbyNode
     private val bountyListNode: BountyListNode
     private val bountyDetailNode: BountyDetailNode
     private val battleLoadingNode: BattleLoadingNode
@@ -103,7 +103,7 @@ class WorkflowEngine(
                 } catch (_: Exception) {}
             }
         )
-        hallNode = HallNode(nodeCtx)
+        lobbyNode = LobbyNode(nodeCtx)
         bountyListNode = BountyListNode(nodeCtx)
         bountyDetailNode = BountyDetailNode(nodeCtx)
         battleLoadingNode = BattleLoadingNode(nodeCtx)
@@ -333,9 +333,9 @@ class WorkflowEngine(
                     log("日常悬赏完成，切换到个人悬赏")
                     ctx.businessLine = BusinessLine.PERSONAL
                     ctx.activeGrades = ctx.personalActiveGrades
-                    ctx.currentPhase = GamePhase.PERSONAL_BOUNTY_CENTER
+                    ctx.currentPhase = GamePhase.IDLE
                     onPageEvent?.invoke("切换到个人悬赏")
-                    return GamePhase.PERSONAL_BOUNTY_CENTER
+                    return GamePhase.IDLE
                 }
                 // 个人未启用或无等级 → 尝试逆袭
                 return trySwitchToNS(ctx, "日常悬赏完成")
@@ -376,7 +376,7 @@ class WorkflowEngine(
 
     private suspend fun dispatchPhase(ctx: GameContext): GamePhase? {
         return when (ctx.currentPhase) {
-            GamePhase.IDLE, GamePhase.LOBBY, GamePhase.CHAT -> hallNode.execute(ctx)
+            GamePhase.IDLE, GamePhase.LOBBY, GamePhase.CHAT -> lobbyNode.execute(ctx)
             GamePhase.RECRUIT_LIST -> bountyListNode.execute(ctx)
             GamePhase.RECRUIT_INVITE -> recruitInviteNode.execute(ctx)
             GamePhase.BOUNTY_DETAIL -> bountyDetailNode.execute(ctx)
@@ -432,15 +432,15 @@ class WorkflowEngine(
         val startPhase: GamePhase
 
         when {
+            personalBountyEnabled && personalGrades.isNotEmpty() -> {
+                startBusinessLine = BusinessLine.PERSONAL
+                startGrades = personalGrades
+                startPhase = GamePhase.IDLE
+            }
             dailyGrades.isNotEmpty() -> {
                 startBusinessLine = BusinessLine.DAILY
                 startGrades = dailyGrades
                 startPhase = GamePhase.IDLE
-            }
-            personalBountyEnabled && personalGrades.isNotEmpty() -> {
-                startBusinessLine = BusinessLine.PERSONAL
-                startGrades = personalGrades
-                startPhase = GamePhase.PERSONAL_BOUNTY_CENTER
             }
             nsGrades.isNotEmpty() -> {
                 startBusinessLine = BusinessLine.DAILY

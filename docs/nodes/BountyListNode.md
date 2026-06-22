@@ -4,7 +4,7 @@
 
 | 方向 | ScreenState | 说明 |
 |------|-------------|------|
-| 进入 | RECRUIT_LIST_SCREEN | 从 HallNode 匹配到招募列表后进入 |
+| 进入 | RECRUIT_LIST_SCREEN | 从 LobbyNode 匹配到招募列表后进入 |
 | 退出 | READY_BUTTON / BOUNTY_DETAIL | 点击加入后检测到详情页切换 |
 
 ## 交互动作

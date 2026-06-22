@@ -46,7 +46,7 @@ app/src/main/java/com/example/ninjaau/
 │   ├── GameNode.kt              # GameNode 接口 + NodeContext 定义
 │   ├── WorkflowEngine.kt        # 主循环，按 GamePhase 分发节点
 │   ├── node/                    # 所有 GameNode 实现
-│   │   ├── HallNode.kt          # 大厅导航
+│   │   ├── LobbyNode.kt         # 大厅导航
 │   │   ├── BountyListNode.kt    # 悬赏列表扫描
 │   │   ├── BountyDetailNode.kt  # 悬赏详情/组队
 │   │   ├── BattleLoadingNode.kt # 战斗加载
@@ -99,7 +99,7 @@ app/src/main/java/com/example/ninjaau/
 docs/
 ├── SRS.md              # 总纲：全局规范、状态机、模块清单
 ├── nodes/
-│   ├── HallNode.md     # 大厅导航 Spec
+│   ├── LobbyNode.md    # 大厅导航 Spec
 │   ├── BountyListNode.md
 │   ├── BountyDetailNode.md
 │   ├── BattleLoadingNode.md
