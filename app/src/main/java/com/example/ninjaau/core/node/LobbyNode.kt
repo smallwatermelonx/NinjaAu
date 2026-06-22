@@ -3,6 +3,9 @@ package com.example.ninjaau.core.node
 import com.example.ninjaau.core.GameNode
 import com.example.ninjaau.core.NodeContext
 import com.example.ninjaau.core.checkNodeTimeout
+import com.example.ninjaau.core.recognition.TemplateMatcher
+import com.example.ninjaau.core.util.AssetUtil
+import com.example.ninjaau.core.util.OpenCVUtil
 import com.example.ninjaau.model.GameContext
 import com.example.ninjaau.model.GamePhase
 import com.example.ninjaau.model.ScreenState
@@ -74,14 +77,25 @@ class LobbyNode(private val ctx: NodeContext) : GameNode {
                     }
                 }
 
-                // ═══ 个人悬赏入口（全屏匹配） ═══
+                // ═══ 个人悬赏入口（裁剪右侧区域匹配） ═══
                 if (ctx.personalBountyEnabled && ctx.personalActiveGrades.isNotEmpty()) {
-                    val personalEntry = this.ctx.detector.matchTemplate(screen, ScreenState.PERSONAL_BOUNTY_ENTRY)
-                    if (personalEntry != null) {
-                        this.ctx.log("导航: 个人悬赏入口，点击进入")
-                        this.ctx.click(personalEntry)
-                        this.ctx.delay(1500)
-                        return GamePhase.PERSONAL_BOUNTY_CENTER
+                    var entryAreaMat: Mat? = null
+                    try {
+                        entryAreaMat = this.ctx.detector.cropLobbyPersonalBountyEntry(screenMat)
+                        val cropX = (screenMat!!.cols() * 0.50).toFloat()
+                        val cropY = (screenMat.rows() * 0.40).toFloat()
+                        val template = this.ctx.detector.getTemplate(ScreenState.PERSONAL_BOUNTY_ENTRY)
+                        if (template != null) {
+                            val result = TemplateMatcher.matchWithMat(entryAreaMat, template, 0.85f)
+                            if (result.isMatched) {
+                                this.ctx.log("导航: 个人悬赏入口，点击进入")
+                                this.ctx.click(Pair(result.centerX + cropX, result.centerY + cropY))
+                                this.ctx.delay(1500)
+                                return GamePhase.PERSONAL_BOUNTY_CENTER
+                            }
+                        }
+                    } finally {
+                        entryAreaMat?.release()
                     }
                 }
 

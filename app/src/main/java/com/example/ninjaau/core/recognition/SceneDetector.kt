@@ -288,7 +288,7 @@ class SceneDetector(private val context: Context) {
     private val personalGradeIconCache = java.util.concurrent.ConcurrentHashMap<BountyGrade, Bitmap>()
     private val levelIconCache = java.util.concurrent.ConcurrentHashMap<String, Bitmap>()
 
-    private fun getTemplate(state: ScreenState): Bitmap? {
+    fun getTemplate(state: ScreenState): Bitmap? {
         val entry = templates[state] ?: return null
         val cached = templateCache[entry.path]
         if (cached != null && !cached.isRecycled) return cached
@@ -474,6 +474,51 @@ class SceneDetector(private val context: Context) {
         return Mat(mat, org.opencv.core.Rect(x, 0, w, h))
     }
 
+    /** 裁剪 Mat 上方约 9%~27% 高度、中间约 28%~58% 宽度（个人悬赏等级文字所在区域），调用方用完需 release */
+    fun cropPersonalBountyGradeArea(mat: Mat): Mat {
+        val x = (mat.cols() * 0.28).toInt()
+        val w = (mat.cols() * 0.30).toInt()
+        val y = (mat.rows() * 0.09).toInt()
+        val h = (mat.rows() * 0.18).toInt()
+        return Mat(mat, org.opencv.core.Rect(x, y, w, h))
+    }
+
+    /** 裁剪 Mat 右侧约 50%~82% 宽度、中间约 40%~75% 高度（大厅悬赏令入口所在区域），调用方用完需 release */
+    fun cropLobbyPersonalBountyEntry(mat: Mat): Mat {
+        val x = (mat.cols() * 0.50).toInt()
+        val w = (mat.cols() * 0.32).toInt()
+        val y = (mat.rows() * 0.40).toInt()
+        val h = (mat.rows() * 0.35).toInt()
+        return Mat(mat, org.opencv.core.Rect(x, y, w, h))
+    }
+
+    /** 裁剪 Mat 右侧约 55%~82% 宽度、下方约 82%~98% 高度（组队邀请按钮所在区域），调用方用完需 release */
+    fun cropPersonalBountyTeamInvite(mat: Mat): Mat {
+        val x = (mat.cols() * 0.55).toInt()
+        val w = (mat.cols() * 0.27).toInt()
+        val y = (mat.rows() * 0.82).toInt()
+        val h = (mat.rows() * 0.16).toInt()
+        return Mat(mat, org.opencv.core.Rect(x, y, w, h))
+    }
+
+    /** 裁剪 Mat 中间约 30%~70% 宽度、下方约 72%~95% 高度（发送消息按钮所在区域），调用方用完需 release */
+    fun cropPersonalBountySendMessage(mat: Mat): Mat {
+        val x = (mat.cols() * 0.30).toInt()
+        val w = (mat.cols() * 0.40).toInt()
+        val y = (mat.rows() * 0.72).toInt()
+        val h = (mat.rows() * 0.23).toInt()
+        return Mat(mat, org.opencv.core.Rect(x, y, w, h))
+    }
+
+    /** 裁剪 Mat 右侧约 74%~98% 宽度、下方约 82%~98% 高度（出发按钮所在区域），调用方用完需 release */
+    fun cropPersonalBountyGo(mat: Mat): Mat {
+        val x = (mat.cols() * 0.74).toInt()
+        val w = (mat.cols() * 0.24).toInt()
+        val y = (mat.rows() * 0.82).toInt()
+        val h = (mat.rows() * 0.16).toInt()
+        return Mat(mat, org.opencv.core.Rect(x, y, w, h))
+    }
+
     /** 使用预转换的 screen Mat 匹配指定状态，返回命中坐标或 null */
     fun matchTemplateMat(screenMat: Mat, state: ScreenState): Pair<Float, Float>? {
         if (state == ScreenState.UNKNOWN) return null
@@ -636,7 +681,6 @@ class SceneDetector(private val context: Context) {
 
     /** 在截图中搜索多个等级图标（gradeIcon）— 最佳匹配策略 */
     fun matchAnyGradeIcon(screen: Bitmap, grades: List<BountyGrade>): GradeMatch? {
-        val matches = mutableListOf<GradeMatch>()
         for (grade in grades) {
             val cached = gradeIconCache[grade]
             val template = if (cached != null && !cached.isRecycled) cached else {
@@ -646,28 +690,45 @@ class SceneDetector(private val context: Context) {
             }
             val result = TemplateMatcher.match(screen, template, 0.85f)
             if (result.isMatched) {
-                matches.add(GradeMatch(grade, result.similarity, result.centerX, result.centerY))
+                val match = GradeMatch(grade, result.similarity, result.centerX, result.centerY)
+                LogUtil.d(TAG, "matchAnyGradeIcon → 选中 ${grade.displayName} 相似度=${String.format("%.2f", result.similarity)}")
+                return match
             }
         }
-        return bestMatch(matches, "matchAnyGradeIcon")
+        LogUtil.d(TAG, "matchAnyGradeIcon: 无匹配")
+        return null
     }
 
-    /** 在截图中搜索个人悬赏等级图标 — 使用 bounty_list_personal 模板 */
+    /** 在截图中搜索个人悬赏等级图标 — 裁剪等级区域后匹配，大幅提升速度 */
     fun matchAnyPersonalGradeIcon(screen: Bitmap, grades: List<BountyGrade>): GradeMatch? {
-        val matches = mutableListOf<GradeMatch>()
-        for (grade in grades) {
-            val cached = personalGradeIconCache[grade]
-            val template = if (cached != null && !cached.isRecycled) cached else {
-                val loaded = AssetUtil.loadBitmapFromAssets(context, grade.personalGradeIconPath()) ?: continue
-                personalGradeIconCache[grade] = loaded
-                loaded
+        var screenMat: Mat? = null
+        var gradeAreaMat: Mat? = null
+        try {
+            screenMat = OpenCVUtil.bitmapToMat(screen)
+            gradeAreaMat = cropPersonalBountyGradeArea(screenMat)
+            val cropX = (screenMat.cols() * 0.28).toFloat()
+            val cropY = (screenMat.rows() * 0.09).toFloat()
+
+            for (grade in grades) {
+                val cached = personalGradeIconCache[grade]
+                val template = if (cached != null && !cached.isRecycled) cached else {
+                    val loaded = AssetUtil.loadBitmapFromAssets(context, grade.personalGradeIconPath()) ?: continue
+                    personalGradeIconCache[grade] = loaded
+                    loaded
+                }
+                val result = TemplateMatcher.matchWithMat(gradeAreaMat, template, 0.85f)
+                if (result.isMatched) {
+                    val match = GradeMatch(grade, result.similarity, result.centerX + cropX, result.centerY + cropY)
+                    LogUtil.d(TAG, "matchAnyPersonalGradeIcon → 选中 ${grade.displayName} 相似度=${String.format("%.2f", result.similarity)}")
+                    return match
+                }
             }
-            val result = TemplateMatcher.match(screen, template, 0.85f)
-            if (result.isMatched) {
-                matches.add(GradeMatch(grade, result.similarity, result.centerX, result.centerY))
-            }
+        } finally {
+            gradeAreaMat?.release()
+            screenMat?.release()
         }
-        return bestMatch(matches, "matchAnyPersonalGradeIcon")
+        LogUtil.d(TAG, "matchAnyPersonalGradeIcon: 无匹配")
+        return null
     }
 
     /** 从多个 GradeMatch 中选出最佳匹配，含冲突检测 */

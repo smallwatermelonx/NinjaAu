@@ -100,6 +100,12 @@ class FloatingWindowService : Service() {
     private var ballScreenX = 0
     private val handler = Handler(Looper.getMainLooper())
     private val sideHideRunnable = Runnable { sideHide() }
+    private val menuAutoHideRunnable = Runnable {
+        if (isExpanded) {
+            isExpanded = false
+            hideMenu()
+        }
+    }
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
     private lateinit var detector: SceneDetector
@@ -727,7 +733,12 @@ class FloatingWindowService : Service() {
 
     private fun resetHideTimer() {
         handler.removeCallbacks(sideHideRunnable)
-        if (!isExpanded) handler.postDelayed(sideHideRunnable, AUTO_HIDE_MS)
+        handler.removeCallbacks(menuAutoHideRunnable)
+        if (!isExpanded) {
+            handler.postDelayed(sideHideRunnable, AUTO_HIDE_MS)
+        } else {
+            handler.postDelayed(menuAutoHideRunnable, AUTO_HIDE_MS)
+        }
     }
 
     // ── 视图生命周期 ──

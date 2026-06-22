@@ -37,62 +37,35 @@ class PersonalBountyCenterNode(private val ctx: NodeContext) : GameNode {
             try {
                 var matched = false
 
-                // ═══ 1. 弹窗关闭（最高优先级） ═══
-                val confirmCoord = this.ctx.detector.matchTemplate(screen, ScreenState.CONFIRM_BUTTON)
-                if (confirmCoord != null) {
-                    this.ctx.click(confirmCoord)
-                    this.ctx.delay(800)
+                // ═══ 个人悬赏列表页面（已进入列表） ═══
+                val listScreen = this.ctx.detector.matchTemplate(screen, ScreenState.PERSONAL_BOUNTY_LIST_SCREEN)
+                if (listScreen != null) {
                     lastMatchMs = System.currentTimeMillis()
+                    noMatchCount = 0
                     matched = true
-                }
 
-                // ═══ 2. 个人悬赏列表页面（已进入列表） ═══
-                if (!matched) {
-                    val listScreen = this.ctx.detector.matchTemplate(screen, ScreenState.PERSONAL_BOUNTY_LIST_SCREEN)
-                    if (listScreen != null) {
-                        lastMatchMs = System.currentTimeMillis()
-                        noMatchCount = 0
-                        matched = true
-
-                        val gradesToFind = ctx.activeGrades
-                        if (gradesToFind.isEmpty()) {
-                            this.ctx.log("无待执行的个人悬赏等级")
-                            return GamePhase.DONE
-                        }
-
-                        val match = this.ctx.detector.matchAnyPersonalGradeIcon(screen, gradesToFind)
-                        if (match != null) {
-                            val grade = match.grade
-                            val coord = Pair(match.centerX, match.centerY)
-                            ctx.currentBounty = grade
-                            this.ctx.click(coord)
-                            this.ctx.log("点击个人悬赏: ${grade.displayName}")
-                            this.ctx.delay(1000)
-                            return GamePhase.PERSONAL_BOUNTY_DETAIL
-                        }
-
-                        this.ctx.log("未找到目标等级图标，等待刷新")
+                    val gradesToFind = ctx.activeGrades
+                    if (gradesToFind.isEmpty()) {
+                        this.ctx.log("无待执行的个人悬赏等级")
+                        return GamePhase.DONE
                     }
+
+                    val match = this.ctx.detector.matchAnyPersonalGradeIcon(screen, gradesToFind)
+                    if (match != null) {
+                        val grade = match.grade
+                        val coord = Pair(match.centerX, match.centerY)
+                        ctx.currentBounty = grade
+                        this.ctx.click(coord)
+                        this.ctx.log("点击个人悬赏: ${grade.displayName}")
+                        return GamePhase.PERSONAL_BOUNTY_DETAIL
+                    }
+
+                    this.ctx.log("未找到目标等级图标，等待刷新")
                 }
 
-                // ═══ 3. 无匹配计数 ═══
+                // ═══ 无匹配计数 ═══
                 if (!matched) {
                     noMatchCount++
-                }
-
-                // ═══ 4. BACK 兜底：仅在长时间无匹配时触发（防止误退） ═══
-                if (!matched && noMatchCount > 0) {
-                    val stuckMs = System.currentTimeMillis() - lastMatchMs
-                    if (stuckMs > BACK_BUTTON_TIMEOUT_MS) {
-                        val backCoord = this.ctx.detector.matchTemplate(screen, ScreenState.BACK_BUTTON)
-                        if (backCoord != null) {
-                            this.ctx.click(backCoord)
-                            this.ctx.delay(800)
-                            lastMatchMs = System.currentTimeMillis()
-                            noMatchCount = 0
-                            continue
-                        }
-                    }
                 }
 
                 // ═══ 5. 超时检测 ═══

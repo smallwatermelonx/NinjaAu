@@ -18,7 +18,7 @@
 |---|------|----------|----------|----------|------|------|
 | 1 | 点击聊天图标进入招募 | 左侧 1/10 区域 | CHAT_ICON | 匹配坐标点击 | 500ms | dailyEnabled=true |
 | 2 | 点击招募页签 | 上方 1/10 区域 | RECRUIT_TAB | 匹配坐标点击 | 500ms | dailyEnabled=true |
-| 3 | 点击个人悬赏入口 | 全屏 | PERSONAL_BOUNTY_ENTRY | 匹配坐标点击 | 1500ms | personalBountyEnabled=true |
+| 3 | 点击个人悬赏入口 | 右侧 50%~82% 宽度、中间 40%~75% 高度 | PERSONAL_BOUNTY_ENTRY | 裁剪区域匹配+坐标补偿 | 1500ms | personalBountyEnabled=true |
 
 ## 裁剪区域说明
 
@@ -26,6 +26,7 @@
 |--------|---------|-----------|
 | 左侧 1/10 | `detector.cropLeftTenth(mat)` | 宽10% x 高100% |
 | 上方 1/10 | `detector.cropTopTenth(mat)` | 宽100% x 高10% |
+| 大厅悬赏令入口 | `detector.cropLobbyPersonalBountyEntry(mat)` | 宽32% x 高35% |
 
 ## 决策逻辑
 
