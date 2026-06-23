@@ -52,7 +52,7 @@ class PersonalBountyDetailNode(private val ctx: NodeContext) : GameNode {
                         if (goResult.isMatched) {
                             this.ctx.click(Pair(goResult.centerX + goCropX, goResult.centerY + goCropY))
                             this.ctx.log("点击出发按钮")
-                            this.ctx.delay(3000)
+                            this.ctx.delay(1500)
                             return GamePhase.BATTLE_LOADING
                         }
                     }

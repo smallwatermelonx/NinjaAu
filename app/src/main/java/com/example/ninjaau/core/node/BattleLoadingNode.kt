@@ -30,8 +30,8 @@ class BattleLoadingNode(private val ctx: NodeContext) : GameNode {
         this.ctx.log("战斗加载 Phase")
         var lastMatchMs = System.currentTimeMillis()
 
-        // ═══ 入口验证：等待1秒后确认是否在战斗加载页面 ═══
-        this.ctx.delay(1500)
+        // ═══ 入口验证：等待2.5秒后确认是否在战斗加载页面 ═══
+        this.ctx.delay(2500)
         val screen = this.ctx.captureBitmap()
         if (screen != null) {
             try {
