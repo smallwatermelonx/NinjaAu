@@ -101,7 +101,6 @@ object GameManager {
                 LogUtil.e(TAG, "脚本执行异常", e)
             }
             if (_state.value != ScriptState.PAUSED) {
-                ScriptConfigRepository.clearRunCounts()
                 savedContext = null
             }
             _state.value = ScriptState.IDLE
@@ -138,9 +137,6 @@ object GameManager {
                 LogUtil.i(TAG, "脚本已取消")
             } catch (e: Exception) {
                 LogUtil.e(TAG, "脚本执行异常", e)
-            }
-            if (_state.value != ScriptState.PAUSED) {
-                ScriptConfigRepository.clearRunCounts()
             }
             savedContext = null
             _state.value = ScriptState.IDLE

@@ -87,8 +87,7 @@ class SceneDetector(private val context: Context) {
         DEFEAT("战斗失败", listOf(ScreenState.DEFEAT_POPUP), false, false),
         RECRUIT_INVITE("招募邀请弹窗", listOf(ScreenState.RECRUIT_INVITE), false, false),
         INVITATION("组队邀请弹窗", listOf(
-            ScreenState.TEAM_INVITATION, ScreenState.INVITE_REJECT,
-            ScreenState.INVITE_CHECKBOX, ScreenState.INVITE_AGREE
+            ScreenState.TEAM_INVITATION, ScreenState.INVITE_REJECT
         ), false, false),
         PERSONAL_BOUNTY_ENTRY("个人悬赏入口", listOf(
             ScreenState.PERSONAL_BOUNTY_ENTRY, ScreenState.CHAT_ICON
@@ -238,7 +237,6 @@ class SceneDetector(private val context: Context) {
         ScreenState.CHAT_ICON to TemplateEntry("templates/lobby/lobby_chat.png", 0.75f),
         // ── 聊天/招募 ──
         ScreenState.RECRUIT_TAB to TemplateEntry("templates/chat/team_recruit.png"),
-        ScreenState.RECRUIT_TAB_BLACK to TemplateEntry("templates/chat/team_recruit_black.png", 0.75f),
         ScreenState.OUT_OF_RANGE_RECRUIT to TemplateEntry("templates/bounty_list/out_of_range.png", 0.7f),
         ScreenState.RECRUIT_LIST_SCREEN to TemplateEntry("templates/bounty_list/team_recruit_black.png", 0.75f),
         ScreenState.RECRUIT_INVITE to TemplateEntry("templates/bounty_list/recruit_invite.png"),
@@ -248,7 +246,6 @@ class SceneDetector(private val context: Context) {
         ScreenState.DAILY_LIMIT to TemplateEntry("templates/team_room/daily_limit.png"),
         // ── 战斗 ──
         ScreenState.BATTLE_LOADING to TemplateEntry("templates/battle_loading/smile.png"),
-        ScreenState.WARNING to TemplateEntry("templates/fight/warning.png", 0.7f),
         ScreenState.SLIDE_BUTTON to TemplateEntry("templates/fight/slide.png"),
         ScreenState.LV_ICON to TemplateEntry("templates/fight/lv.png"),
         ScreenState.JUMP_BUTTON to TemplateEntry("templates/fight/jump.png"),
@@ -262,13 +259,9 @@ class SceneDetector(private val context: Context) {
         ScreenState.CONFIRM_BUTTON to TemplateEntry("templates/settlement/confirm.png"),
         // ── 通用 ──
         ScreenState.BACK_BUTTON to TemplateEntry("templates/other/backward.png", 0.5f),
-        // ── TAB刷新（私聊页签） ──
-        ScreenState.CHAT_TAB to TemplateEntry("templates/chat/private_chat.png"),
         // ── 组队邀请弹窗（任意节点可触发） ──
         ScreenState.TEAM_INVITATION to TemplateEntry("templates/invitation/team_invitation.png", 0.75f),
         ScreenState.INVITE_REJECT to TemplateEntry("templates/invitation/reject_btn.png", 0.75f),
-        ScreenState.INVITE_CHECKBOX to TemplateEntry("templates/invitation/checkbox.png", 0.75f),
-        ScreenState.INVITE_AGREE to TemplateEntry("templates/invitation/agree_btn.png", 0.75f),
         // ── 个人悬赏 ──
         ScreenState.PERSONAL_BOUNTY_ENTRY to TemplateEntry("templates/lobby/private_bounty.png", 0.85f),
         ScreenState.PERSONAL_BOUNTY_LIST_SCREEN to TemplateEntry("templates/bounty_list_personal/bounty_shop.png", 0.85f),
@@ -572,67 +565,6 @@ class SceneDetector(private val context: Context) {
                 null
             }
         }
-    }
-
-    /** 在截图中匹配队伍房间内的建议等级标识，支持多级别变体（如 SS+ 的 lv105~lv130） */
-    fun matchLevelIcon(screen: Bitmap, grade: BountyGrade): GradeMatch? {
-        val paths = grade.levelIconPaths()
-        if (paths.isEmpty()) return null
-
-        var bestMatch: GradeMatch? = null
-        for (path in paths) {
-            val level = path.removePrefix("templates/team_room/lv").removeSuffix(".png").toIntOrNull() ?: continue
-            val cacheKey = "${grade.key}_$level"
-            val cached = levelIconCache[cacheKey]
-            val template = if (cached != null && !cached.isRecycled) cached else {
-                val loaded = AssetUtil.loadBitmapFromAssets(context, path) ?: run {
-                    LogUtil.e(TAG, "等级图标模板加载失败: $path")
-                    return@run null
-                }
-                if (loaded != null) levelIconCache[cacheKey] = loaded
-                loaded
-            } ?: continue
-            val result = TemplateMatcher.match(screen, template, 0.92f)
-            if (result.isMatched) {
-                val match = GradeMatch(grade, result.similarity, result.centerX, result.centerY)
-                if (bestMatch == null || result.similarity > bestMatch!!.similarity) {
-                    bestMatch = match
-                    LogUtil.i(TAG, "等级图标 ${grade.displayName}(lv$level): 匹配度 ${String.format("%.2f", result.similarity)}")
-                }
-            }
-        }
-        if (bestMatch == null) {
-            LogUtil.d(TAG, "等级图标 ${grade.displayName}: 所有级别变体均未匹配")
-        }
-        return bestMatch
-    }
-
-    /**
-     * 在截图中搜索多个等级的建议等级标识 — 最佳匹配策略
-     * @param topFraction 截图上方参与匹配的比例（默认 1.0 全屏，0.125 = 上方 1/8）
-     */
-    fun matchAnyLevelIcon(
-        screen: Bitmap,
-        grades: List<BountyGrade>,
-        topFraction: Float = 1.0f
-    ): GradeMatch? {
-        LogUtil.i(TAG, "matchAnyLevelIcon: 检查 ${grades.joinToString { "${it.displayName}(lv${it.level})" }}")
-
-        val matchBitmap = if (topFraction < 1.0f) {
-            val cropH = (screen.height * topFraction).toInt()
-            Bitmap.createBitmap(screen, 0, 0, screen.width, cropH)
-        } else screen
-
-        val matches = mutableListOf<GradeMatch>()
-        try {
-            for (grade in grades) {
-                val match = matchLevelIcon(matchBitmap, grade) ?: continue
-                matches.add(match)
-            }
-        } finally {
-            if (matchBitmap !== screen) matchBitmap.recycle()
-        }
-        return bestMatch(matches, "matchAnyLevelIcon")
     }
 
     /** Mat 版等级图标匹配 — 避免每个等级重复 Bitmap→Mat 转换 */

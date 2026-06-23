@@ -89,34 +89,10 @@ object ScriptConfigRepository {
         return ScriptSnapshot(
             bountyConfigs = _bountyConfigs.value,
             personalConfigs = _personalConfigs.value,
-            nsConfigs = _nsConfigs.value,
             dailyEnabled = _dailyEnabled.value,
             personalEnabled = _personalEnabled.value,
-            nsEnabled = _nsEnabled.value,
-            inviteCheckEnabled = _inviteCheckEnabled.value,
-            savedRunCounts = loadRunCounts()
+            nsEnabled = _nsEnabled.value
         )
-    }
-
-    // ═══ runCounts 持久化 ═══
-
-    private fun loadRunCounts(): Map<com.example.ninjaau.model.BountyGrade, Int> {
-        val raw = prefs.getString("run_counts", "") ?: ""
-        if (raw.isEmpty()) return emptyMap()
-        val result = mutableMapOf<com.example.ninjaau.model.BountyGrade, Int>()
-        for (entry in raw.split(",")) {
-            val parts = entry.split("=")
-            if (parts.size == 2) {
-                val grade = com.example.ninjaau.model.BountyGrade.entries.find { it.key == parts[0] }
-                val count = parts[1].toIntOrNull() ?: 0
-                if (grade != null && count > 0) result[grade] = count
-            }
-        }
-        return result
-    }
-
-    fun clearRunCounts() {
-        prefs.edit().remove("run_counts").apply()
     }
 
     // ═══ 持久化 ═══
@@ -166,12 +142,9 @@ object ScriptConfigRepository {
 data class ScriptSnapshot(
     val bountyConfigs: List<BountyConfig>,
     val personalConfigs: List<BountyConfig>,
-    val nsConfigs: List<BountyConfig>,
     val dailyEnabled: Boolean,
     val personalEnabled: Boolean,
-    val nsEnabled: Boolean,
-    val inviteCheckEnabled: Boolean,
-    val savedRunCounts: Map<com.example.ninjaau.model.BountyGrade, Int> = emptyMap()
+    val nsEnabled: Boolean
 ) {
     val enabledBountyConfigs get() = bountyConfigs.filter { it.enabled }
     val enabledPersonalConfigs get() = personalConfigs.filter { it.enabled }

@@ -79,7 +79,6 @@ private object Theme {
     val Text get() = if (isLight.value) L_Text else D_Text
     val TextMid get() = if (isLight.value) L_TextMid else D_TextMid
     val TextLow get() = if (isLight.value) L_TextLow else D_TextLow
-    val Success get() = if (isLight.value) L_Success else D_Success
     val Warning get() = if (isLight.value) L_Warning else D_Warning
     val Danger get() = if (isLight.value) L_Danger else D_Danger
     val LogBg get() = if (isLight.value) L_LogBg else D_LogBg

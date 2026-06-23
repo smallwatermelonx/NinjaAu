@@ -52,20 +52,14 @@ enum class GamePhase {
     IDLE,
     /** 大厅 — templates/lobby/ */
     LOBBY,
-    /** 聊天界面 — templates/chat/ */
-    CHAT,
     /** 招募列表 — templates/bounty_list/ */
     RECRUIT_LIST,
-    /** 招募邀请弹窗 */
-    RECRUIT_INVITE,
     /** 悬赏详情 — templates/team_room/ */
     BOUNTY_DETAIL,
     /** 战斗加载界面 — templates/battle_loading/ */
     BATTLE_LOADING,
     /** 战斗中 — templates/fight/ */
     FIGHT,
-    /** 失败结算 */
-    DEFEAT,
     /** 结算领奖 — templates/settlement/ */
     SETTLEMENT,
     /** 异常恢复 */

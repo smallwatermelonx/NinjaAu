@@ -47,23 +47,6 @@ class FloatingWindowService : Service() {
             return if (menuVisible && isBallOnRight(ballScreenX, ballWidth, screenWidth))
                 ballScreenX - menuWidth else ballScreenX
         }
-
-        fun calcSnapTarget(ballScreenX: Int, ballWidth: Int, screenWidth: Int): Int {
-            return if (isBallOnRight(ballScreenX, ballWidth, screenWidth))
-                screenWidth - ballWidth else 0
-        }
-
-        fun calcSideHideTarget(ballScreenX: Int, ballWidth: Int, screenWidth: Int): Int {
-            return if (isBallOnRight(ballScreenX, ballWidth, screenWidth))
-                screenWidth - VISIBLE_TAB
-            else
-                -(ballWidth - VISIBLE_TAB)
-        }
-
-        fun calcRestoreTarget(ballScreenX: Int, ballWidth: Int, screenWidth: Int): Int {
-            return if (isBallOnRight(ballScreenX, ballWidth, screenWidth))
-                screenWidth - ballWidth else 0
-        }
     }
 
     private lateinit var windowManager: WindowManager
@@ -77,7 +60,6 @@ class FloatingWindowService : Service() {
     private lateinit var ivControlIconRight: ImageView
 
     private val llMenu: LinearLayout get() = if (isBallOnRight()) llMenuLeft else llMenuRight
-    private val ivControlIcon: ImageView get() = if (isBallOnRight()) ivControlIconLeft else ivControlIconRight
 
     private lateinit var hudManager: HudManager
 
