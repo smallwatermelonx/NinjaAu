@@ -50,21 +50,12 @@ class WorkflowEngine(
     private val detector = SceneDetector(context)
     private val accessibility get() = NinjaAccessibilityService.getInstance()
     private var globalFailCount = 0
-    private var lastPhase: GamePhase? = null
     private var phaseStuckCount = 0
     var lastContext: GameContext? = null
         private set
 
     // ── SS+ 铃声控制 ──
     private var currentRingtone: Ringtone? = null
-
-    /** 停止 SS+ 铃声（外部调用，如暂停/停止脚本时） */
-    fun stopAlarm() {
-        try {
-            currentRingtone?.stop()
-            currentRingtone = null
-        } catch (_: Exception) {}
-    }
 
     // ── 节点实例（每个游戏页面对应一个节点） ──
     private val lobbyNode: LobbyNode
@@ -94,12 +85,6 @@ class WorkflowEngine(
                     val ringtone = RingtoneManager.getRingtone(context, alarmUri)
                     ringtone?.play()
                     currentRingtone = ringtone
-                } catch (_: Exception) {}
-            },
-            stopAlarm = {
-                try {
-                    currentRingtone?.stop()
-                    currentRingtone = null
                 } catch (_: Exception) {}
             }
         )
@@ -136,7 +121,6 @@ class WorkflowEngine(
     ): Boolean {
         val ctx = buildContext(configs, dailyEnabled, personalBountyEnabled, personalConfigs, nsEnabled, savedRunCounts)
         globalFailCount = 0
-        lastPhase = null
         phaseStuckCount = 0
         emitProgress(ctx, onProgress)
 
@@ -235,7 +219,6 @@ class WorkflowEngine(
         onProgress: ((Map<BountyGrade, Pair<Int, Int>>) -> Unit)? = null
     ): Boolean {
         globalFailCount = 0
-        lastPhase = null
         phaseStuckCount = 0
         lastContext = null
         emitProgress(ctx, onProgress)
@@ -344,7 +327,6 @@ class WorkflowEngine(
                 return trySwitchToNS(ctx, "个人悬赏完成")
             }
         }
-        return GamePhase.DONE
     }
 
     /** 尝试切换到逆袭悬赏（逆袭复用日常流程） */

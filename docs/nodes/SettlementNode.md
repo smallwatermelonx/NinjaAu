@@ -5,7 +5,8 @@
 | 方向 | ScreenState | 说明 |
 |------|-------------|------|
 | 进入 | SETTLEMENT | 从 FightNode 战斗胜利后进入 |
-| 退出 | LOBBY | 领奖完成后回到大厅 |
+| 退出 | IDLE | 领奖完成后回到大厅（由 WorkflowEngine 路由到 LobbyNode） |
+| 退出 | PERSONAL_BOUNTY_CENTER | 个人悬赏领奖后返回个人悬赏中心 |
 | 退出 | DONE | 所有等级完成后脚本结束 |
 
 ## 交互动作
@@ -30,22 +31,28 @@
 ```
 循环扫描（500ms间隔）:
   → 匹配 SETTLEMENT_POPUP → 点击空白处关闭弹窗
-  → 匹配 CONFIRM_BUTTON → 点击领奖
-    → 点击后检查是否回到大厅（CHAT_ICON / RECRUIT_TAB）
-      → 是 → 更新 runCounts + activeGrades → 返回 LOBBY 或 DONE
+  → 匹配 CONFIRM_BUTTON → 点击领奖 → 设置 confirmClicked=true
+  → confirmClicked 且确认按钮消失 → 领奖完成，跳出循环
   → 无匹配 → 检查超时（30s）→ 抛 NodeTimeoutException
+
+跳出循环后:
+  → 更新 runCounts + activeGrades（仅日常悬赏，个人悬赏无次数限制）
+  → activeGrades 为空:
+    → 日常悬赏 + 个人悬赏启用 → 切换业务线到 PERSONAL → 返回 PERSONAL_BOUNTY_CENTER
+    → 否则 → 返回 DONE
+  → activeGrades 非空 → 返回 IDLE（回到大厅继续下一轮）
 ```
 
 ## 计数更新逻辑
 
 领奖完成后需更新状态：
-1. `runCounts[grade]++` — 该等级完成次数+1
-2. 检查组内是否完成（`group.isComplete`）
-3. 组完成 → 从 `activeGrades` 移除该组内**非追梦**等级（追梦等级保留）
-4. `activeGrades` 为空 → 返回 DONE
-5. 否则 → 返回 LOBBY 继续下一轮
-
-> 注意：业务线切换（每日→个人→逆袭）由 `WorkflowEngine.switchToNextBusinessLine()` 处理，不在 SettlementNode 内。
+1. 仅日常悬赏更新计数（个人悬赏无次数限制）
+2. `runCounts[grade]++` — 该等级完成次数+1
+3. 检查组内是否完成（`group.isComplete`）
+4. 组完成 → 从 `activeGrades` 移除该组内**非追梦**等级（追梦等级保留）
+5. `activeGrades` 为空 + 日常悬赏 + 个人悬赏启用 → SettlementNode 内直接切换业务线到 PERSONAL
+6. `activeGrades` 为空 + 其他情况 → 返回 DONE
+7. `activeGrades` 非空 → 返回 IDLE 继续下一轮
 
 ## 异常处理
 

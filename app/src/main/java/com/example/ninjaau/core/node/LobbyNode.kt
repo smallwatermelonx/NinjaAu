@@ -4,8 +4,6 @@ import com.example.ninjaau.core.GameNode
 import com.example.ninjaau.core.NodeContext
 import com.example.ninjaau.core.checkNodeTimeout
 import com.example.ninjaau.core.recognition.TemplateMatcher
-import com.example.ninjaau.core.util.AssetUtil
-import com.example.ninjaau.core.util.OpenCVUtil
 import com.example.ninjaau.model.GameContext
 import com.example.ninjaau.model.GamePhase
 import com.example.ninjaau.model.ScreenState

@@ -283,17 +283,18 @@ IDLE → LOBBY → CHAT → RECRUIT_LIST → RECRUIT_INVITE → BOUNTY_DETAIL
 
 | Flow | 类型 | 内容 | 消费者 |
 |------|------|------|--------|
-| `state` | `StateFlow<ScriptState>` | IDLE / RUNNING | UI 按钮、悬浮窗 |
+| `state` | `StateFlow<ScriptState>` | IDLE / RUNNING / PAUSED | UI 按钮、悬浮窗 |
 | `logEvents` | `SharedFlow<String>` | 运行日志行 (buffer 64) | 悬浮窗日志、UI 日志 |
 | `bountyProgress` | `StateFlow<Map<BountyGrade, Pair<Int,Int>>>` | 各等级完成/目标次数 | HUD |
 | `pageEvents` | `SharedFlow<String>` | 页面跳转事件 (buffer 64) | 悬浮窗 Toast |
 
-**ScriptState**: 仅 `IDLE` 和 `RUNNING`，无 PAUSED 状态。
+**ScriptState**: `IDLE`、`RUNNING`、`PAUSED` 三种状态。
 
 #### 脚本生命周期
 
 ```
 toggleScript() → startScript() / stopScript()
+pauseScript() / resumeScript()
 
 startScript():
   1. 检查 MediaProjection 权限（轮询等待最多 10s）
@@ -304,6 +305,16 @@ startScript():
 stopScript():
   1. 取消协程 Job
   2. state = IDLE
+
+pauseScript():
+  1. 保存当前 GameContext（lastContext）
+  2. 取消协程 Job
+  3. state = PAUSED
+
+resumeScript():
+  1. 恢复 lastContext
+  2. 启动 resumeLoop() 协程（从上次暂停的阶段继续）
+  3. state = RUNNING
 ```
 
 ### 5.2 WorkflowEngine — 自动化流水线 (v3 节点模式)
@@ -613,7 +624,7 @@ dispatchPhase(currentPhase):
   IDLE/LOBBY/CHAT → LobbyNode → 导航到招募列表/个人悬赏
   RECRUIT_LIST → BountyListNode → 扫描匹配等级
   RECRUIT_INVITE → RecruitInviteNode → 处理邀请（TODO）
-  BOUNTY_DETAIL → BattleDetailNode → 等级校验/准备
+  BOUNTY_DETAIL → BountyDetailNode → 等级校验/准备
   BATTLE_LOADING → BattleLoadingNode → 等待加载完成
   FIGHT → FightNode → 释放技能/检测结算
   DEFEAT → DefeatNode → 失败处理（TODO）

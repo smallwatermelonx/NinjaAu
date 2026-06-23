@@ -679,26 +679,6 @@ class SceneDetector(private val context: Context) {
         }
     }
 
-    /** 在截图中搜索多个等级图标（gradeIcon）— 最佳匹配策略 */
-    fun matchAnyGradeIcon(screen: Bitmap, grades: List<BountyGrade>): GradeMatch? {
-        for (grade in grades) {
-            val cached = gradeIconCache[grade]
-            val template = if (cached != null && !cached.isRecycled) cached else {
-                val loaded = AssetUtil.loadBitmapFromAssets(context, grade.gradeIconPath()) ?: continue
-                gradeIconCache[grade] = loaded
-                loaded
-            }
-            val result = TemplateMatcher.match(screen, template, 0.85f)
-            if (result.isMatched) {
-                val match = GradeMatch(grade, result.similarity, result.centerX, result.centerY)
-                LogUtil.d(TAG, "matchAnyGradeIcon → 选中 ${grade.displayName} 相似度=${String.format("%.2f", result.similarity)}")
-                return match
-            }
-        }
-        LogUtil.d(TAG, "matchAnyGradeIcon: 无匹配")
-        return null
-    }
-
     /** 在截图中搜索个人悬赏等级图标 — 裁剪等级区域后匹配，大幅提升速度 */
     fun matchAnyPersonalGradeIcon(screen: Bitmap, grades: List<BountyGrade>): GradeMatch? {
         var screenMat: Mat? = null

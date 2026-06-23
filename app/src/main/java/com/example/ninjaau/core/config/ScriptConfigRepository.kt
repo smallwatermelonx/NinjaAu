@@ -100,14 +100,6 @@ object ScriptConfigRepository {
 
     // ═══ runCounts 持久化 ═══
 
-    fun saveRunCounts(counts: Map<com.example.ninjaau.model.BountyGrade, Int>) {
-        val sb = StringBuilder()
-        for ((grade, count) in counts) {
-            if (count > 0) sb.append("${grade.key}=$count,")
-        }
-        prefs.edit().putString("run_counts", sb.toString()).apply()
-    }
-
     private fun loadRunCounts(): Map<com.example.ninjaau.model.BountyGrade, Int> {
         val raw = prefs.getString("run_counts", "") ?: ""
         if (raw.isEmpty()) return emptyMap()
@@ -183,5 +175,4 @@ data class ScriptSnapshot(
 ) {
     val enabledBountyConfigs get() = bountyConfigs.filter { it.enabled }
     val enabledPersonalConfigs get() = personalConfigs.filter { it.enabled }
-    val enabledNsConfigs get() = nsConfigs.filter { it.enabled }
 }

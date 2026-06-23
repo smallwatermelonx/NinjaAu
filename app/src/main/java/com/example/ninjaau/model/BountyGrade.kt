@@ -58,9 +58,6 @@ enum class BountyGrade(
     /** 个人悬赏列表中的等级图标路径 */
     fun personalGradeIconPath() = "templates/bounty_list_personal/${displayName}.png"
 
-    /** 队伍房间中建议等级图标的路径（lv30 / lv40 / lv60 / lv80 / lv90 / lv125 等） */
-    fun levelIconPath(): String? = levelToPath(level)
-
     /** 所有可能的等级图标路径（含多级别变体） */
     fun levelIconPaths(): List<String> {
         val levels = if (levelVariants.isNotEmpty()) levelVariants else listOf(level)

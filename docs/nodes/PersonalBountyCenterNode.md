@@ -17,13 +17,12 @@
 | # | 动作 | 裁剪区域 | 匹配模板 | 坐标/偏移 | 延迟 | 条件 |
 |---|------|----------|----------|----------|------|------|
 | 1 | 检测个人悬赏列表页面 | 全屏 | PERSONAL_BOUNTY_LIST_SCREEN | 仅检测 | - | 已进入列表 |
-| 2 | 点击等级图标进入详情 | 全屏 | 等级图标模板（matchAnyPersonalGradeIcon） | 匹配坐标点击 | 1000ms | 匹配到目标等级 |
-| 3 | 点击返回按钮（兜底） | 全屏 | BACK_BUTTON | 匹配坐标点击 | 800ms | 连续15s无匹配 |
+| 2 | 点击等级图标进入详情 | 等级区域裁剪（cropPersonalBountyGradeArea） | 等级图标模板（matchAnyPersonalGradeIcon） | 裁剪区域匹配+坐标补偿 | 1000ms | 匹配到目标等级 |
 
 ## 状态跟踪
 
 - `lastMatchMs`: 最后一次匹配成功的时间戳
-- `noMatchCount`: 连续无匹配计数
+- `noMatchCount`: 连续无匹配计数（预留，当前未使用）
 
 ## 决策逻辑
 
@@ -34,9 +33,7 @@
       → matchAnyPersonalGradeIcon 匹配等级图标
         → 匹配成功 → 存储 currentBounty → 点击 → 返回 PERSONAL_BOUNTY_DETAIL
         → 未找到 → 等待刷新
-  ② 无匹配 → noMatchCount++
-  ③ 连续 15s 无匹配 → 点击 BACK_BUTTON 尝试返回
-  ④ 30s 无匹配 → checkNodeTimeout 超时检测
+  ② 无匹配 → checkNodeTimeout 超时检测
 ```
 
 ## 常量定义
@@ -44,7 +41,6 @@
 | 常量 | 值 | 说明 |
 |------|-----|------|
 | NORMAL_INTERVAL_MS | 1000ms | 扫描循环间隔 |
-| BACK_BUTTON_TIMEOUT_MS | 15000ms | 触发返回按钮的超时阈值 |
 
 ## 异常处理
 
@@ -52,5 +48,4 @@
 |------|------|
 | 截图返回 null | 等待 1000ms 后重试 |
 | 30s 无匹配 | checkNodeTimeout 超时检测 |
-| 连续 15s 无匹配 | 点击 BACK_BUTTON 尝试返回 |
 | activeGrades 为空 | 返回 DONE，脚本结束 |

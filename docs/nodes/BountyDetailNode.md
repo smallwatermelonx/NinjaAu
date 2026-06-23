@@ -16,7 +16,7 @@
 
 | # | 动作 | 裁剪区域 | 匹配模板 | 坐标/偏移 | 延迟 | 条件 |
 |---|------|----------|----------|----------|------|------|
-| 1 | LV 图标检测 | 上方 1/10 | matchAnyLevelIconMat(activeGrades) | - | - | 每轮首先执行，确定实际等级 |
+| 1 | LV 图标检测 | 上方1/10、中间1/3（cropTopMiddleTenth） | matchAnyLevelIconMat(activeGrades) | - | - | 每轮首先执行，确定实际等级 |
 | 2 | 上限检测 | 上方 1/5 | DAILY_LIMIT | 无点击，仅检测 | - | LV 确认为非 chaseDream 后 |
 | 3 | 点击准备按钮 | 右下 1/4 | READY_BUTTON | 匹配坐标 + 偏移(halfW, 3/4 height) | 500ms | LV 确认 + 准备按钮出现 |
 | 4 | 战斗等待检测 | 左下 1/3 | BATTLE_LOADING | 匹配坐标点击 | - | 点击准备后 |
