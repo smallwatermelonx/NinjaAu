@@ -36,11 +36,12 @@
 
 ```
 循环扫描（500ms间隔）:
-  ① 出发按钮（最高优先级）→ 裁剪匹配 → 点击出发 → 等待 500ms → 返回 BATTLE_LOADING
+  ① 出发按钮（最高优先级）→ 裁剪匹配 → 点击出发 → 等待 3000ms → 返回 BATTLE_LOADING
   ② 组队邀请按钮（clickedEntry=false）→ 点击进入 → 设置 clickedEntry=true
   ③ 发送消息按钮（msgSent=false）→ 裁剪匹配 → 点击发送 → 设置 msgSent=true
-     → 等待 500ms → 点击空白处(0.85, 0.5)关闭弹窗 → 等待 1000ms
-  ④ 无匹配 → checkNodeTimeout 超时检测
+     → 等待 500ms → 点击空白处(0.85, 0.5)关闭弹窗
+  ④ 无匹配 → 超时检测（30s）→ 点击返回按钮 → 等待 1s → 裁剪匹配确认按钮 → 点击确认
+     → 返回 PERSONAL_BOUNTY_CENTER
 ```
 
 ## 流程说明
@@ -63,4 +64,4 @@
 | 异常 | 处理 |
 |------|------|
 | 截图返回 null | 等待 500ms 后重试 |
-| 30s 无匹配 | checkNodeTimeout 超时检测 |
+| 30s 无匹配 | 正常业务逻辑退出：点击返回按钮 → 确认弹窗 → 返回 PERSONAL_BOUNTY_CENTER |

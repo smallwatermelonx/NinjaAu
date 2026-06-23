@@ -3,6 +3,7 @@ package com.example.ninjaau.core.node
 import com.example.ninjaau.core.GameNode
 import com.example.ninjaau.core.NodeContext
 import com.example.ninjaau.model.GameContext
+import com.example.ninjaau.core.recognition.TemplateMatcher
 import com.example.ninjaau.model.GamePhase
 import com.example.ninjaau.model.ScreenState
 import org.opencv.core.Mat
@@ -94,47 +95,69 @@ class RecoveryNode(private val ctx: NodeContext? = null) : GameNode {
     /**
      * 识别当前页面并返回对应的 GamePhase。
      * 返回 null 表示无法识别。
+     * 使用裁剪匹配参考各节点已有实现。
      */
     private fun identifyAndRoute(
         nodeCtx: NodeContext,
         screenMat: Mat,
         ctx: GameContext
     ): GamePhase? {
-        // 1. 结算弹窗
+        // 1. 结算弹窗（全屏匹配）
         if (nodeCtx.detector.matchTemplateMat(screenMat, ScreenState.SETTLEMENT_POPUP) != null) {
             nodeCtx.log("恢复: 检测到结算弹窗 → SETTLEMENT")
             return GamePhase.SETTLEMENT
         }
 
-        // 2. 确认按钮
-        if (nodeCtx.detector.matchTemplateMat(screenMat, ScreenState.CONFIRM_BUTTON) != null) {
-            nodeCtx.log("恢复: 检测到确认按钮 → SETTLEMENT")
-            return GamePhase.SETTLEMENT
-        }
+        // 2. 确认按钮（底部中间区域，参考 BountyDetailNode cropBottomMiddleFifth）
+        val confirmCrop = nodeCtx.detector.cropBottomMiddleFifth(screenMat)
+        try {
+            val confirmTemplate = nodeCtx.detector.getTemplate(ScreenState.CONFIRM_BUTTON)
+            if (confirmTemplate != null && TemplateMatcher.matchWithMat(confirmCrop, confirmTemplate, 0.8f).isMatched) {
+                nodeCtx.log("恢复: 检测到确认按钮 → SETTLEMENT")
+                return GamePhase.SETTLEMENT
+            }
+        } finally { confirmCrop.release() }
 
-        // 3. 准备按钮（队伍房间）
-        if (nodeCtx.detector.matchTemplateMat(screenMat, ScreenState.READY_BUTTON) != null) {
-            nodeCtx.log("恢复: 检测到准备按钮 → BOUNTY_DETAIL")
-            return GamePhase.BOUNTY_DETAIL
-        }
+        // 3. 战斗加载（上方 1/4 区域，参考 BattleLoadingNode cropTopQuarter）
+        val loadingCrop = nodeCtx.detector.cropTopQuarter(screenMat)
+        try {
+            val loadingTemplate = nodeCtx.detector.getTemplate(ScreenState.BATTLE_LOADING)
+            if (loadingTemplate != null && TemplateMatcher.matchWithMat(loadingCrop, loadingTemplate, 0.8f).isMatched) {
+                nodeCtx.log("恢复: 检测到战斗加载 → BATTLE_LOADING")
+                return GamePhase.BATTLE_LOADING
+            }
+        } finally { loadingCrop.release() }
 
-        // 4. 战斗加载
-        if (nodeCtx.detector.matchTemplateMat(screenMat, ScreenState.BATTLE_LOADING) != null) {
-            nodeCtx.log("恢复: 检测到战斗加载 → BATTLE_LOADING")
-            return GamePhase.BATTLE_LOADING
-        }
+        // 4. 准备按钮（上方 1/8 区域，参考 BountyDetailNode 裁剪）
+        val readyH = screenMat.rows() / 8
+        val readyCrop = Mat(screenMat, org.opencv.core.Rect(0, 0, screenMat.cols(), readyH))
+        try {
+            val readyTemplate = nodeCtx.detector.getTemplate(ScreenState.READY_BUTTON)
+            if (readyTemplate != null && TemplateMatcher.matchWithMat(readyCrop, readyTemplate, 0.8f).isMatched) {
+                nodeCtx.log("恢复: 检测到准备按钮 → BOUNTY_DETAIL")
+                return GamePhase.BOUNTY_DETAIL
+            }
+        } finally { readyCrop.release() }
 
-        // 5. 战斗中 — 滑铲
-        if (nodeCtx.detector.matchTemplateMat(screenMat, ScreenState.SLIDE_BUTTON) != null) {
-            nodeCtx.log("恢复: 检测到战斗界面 → FIGHT")
-            return GamePhase.FIGHT
-        }
+        // 5. 战斗中 — 滑铲（左半边下方 1/4，参考 FightNode cropBottomLeftQuarter）
+        val slideCrop = nodeCtx.detector.cropBottomLeftQuarter(screenMat)
+        try {
+            val slideTemplate = nodeCtx.detector.getTemplate(ScreenState.SLIDE_BUTTON)
+            if (slideTemplate != null && TemplateMatcher.matchWithMat(slideCrop, slideTemplate, 0.8f).isMatched) {
+                nodeCtx.log("恢复: 检测到战斗界面 → FIGHT")
+                return GamePhase.FIGHT
+            }
+        } finally { slideCrop.release() }
 
-        // 6. 战斗中 — 跳跃
-        if (nodeCtx.detector.matchTemplateMat(screenMat, ScreenState.JUMP_BUTTON) != null) {
-            nodeCtx.log("恢复: 检测到战斗界面 → FIGHT")
-            return GamePhase.FIGHT
-        }
+        // 6. 战斗中 — 跳跃（右半边下方 1/4，参考 FightNode cropBottomRightQuarter）
+        val jumpCrop = nodeCtx.detector.cropBottomRightQuarter(screenMat)
+        try {
+            val jumpTemplate = nodeCtx.detector.getTemplate(ScreenState.JUMP_BUTTON)
+            if (jumpTemplate != null && TemplateMatcher.matchWithMat(jumpCrop, jumpTemplate, 0.8f).isMatched) {
+                nodeCtx.log("恢复: 检测到战斗界面 → FIGHT")
+                return GamePhase.FIGHT
+            }
+        } finally { jumpCrop.release() }
 
         // 7. 个人悬赏列表
         if (nodeCtx.detector.matchTemplateMat(screenMat, ScreenState.PERSONAL_BOUNTY_LIST_SCREEN) != null) {
@@ -142,17 +165,41 @@ class RecoveryNode(private val ctx: NodeContext? = null) : GameNode {
             return GamePhase.PERSONAL_BOUNTY_CENTER
         }
 
-        // 8. 招募列表
+        // 8. 个人悬赏详情（右侧 55%~82%、下方 82%~98%，参考 PersonalBountyDetailNode cropPersonalBountyTeamInvite）
+        val teamInviteCrop = nodeCtx.detector.cropPersonalBountyTeamInvite(screenMat)
+        try {
+            val teamInviteTemplate = nodeCtx.detector.getTemplate(ScreenState.PERSONAL_BOUNTY_DETAIL_SCREEN)
+            if (teamInviteTemplate != null && TemplateMatcher.matchWithMat(teamInviteCrop, teamInviteTemplate, 0.85f).isMatched) {
+                nodeCtx.log("恢复: 检测到个人悬赏详情 → PERSONAL_BOUNTY_DETAIL")
+                return GamePhase.PERSONAL_BOUNTY_DETAIL
+            }
+        } finally { teamInviteCrop.release() }
+
+        // 9. 个人悬赏出发按钮（右侧 74%~98%、下方 82%~98%，参考 PersonalBountyDetailNode cropPersonalBountyGo）
+        val goCrop = nodeCtx.detector.cropPersonalBountyGo(screenMat)
+        try {
+            val goTemplate = nodeCtx.detector.getTemplate(ScreenState.PERSONAL_BOUNTY_GO)
+            if (goTemplate != null && TemplateMatcher.matchWithMat(goCrop, goTemplate, 0.85f).isMatched) {
+                nodeCtx.log("恢复: 检测到个人悬赏出发按钮 → PERSONAL_BOUNTY_DETAIL")
+                return GamePhase.PERSONAL_BOUNTY_DETAIL
+            }
+        } finally { goCrop.release() }
+
+        // 10. 招募列表
         if (nodeCtx.detector.matchTemplateMat(screenMat, ScreenState.RECRUIT_LIST_SCREEN) != null) {
             nodeCtx.log("恢复: 检测到招募列表 → RECRUIT_LIST")
             return GamePhase.RECRUIT_LIST
         }
 
-        // 9. 大厅
-        if (nodeCtx.detector.matchTemplateMat(screenMat, ScreenState.CHAT_ICON) != null) {
-            nodeCtx.log("恢复: 检测到大厅 → LOBBY")
-            return GamePhase.LOBBY
-        }
+        // 11. 大厅（左侧 1/10 区域，参考 LobbyNode cropLeftTenth）
+        val chatCrop = nodeCtx.detector.cropLeftTenth(screenMat)
+        try {
+            val chatTemplate = nodeCtx.detector.getTemplate(ScreenState.CHAT_ICON)
+            if (chatTemplate != null && TemplateMatcher.matchWithMat(chatCrop, chatTemplate, 0.75f).isMatched) {
+                nodeCtx.log("恢复: 检测到大厅 → LOBBY")
+                return GamePhase.LOBBY
+            }
+        } finally { chatCrop.release() }
 
         return null
     }
@@ -162,23 +209,39 @@ class RecoveryNode(private val ctx: NodeContext? = null) : GameNode {
      * 返回 true 表示成功点击了某个弹窗按钮。
      */
     private suspend fun tryDismissDialogs(nodeCtx: NodeContext, screenMat: Mat): Boolean {
-        // 尝试点击确认按钮
-        val confirmCoord = nodeCtx.detector.matchTemplateMat(screenMat, ScreenState.CONFIRM_BUTTON)
-        if (confirmCoord != null) {
-            nodeCtx.log("恢复: 点击确认按钮关闭弹窗")
-            nodeCtx.click(confirmCoord)
-            kotlinx.coroutines.delay(800)
-            return true
-        }
+        // 尝试点击确认按钮（底部中间区域）
+        val confirmCrop = nodeCtx.detector.cropBottomMiddleFifth(screenMat)
+        try {
+            val confirmTemplate = nodeCtx.detector.getTemplate(ScreenState.CONFIRM_BUTTON)
+            if (confirmTemplate != null) {
+                val result = TemplateMatcher.matchWithMat(confirmCrop, confirmTemplate, 0.8f)
+                if (result.isMatched) {
+                    val cropX = (screenMat.cols() / 3).toFloat()
+                    val cropY = (screenMat.rows() * 0.80).toFloat()
+                    nodeCtx.click(Pair(result.centerX + cropX, result.centerY + cropY))
+                    nodeCtx.log("恢复: 点击确认按钮关闭弹窗")
+                    kotlinx.coroutines.delay(800)
+                    return true
+                }
+            }
+        } finally { confirmCrop.release() }
 
-        // 尝试点击退出确认
-        val exitCoord = nodeCtx.detector.matchTemplateMat(screenMat, ScreenState.EXIT_CONFIRM)
-        if (exitCoord != null) {
-            nodeCtx.log("恢复: 点击退出确认")
-            nodeCtx.click(exitCoord)
-            kotlinx.coroutines.delay(800)
-            return true
-        }
+        // 尝试点击退出确认（右下半部分）
+        val exitCrop = nodeCtx.detector.cropBottomRightHalf(screenMat)
+        try {
+            val exitTemplate = nodeCtx.detector.getTemplate(ScreenState.EXIT_CONFIRM)
+            if (exitTemplate != null) {
+                val result = TemplateMatcher.matchWithMat(exitCrop, exitTemplate, 0.65f)
+                if (result.isMatched) {
+                    val cropX = (screenMat.cols() * 0.50).toFloat()
+                    val cropY = (screenMat.rows() * 0.50).toFloat()
+                    nodeCtx.click(Pair(result.centerX + cropX, result.centerY + cropY))
+                    nodeCtx.log("恢复: 点击退出确认")
+                    kotlinx.coroutines.delay(800)
+                    return true
+                }
+            }
+        } finally { exitCrop.release() }
 
         return false
     }

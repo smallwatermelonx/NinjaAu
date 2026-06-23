@@ -2,7 +2,6 @@ package com.example.ninjaau.core.node
 
 import com.example.ninjaau.core.GameNode
 import com.example.ninjaau.core.NodeContext
-import com.example.ninjaau.core.checkNodeTimeout
 import com.example.ninjaau.core.recognition.TemplateMatcher
 import com.example.ninjaau.model.GameContext
 import com.example.ninjaau.model.GamePhase
@@ -25,6 +24,7 @@ class PersonalBountyDetailNode(private val ctx: NodeContext) : GameNode {
 
     companion object {
         private const val NORMAL_INTERVAL_MS = 500L
+        private const val TIMEOUT_MS = 30_000L
     }
 
     override suspend fun execute(ctx: GameContext): GamePhase? {
@@ -98,8 +98,48 @@ class PersonalBountyDetailNode(private val ctx: NodeContext) : GameNode {
                     }
                 }
 
-                // ═══ 无匹配 → 超时检测 ═══
-                checkNodeTimeout(lastMatchMs)
+                // ═══ 无匹配 → 超时检测（正常业务逻辑退出） ═══
+                if (lastMatchMs > 0L && System.currentTimeMillis() - lastMatchMs >= TIMEOUT_MS) {
+                    this.ctx.log("详情页超时，执行退出流程")
+                    val timeoutScreen = this.ctx.captureBitmap()
+                    if (timeoutScreen != null) {
+                        try {
+                            // 点击左上角返回按钮
+                            val backCoord = this.ctx.detector.matchTemplate(timeoutScreen, ScreenState.BACK_BUTTON)
+                            if (backCoord != null) {
+                                this.ctx.click(backCoord)
+                                this.ctx.log("点击返回按钮")
+                                this.ctx.delay(1000)
+                                // 在右下半部分查找确认按钮
+                                var confirmMat: Mat? = null
+                                try {
+                                    confirmMat = this.ctx.detector.screenToMat(timeoutScreen)
+                                    val confirmAreaMat = this.ctx.detector.cropBottomRightQuarter(confirmMat)
+                                    try {
+                                        val confirmTemplate = this.ctx.detector.getTemplate(ScreenState.EXIT_CONFIRM)
+                                        if (confirmTemplate != null) {
+                                            val confirmResult = TemplateMatcher.matchWithMat(confirmAreaMat, confirmTemplate, 0.65f)
+                                            if (confirmResult.isMatched) {
+                                                val confirmCropX = (confirmMat!!.cols() * 0.50).toFloat()
+                                                val confirmCropY = (confirmMat.rows() * 0.75).toFloat()
+                                                this.ctx.click(Pair(confirmResult.centerX + confirmCropX, confirmResult.centerY + confirmCropY))
+                                                this.ctx.log("点击确认按钮")
+                                                this.ctx.delay(500)
+                                            }
+                                        }
+                                    } finally {
+                                        confirmAreaMat.release()
+                                    }
+                                } finally {
+                                    confirmMat?.release()
+                                }
+                            }
+                        } finally {
+                            timeoutScreen.recycle()
+                        }
+                    }
+                    return GamePhase.PERSONAL_BOUNTY_CENTER
+                }
             } finally {
                 screenMat?.release()
                 screen.recycle()

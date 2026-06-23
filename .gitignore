@@ -29,3 +29,6 @@ app/src/main/assets/templates/
 *.iws
 *.iml
 *.ipr
+
+# Release 包
+releases/
