@@ -100,6 +100,7 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                             topMiddleTenth.release()
                             screenMat?.release()
                             screen.recycle()
+                            checkNodeTimeout(lastMatchMs)
                             this.ctx.delay(POST_CLICK_DELAY)
                             continue
                         }
