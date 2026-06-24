@@ -264,9 +264,8 @@ fun NinjaScriptMainUI() {
                                         saveAll()
                                         if (dailyEnabled && bountyConfigs.none { it.enabled }) {
                                             bountyConfigs = bountyConfigs.map { it.copy(enabled = true) }
-                                            ScriptConfigRepository.setBountyConfigs(bountyConfigs)
                                         }
-                                        ScriptConfigRepository.setBountyConfigs(bountyConfigs.filter { it.enabled })
+                                        ScriptConfigRepository.setBountyConfigs(bountyConfigs)
                                     }, onGearClick = { configTarget = ConfigTarget.DAILY })
                                     HorizontalDivider(color = Theme.Border, modifier = Modifier.padding(horizontal = 8.dp))
                                     TaskRow("个人悬赏", personalEnabled, onToggle = {
