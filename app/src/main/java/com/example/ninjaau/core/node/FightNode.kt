@@ -52,7 +52,7 @@ class FightNode(private val ctx: NodeContext) : GameNode {
                 break
             }
             val screen = this.ctx.captureBitmap()
-            if (screen == null) { this.ctx.delay(500L); continue }
+            if (screen == null) { this.ctx.delay(300L); continue }
             var slideMat: org.opencv.core.Mat? = null
             try {
                 slideMat = this.ctx.detector.screenToMat(screen)
@@ -64,26 +64,11 @@ class FightNode(private val ctx: NodeContext) : GameNode {
                 } finally {
                     crop.release()
                 }
-                // 血咒检测（等待期间顺便检测）
-                if (!bloodCurseClicked) {
-                    val curseCrop = this.ctx.detector.cropBottomLeftHalf(slideMat)
-                    try {
-                        val curseCoord = this.ctx.detector.matchTemplateMat(curseCrop, ScreenState.BLOOD_CURSE)
-                        if (curseCoord != null) {
-                            val fullY = curseCoord.second + slideMat.rows() * 3 / 4
-                            this.ctx.click(Pair(curseCoord.first, fullY))
-                            this.ctx.log("血咒")
-                            bloodCurseClicked = true
-                        }
-                    } finally {
-                        curseCrop.release()
-                    }
-                }
             } finally {
                 slideMat?.release()
                 screen.recycle()
             }
-            if (!slideAppeared) this.ctx.delay(500)
+            if (!slideAppeared) this.ctx.delay(300)
         }
 
         // ── 阶段B: 无间隔点击下滑按钮，消失即结束 ──
