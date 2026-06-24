@@ -38,12 +38,56 @@ class FightNode(private val ctx: NodeContext) : GameNode {
 
         // ═════════════════════════════════════
         //  ① 下滑阶段（左下1/4）
-        //  主动等待下滑按钮出现 → 无间隔点击 → 消失即结束
+        //  阶段A: 等待下滑按钮出现（最长10s，部分boss无下滑）
+        //  阶段B: 出现后无间隔点击，消失即结束
         // ═════════════════════════════════════
-        var slideAppeared = false
         var bloodCurseClicked = false
+
+        // ── 阶段A: 等待下滑按钮出现 ──
+        var slideAppeared = false
         val slideWaitStart = System.currentTimeMillis()
-        while (currentCoroutineContext().isActive) {
+        while (currentCoroutineContext().isActive && !slideAppeared) {
+            if (System.currentTimeMillis() - slideWaitStart > 10_000) {
+                this.ctx.log("下滑按钮 10s 未出现，跳过下滑阶段")
+                break
+            }
+            val screen = this.ctx.captureBitmap()
+            if (screen == null) { this.ctx.delay(500L); continue }
+            var slideMat: org.opencv.core.Mat? = null
+            try {
+                slideMat = this.ctx.detector.screenToMat(screen)
+                val crop = this.ctx.detector.cropBottomLeftFourth(slideMat)
+                try {
+                    if (this.ctx.detector.matchTemplateMat(crop, ScreenState.SLIDE_BUTTON) != null) {
+                        slideAppeared = true
+                    }
+                } finally {
+                    crop.release()
+                }
+                // 血咒检测（等待期间顺便检测）
+                if (!bloodCurseClicked) {
+                    val curseCrop = this.ctx.detector.cropBottomLeftHalf(slideMat)
+                    try {
+                        val curseCoord = this.ctx.detector.matchTemplateMat(curseCrop, ScreenState.BLOOD_CURSE)
+                        if (curseCoord != null) {
+                            val fullY = curseCoord.second + slideMat.rows() * 3 / 4
+                            this.ctx.click(Pair(curseCoord.first, fullY))
+                            this.ctx.log("血咒")
+                            bloodCurseClicked = true
+                        }
+                    } finally {
+                        curseCrop.release()
+                    }
+                }
+            } finally {
+                slideMat?.release()
+                screen.recycle()
+            }
+            if (!slideAppeared) this.ctx.delay(500)
+        }
+
+        // ── 阶段B: 无间隔点击下滑按钮，消失即结束 ──
+        while (currentCoroutineContext().isActive && slideAppeared) {
             val screen = this.ctx.captureBitmap()
             if (screen == null) { this.ctx.delay(500L); continue }
             var slideMat: org.opencv.core.Mat? = null
@@ -53,23 +97,17 @@ class FightNode(private val ctx: NodeContext) : GameNode {
                 try {
                     val slideCoord = this.ctx.detector.matchTemplateMat(crop, ScreenState.SLIDE_BUTTON)
                     if (slideCoord != null) {
-                        slideAppeared = true
                         val fullY = slideCoord.second + slideMat.rows() * 3 / 4
                         this.ctx.click(Pair(slideCoord.first, fullY))
                         this.ctx.log("下滑")
-                    } else if (slideAppeared) {
-                        // 下滑按钮曾出现但现在消失 → 下滑阶段结束
-                        break
-                    } else if (System.currentTimeMillis() - slideWaitStart > 10_000) {
-                        // 10s 仍未出现 → 异常，退出
-                        this.ctx.log("下滑按钮 10s 未出现，跳过下滑阶段")
-                        break
+                    } else {
+                        // 下滑按钮消失 → 下滑阶段结束
+                        slideAppeared = false
                     }
                 } finally {
                     crop.release()
                 }
-
-                // ── 血咒（左1/2 × 下1/4，点一次即停） ──
+                // 血咒检测（点击期间顺便检测）
                 if (!bloodCurseClicked) {
                     val curseCrop = this.ctx.detector.cropBottomLeftHalf(slideMat)
                     try {
