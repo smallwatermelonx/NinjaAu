@@ -39,6 +39,7 @@ class FightNode(private val ctx: NodeContext) : GameNode {
         // ═════════════════════════════════════
         //  ① 下滑阶段（左下1/4）
         // ═════════════════════════════════════
+        this.ctx.delay(5000) // 等待下滑按钮出现（加载结束后约5-6秒）
         var slideDetected = false
         var bloodCurseClicked = false
         while (currentCoroutineContext().isActive && !slideDetected) {
