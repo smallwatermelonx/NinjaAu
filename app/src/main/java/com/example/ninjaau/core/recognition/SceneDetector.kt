@@ -263,7 +263,7 @@ class SceneDetector(private val context: Context) {
         ScreenState.TEAM_INVITATION to TemplateEntry("templates/invitation/team_invitation.png", 0.75f),
         ScreenState.INVITE_REJECT to TemplateEntry("templates/invitation/reject_btn.png", 0.75f),
         // ── 个人悬赏 ──
-        ScreenState.PERSONAL_BOUNTY_ENTRY to TemplateEntry("templates/lobby/private_bounty.png", 0.85f),
+        ScreenState.PERSONAL_BOUNTY_ENTRY to TemplateEntry("templates/lobby/private_bounty.png", 0.78f),
         ScreenState.PERSONAL_BOUNTY_LIST_SCREEN to TemplateEntry("templates/bounty_list_personal/bounty_shop.png", 0.85f),
         ScreenState.PERSONAL_BOUNTY_DETAIL_SCREEN to TemplateEntry("templates/private_bounty_detail/team_invitation.png", 0.85f),
         ScreenState.PERSONAL_BOUNTY_SEND_MSG to TemplateEntry("templates/private_bounty_detail/send_message.png", 0.85f),
@@ -276,6 +276,7 @@ class SceneDetector(private val context: Context) {
 
     // ── 模板缓存（线程安全） ──
     private val templateCache = java.util.concurrent.ConcurrentHashMap<String, Bitmap>()
+    private val templateMatCache = java.util.concurrent.ConcurrentHashMap<String, Mat>()
     private val gradeIconCache = java.util.concurrent.ConcurrentHashMap<BountyGrade, Bitmap>()
     private val gradeIconMatCache = java.util.concurrent.ConcurrentHashMap<BountyGrade, Mat>()
     private val personalGradeIconCache = java.util.concurrent.ConcurrentHashMap<BountyGrade, Bitmap>()
@@ -288,6 +289,17 @@ class SceneDetector(private val context: Context) {
         val loaded = AssetUtil.loadBitmapFromAssets(context, entry.path) ?: return null
         templateCache[entry.path] = loaded
         return loaded
+    }
+
+    /** 获取模板的 Mat 缓存（用于灰度匹配等需要 Mat 的场景） */
+    fun getTemplateMat(state: ScreenState): Mat? {
+        val entry = templates[state] ?: return null
+        val cached = templateMatCache[entry.path]
+        if (cached != null && !cached.empty()) return cached
+        val bitmap = getTemplate(state) ?: return null
+        val mat = OpenCVUtil.bitmapToMat(bitmap)
+        templateMatCache[entry.path] = mat
+        return mat
     }
 
     // ── 公开检测方法 ──
@@ -485,12 +497,12 @@ class SceneDetector(private val context: Context) {
         return Mat(mat, org.opencv.core.Rect(x, y, w, h))
     }
 
-    /** 裁剪 Mat 右侧约 55%~82% 宽度、下方约 82%~98% 高度（组队邀请按钮所在区域），调用方用完需 release */
+    /** 裁剪 Mat 右侧约 53%~75% 宽度、下方约 87%~97% 高度（组队邀请按钮所在区域），调用方用完需 release */
     fun cropPersonalBountyTeamInvite(mat: Mat): Mat {
-        val x = (mat.cols() * 0.55).toInt()
-        val w = (mat.cols() * 0.27).toInt()
-        val y = (mat.rows() * 0.82).toInt()
-        val h = (mat.rows() * 0.16).toInt()
+        val x = (mat.cols() * 0.53).toInt()
+        val w = (mat.cols() * 0.22).toInt()
+        val y = (mat.rows() * 0.87).toInt()
+        val h = (mat.rows() * 0.10).toInt()
         return Mat(mat, org.opencv.core.Rect(x, y, w, h))
     }
 
@@ -526,10 +538,11 @@ class SceneDetector(private val context: Context) {
         return null
     }
 
-    /** 使用预转换的 screen Mat 并行搜索等级图标 — 匹配到第一个即返回 */
+    /** 使用预转换的 screen Mat 并行搜索等级图标 — 选最佳匹配（相似度最高） */
     suspend fun matchAnyGradeMat(screenMat: Mat, grades: List<BountyGrade>): Pair<BountyGrade, Pair<Float, Float>>? {
-        // 预加载所有模板 Mat（串行，仅首次有开销）
         data class GradeTemplate(val grade: BountyGrade, val templateMat: Mat, val w: Int, val h: Int)
+        data class GradeResult(val grade: BountyGrade, val similarity: Float, val centerX: Float, val centerY: Float)
+
         val templates = grades.mapNotNull { grade ->
             val cachedMat = gradeIconMatCache[grade]
             if (cachedMat != null && !cachedMat.empty()) {
@@ -547,19 +560,24 @@ class SceneDetector(private val context: Context) {
             }
         }
 
-        // 并行匹配所有等级
         return coroutineScope {
             val results = templates.map { t ->
                 async {
                     val result = TemplateMatcher.matchMatWithMat(screenMat, t.templateMat, 0.85f, t.w, t.h)
-                    if (result.isMatched) Pair(t.grade, Pair(result.centerX, result.centerY)) else null
+                    if (result.isMatched) {
+                        LogUtil.i(TAG, "matchAnyGradeMat: ${t.grade.displayName} 相似度=${String.format("%.3f", result.similarity)} ✓")
+                        GradeResult(t.grade, result.similarity, result.centerX, result.centerY)
+                    } else {
+                        LogUtil.d(TAG, "matchAnyGradeMat: ${t.grade.displayName} 相似度=${String.format("%.3f", result.similarity)} < 0.850 ✗")
+                        null
+                    }
                 }
             }.awaitAll().filterNotNull()
 
             if (results.isNotEmpty()) {
-                val best = results.first()
-                LogUtil.i(TAG, "matchAnyGradeMat → 选中 ${best.first.displayName} (相似度=并行匹配)")
-                best
+                val matches = results.map { GradeMatch(it.grade, it.similarity, it.centerX, it.centerY) }.toMutableList()
+                val best = bestMatch(matches, "matchAnyGradeMat")
+                if (best != null) Pair(best.grade, Pair(best.centerX, best.centerY)) else null
             } else {
                 LogUtil.d(TAG, "matchAnyGradeMat: ${grades.size}个等级均未匹配")
                 null

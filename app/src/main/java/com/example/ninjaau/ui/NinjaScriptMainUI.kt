@@ -271,6 +271,10 @@ fun NinjaScriptMainUI() {
                                     HorizontalDivider(color = Theme.Border, modifier = Modifier.padding(horizontal = 8.dp))
                                     TaskRow("个人悬赏", personalEnabled, onToggle = {
                                         personalEnabled = !personalEnabled
+                                        if (personalEnabled && personalConfigs.none { it.enabled }) {
+                                            personalConfigs = personalConfigs.map { it.copy(enabled = true) }
+                                            ScriptConfigRepository.setPersonalConfigs(personalConfigs)
+                                        }
                                         saveAll()
                                         ScriptConfigRepository.setPersonalEnabled(personalEnabled)
                                     }, onGearClick = { configTarget = ConfigTarget.PERSONAL })
@@ -356,8 +360,14 @@ fun NinjaScriptMainUI() {
                                     onNsConfigsChanged = { configs ->
                                         nsConfigs = configs
                                         nsEnabled = configs.any { it.enabled }
+                                        // 同步 NS 面板的 enabled + chaseDream 回 bountyConfigs
+                                        bountyConfigs = bountyConfigs.map { bc ->
+                                            val nsMatch = configs.find { it.grade == bc.grade }
+                                            if (nsMatch != null) bc.copy(enabled = nsMatch.enabled, chaseDream = nsMatch.chaseDream) else bc
+                                        }
                                         saveAll()
                                         ScriptConfigRepository.setNsConfigs(configs)
+                                        ScriptConfigRepository.setBountyConfigs(bountyConfigs)
                                     },
                                     onEnabledElementsChanged = { enabledElements = it },
                                     onEnabledGradesChanged = { enabledGrades = it },

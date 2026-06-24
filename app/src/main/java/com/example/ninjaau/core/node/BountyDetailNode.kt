@@ -83,8 +83,7 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
 
                 try {
                     // ═══════════════════════════════════════════════════
-                    //  ① LV 图标检测 — 唯一等级来源
-                    //  通过 LV 级别判断实际字母等级，不信任列表点击
+                    //  ① LV 图标检测 — 只匹配已勾选等级，全部失败则退出
                     // ═══════════════════════════════════════════════════
                     var actualGrade = ctx.actualGrade
                     var lvMs = 0L
@@ -96,13 +95,14 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                         }
                         lvMs = ms
                         if (levelMatch == null) {
-                            this.ctx.log("LV检测失败，等待界面加载")
+                            this.ctx.log("LV检测失败：所有已勾选等级均未匹配，退出队伍")
                             topMiddleTenth.release()
                             screenMat?.release()
                             screen.recycle()
-                            checkNodeTimeout(lastMatchMs)
-                            this.ctx.delay(POST_CLICK_DELAY)
-                            continue
+                            exitTeam()
+                            ctx.currentBounty = null
+                            ctx.actualGrade = null
+                            return GamePhase.LOBBY
                         }
                         actualGrade = levelMatch.grade
                         ctx.actualGrade = actualGrade

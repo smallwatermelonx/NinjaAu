@@ -75,22 +75,25 @@ class LobbyNode(private val ctx: NodeContext) : GameNode {
                     }
                 }
 
-                // ═══ 个人悬赏入口（裁剪右侧区域匹配） ═══
+                // ═══ 个人悬赏入口（裁剪右侧区域匹配，灰度模式消除背景色差异） ═══
                 if (ctx.personalBountyEnabled && ctx.personalActiveGrades.isNotEmpty()) {
                     var entryAreaMat: Mat? = null
                     try {
                         entryAreaMat = this.ctx.detector.cropLobbyPersonalBountyEntry(screenMat)
                         val cropX = (screenMat!!.cols() * 0.50).toFloat()
                         val cropY = (screenMat.rows() * 0.40).toFloat()
-                        val template = this.ctx.detector.getTemplate(ScreenState.PERSONAL_BOUNTY_ENTRY)
-                        if (template != null) {
-                            val result = TemplateMatcher.matchWithMat(entryAreaMat, template, 0.85f)
+                        val templateMat = this.ctx.detector.getTemplateMat(ScreenState.PERSONAL_BOUNTY_ENTRY)
+                        if (templateMat != null) {
+                            val result = TemplateMatcher.matchMatWithMatGrayscale(entryAreaMat, templateMat, 0.78f, templateMat.cols(), templateMat.rows())
+                            this.ctx.log("个人悬赏入口(灰度): 相似度=${String.format("%.3f", result.similarity)} 阈值=0.780 ${if (result.isMatched) "✓" else "✗"}")
                             if (result.isMatched) {
                                 this.ctx.log("导航: 个人悬赏入口，点击进入")
                                 this.ctx.click(Pair(result.centerX + cropX, result.centerY + cropY))
                                 this.ctx.delay(1500)
                                 return GamePhase.PERSONAL_BOUNTY_CENTER
                             }
+                        } else {
+                            this.ctx.log("个人悬赏入口: 模板加载失败")
                         }
                     } finally {
                         entryAreaMat?.release()

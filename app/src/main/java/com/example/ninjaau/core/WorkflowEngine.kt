@@ -310,7 +310,7 @@ class WorkflowEngine(
     private fun switchToNextBusinessLine(ctx: GameContext): GamePhase? {
         when (ctx.businessLine) {
             BusinessLine.DAILY -> {
-                // 日常完成 → 切换到个人悬赏
+                // 日常完成（含已合并的逆袭等级）→ 切换到个人悬赏
                 if (ctx.personalBountyEnabled && ctx.personalActiveGrades.isNotEmpty()) {
                     log("日常悬赏完成，切换到个人悬赏")
                     ctx.businessLine = BusinessLine.PERSONAL
@@ -319,27 +319,14 @@ class WorkflowEngine(
                     onPageEvent?.invoke("切换到个人悬赏")
                     return GamePhase.IDLE
                 }
-                // 个人未启用或无等级 → 尝试逆袭
-                return trySwitchToNS(ctx, "日常悬赏完成")
+                log("所有业务线已完成")
+                return GamePhase.DONE
             }
             BusinessLine.PERSONAL -> {
-                return trySwitchToNS(ctx, "个人悬赏完成")
+                log("个人悬赏完成，所有业务线已完成")
+                return GamePhase.DONE
             }
         }
-    }
-
-    /** 尝试切换到逆袭悬赏（逆袭复用日常流程） */
-    private fun trySwitchToNS(ctx: GameContext, reason: String): GamePhase? {
-        if (ctx.nsEnabled && ctx.nsActiveGrades.isNotEmpty()) {
-            log("$reason，切换到逆袭悬赏")
-            ctx.businessLine = BusinessLine.DAILY
-            ctx.activeGrades = ctx.nsActiveGrades
-            ctx.currentPhase = GamePhase.IDLE
-            onPageEvent?.invoke("切换到逆袭悬赏")
-            return GamePhase.IDLE
-        }
-        log("所有业务线已完成")
-        return GamePhase.DONE
     }
 
     /** 检查所有启用的业务线是否都已完成 */
@@ -400,6 +387,8 @@ class WorkflowEngine(
         val (dailyConfigs, nsConfigs) = enabled.partition { !it.grade.isEvent }
         val dailyGrades = if (dailyEnabled) dailyConfigs.map { it.grade } else emptyList()
         val nsGrades = if (nsEnabled) nsConfigs.map { it.grade } else emptyList()
+        // NS 等级合并到日常业务线中统一处理
+        val allDailyGrades = dailyGrades + nsGrades
         val chaseDreamGrades = enabled.filter { it.chaseDream }.map { it.grade }.toSet()
         val personalEnabled = personalConfigs.filter { it.enabled }
         val personalGrades = personalEnabled.map { it.grade }
@@ -415,14 +404,9 @@ class WorkflowEngine(
                 startGrades = personalGrades
                 startPhase = GamePhase.IDLE
             }
-            dailyGrades.isNotEmpty() -> {
+            allDailyGrades.isNotEmpty() -> {
                 startBusinessLine = BusinessLine.DAILY
-                startGrades = dailyGrades
-                startPhase = GamePhase.IDLE
-            }
-            nsGrades.isNotEmpty() -> {
-                startBusinessLine = BusinessLine.DAILY
-                startGrades = nsGrades
+                startGrades = allDailyGrades
                 startPhase = GamePhase.IDLE
             }
             else -> {
@@ -435,15 +419,15 @@ class WorkflowEngine(
         return GameContext(
             currentPhase = startPhase,
             activeGrades = startGrades,
-            totalGrades = dailyGrades + personalGrades + nsGrades,
-            runCounts = (dailyGrades + nsGrades).associateWith { 0 }.toMutableMap(),
+            totalGrades = allDailyGrades + personalGrades,
+            runCounts = allDailyGrades.associateWith { 0 }.toMutableMap(),
             targetRuns = enabled.associate { it.grade to it.targetRuns },
             chaseDreamGrades = chaseDreamGrades,
             personalBountyEnabled = personalBountyEnabled,
             personalActiveGrades = personalGrades,
             personalTargetRuns = personalEnabled.associate { it.grade to it.targetRuns },
             businessLine = startBusinessLine,
-            dailyEnabled = dailyGrades.isNotEmpty(),
+            dailyEnabled = allDailyGrades.isNotEmpty(),
             nsEnabled = nsGrades.isNotEmpty(),
             nsActiveGrades = nsGrades
         )
@@ -451,10 +435,9 @@ class WorkflowEngine(
 
     private fun emitProgress(ctx: GameContext, onProgress: ((Map<BountyGrade, Pair<Int, Int>>) -> Unit)?) {
         if (onProgress == null) return
-        // 当前业务线的等级进度
+        // 只显示当前业务线实际处理的等级
         val activeList = if (ctx.businessLine == BusinessLine.PERSONAL) ctx.personalActiveGrades else ctx.activeGrades
-        val allGrades = ctx.totalGrades.ifEmpty { activeList }
-        val progress = allGrades.associateWith { grade ->
+        val progress = activeList.associateWith { grade ->
             Pair(ctx.runCounts[grade] ?: 0, ctx.targetRuns[grade] ?: grade.defaultRuns)
         }
         onProgress(progress)

@@ -81,6 +81,7 @@ object ScriptConfigRepository {
     fun setNsConfigs(v: List<BountyConfig>) {
         _nsConfigs.value = v
         saveGradeKeys("cfg_ns_enabled", v)
+        saveChaseDreamKeys("cfg_ns_chase_dream", v)
     }
 
     // ═══ Engine 启动快照（线程安全） ═══
@@ -106,7 +107,7 @@ object ScriptConfigRepository {
         _bountyConfigs.value = loadGradeConfigs("cfg_bounty_enabled", "cfg_bounty_chase_dream")
         _personalConfigs.value = loadGradeConfigs("cfg_personal_enabled", null)
         // NS 只加载事件等级（NSS+, NS, NA），过滤掉非事件等级
-        val rawNs = loadGradeConfigs("cfg_ns_enabled", null)
+        val rawNs = loadGradeConfigs("cfg_ns_enabled", "cfg_ns_chase_dream")
         _nsConfigs.value = rawNs.filter { it.grade.isEvent }
     }
 

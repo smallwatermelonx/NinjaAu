@@ -23,7 +23,7 @@ import org.opencv.core.Mat
 class PersonalBountyDetailNode(private val ctx: NodeContext) : GameNode {
 
     companion object {
-        private const val NORMAL_INTERVAL_MS = 500L
+        private const val NORMAL_INTERVAL_MS = 300L
         private const val TIMEOUT_MS = 30_000L
     }
 
@@ -35,7 +35,10 @@ class PersonalBountyDetailNode(private val ctx: NodeContext) : GameNode {
 
         while (currentCoroutineContext().isActive) {
             val screen = this.ctx.captureBitmap()
-            if (screen == null) { this.ctx.delay(NORMAL_INTERVAL_MS); continue }
+            if (screen == null) {
+                this.ctx.log("详情截图失败，重试中...")
+                this.ctx.delay(NORMAL_INTERVAL_MS); continue
+            }
             var screenMat: Mat? = null
             try {
                 screenMat = this.ctx.detector.screenToMat(screen)
@@ -52,21 +55,24 @@ class PersonalBountyDetailNode(private val ctx: NodeContext) : GameNode {
                         if (goResult.isMatched) {
                             this.ctx.click(Pair(goResult.centerX + goCropX, goResult.centerY + goCropY))
                             this.ctx.log("点击出发按钮")
-                            this.ctx.delay(1500)
+                            this.ctx.delay(2000)
                             return GamePhase.BATTLE_LOADING
+                        } else if (clickedEntry && msgSent) {
+                            this.ctx.log("出发按钮: 相似度=${String.format("%.3f", goResult.similarity)} < 0.850 crop=${goAreaMat.cols()}x${goAreaMat.rows()}")
                         }
                     }
                 } finally {
                     goAreaMat?.release()
                 }
 
-                // ═══ 2. 详情页面标识（组队邀请按钮）→ 点击进入 ═══
+                // ═══ 2. 详情页面标识（组队邀请按钮）→ 全屏匹配 ═══
                 val detailCoord = this.ctx.detector.matchTemplateMat(screenMat, ScreenState.PERSONAL_BOUNTY_DETAIL_SCREEN)
                 if (detailCoord != null && !clickedEntry) {
                     this.ctx.click(detailCoord)
                     this.ctx.log("点击组队邀请按钮")
                     clickedEntry = true
                     lastMatchMs = System.currentTimeMillis()
+                    this.ctx.delay(500)
                     continue
                 }
 
@@ -98,48 +104,6 @@ class PersonalBountyDetailNode(private val ctx: NodeContext) : GameNode {
                     }
                 }
 
-                // ═══ 无匹配 → 超时检测（正常业务逻辑退出） ═══
-                if (lastMatchMs > 0L && System.currentTimeMillis() - lastMatchMs >= TIMEOUT_MS) {
-                    this.ctx.log("详情页超时，执行退出流程")
-                    val timeoutScreen = this.ctx.captureBitmap()
-                    if (timeoutScreen != null) {
-                        try {
-                            // 点击左上角返回按钮
-                            val backCoord = this.ctx.detector.matchTemplate(timeoutScreen, ScreenState.BACK_BUTTON)
-                            if (backCoord != null) {
-                                this.ctx.click(backCoord)
-                                this.ctx.log("点击返回按钮")
-                                this.ctx.delay(1000)
-                                // 在右下半部分查找确认按钮
-                                var confirmMat: Mat? = null
-                                try {
-                                    confirmMat = this.ctx.detector.screenToMat(timeoutScreen)
-                                    val confirmAreaMat = this.ctx.detector.cropBottomRightQuarter(confirmMat)
-                                    try {
-                                        val confirmTemplate = this.ctx.detector.getTemplate(ScreenState.EXIT_CONFIRM)
-                                        if (confirmTemplate != null) {
-                                            val confirmResult = TemplateMatcher.matchWithMat(confirmAreaMat, confirmTemplate, 0.65f)
-                                            if (confirmResult.isMatched) {
-                                                val confirmCropX = (confirmMat!!.cols() * 0.50).toFloat()
-                                                val confirmCropY = (confirmMat.rows() * 0.75).toFloat()
-                                                this.ctx.click(Pair(confirmResult.centerX + confirmCropX, confirmResult.centerY + confirmCropY))
-                                                this.ctx.log("点击确认按钮")
-                                                this.ctx.delay(500)
-                                            }
-                                        }
-                                    } finally {
-                                        confirmAreaMat.release()
-                                    }
-                                } finally {
-                                    confirmMat?.release()
-                                }
-                            }
-                        } finally {
-                            timeoutScreen.recycle()
-                        }
-                    }
-                    return GamePhase.PERSONAL_BOUNTY_CENTER
-                }
             } finally {
                 screenMat?.release()
                 screen.recycle()

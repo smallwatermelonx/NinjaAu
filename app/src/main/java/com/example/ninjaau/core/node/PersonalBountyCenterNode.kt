@@ -21,7 +21,7 @@ import kotlinx.coroutines.isActive
 class PersonalBountyCenterNode(private val ctx: NodeContext) : GameNode {
 
     companion object {
-        private const val NORMAL_INTERVAL_MS = 1000L
+        private const val NORMAL_INTERVAL_MS = 300L
         /** 连续无匹配超过此时长才触发 BACK 兜底 */
         private const val BACK_BUTTON_TIMEOUT_MS = 15_000L
     }
