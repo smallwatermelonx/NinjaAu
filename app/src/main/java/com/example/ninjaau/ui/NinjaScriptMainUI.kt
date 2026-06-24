@@ -360,10 +360,13 @@ fun NinjaScriptMainUI() {
                                     onNsConfigsChanged = { configs ->
                                         nsConfigs = configs
                                         nsEnabled = configs.any { it.enabled }
-                                        // 同步 NS 面板的 enabled + chaseDream 回 bountyConfigs
+                                        // 只同步 NS 等级（NSS+, NS, NA）回 bountyConfigs，不动日常等级
+                                        val nsGrades = configs.map { it.grade }.toSet()
                                         bountyConfigs = bountyConfigs.map { bc ->
-                                            val nsMatch = configs.find { it.grade == bc.grade }
-                                            if (nsMatch != null) bc.copy(enabled = nsMatch.enabled, chaseDream = nsMatch.chaseDream) else bc
+                                            if (bc.grade in nsGrades) {
+                                                val nsMatch = configs.find { it.grade == bc.grade }
+                                                if (nsMatch != null) bc.copy(enabled = nsMatch.enabled, chaseDream = nsMatch.chaseDream) else bc
+                                            } else bc
                                         }
                                         saveAll()
                                         ScriptConfigRepository.setNsConfigs(configs)
