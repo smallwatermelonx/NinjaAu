@@ -13,22 +13,20 @@ import kotlinx.coroutines.isActive
  * 战斗节点 — 下滑 → 上翻 → Boss战 → 结算。
  *
  * 流程：
- * ① 下滑阶段（300ms间隔）：左下1/4识别下滑按钮并点击，
- *    左1/2×下1/4识别血咒并点击（仅首次），连续3次无匹配 → 下滑结束
+ * ① 下滑阶段（无间隔）：左下1/4识别下滑按钮并点击，
+ *    左1/2×下1/4识别血咒并点击（仅首次），无匹配 → 下滑结束
  * ② 下滑结束后立即检测一次上翻（右下1/4），有则点击
  * ③ Boss检测+战斗（统一循环）：
  *    - Lv未出现时：100ms快速扫描左上1/8 Lv图标
- *    - Lv出现后：大招(左1/6,识别则点击，放完后) → 跳跃(右下1/4) → 武器(下方1/4,记住坐标连点10次)
+ *    - Lv出现后：大招(左1/6,识别则点击，300ms间隔) → 跳跃(右下1/4) → 武器(下方1/4,记住坐标连点10次)
  *    - 出口：连续3次未识别跳跃 → 结算节点
  * ④ 30秒无匹配 → 抛 NodeTimeoutException 回到主流程
  */
 class FightNode(private val ctx: NodeContext) : GameNode {
 
     companion object {
-        private const val SLIDE_INTERVAL_MS = 300L
         private const val BOSS_DETECT_INTERVAL_MS = 100L
-        private const val BOSS_LOOP_INTERVAL_MS = 1000L
-        private const val MAX_SLIDE_MISS = 3
+        private const val BOSS_LOOP_INTERVAL_MS = 300L
         private const val MAX_JUMP_MISS = 3
         private const val MAX_SKILL_CLICKS = 10
         private const val SKILL_CLICK_INTERVAL_MS = 240L
@@ -41,9 +39,9 @@ class FightNode(private val ctx: NodeContext) : GameNode {
         // ═════════════════════════════════════
         //  ① 下滑阶段（左下1/4）
         // ═════════════════════════════════════
-        var slideMissCount = 0
+        var slideDetected = false
         var bloodCurseClicked = false
-        while (currentCoroutineContext().isActive && slideMissCount < MAX_SLIDE_MISS) {
+        while (currentCoroutineContext().isActive && !slideDetected) {
             val screen = this.ctx.captureBitmap()
             if (screen == null) { this.ctx.delay(1000L); continue }
             var slideMat: org.opencv.core.Mat? = null
@@ -56,9 +54,8 @@ class FightNode(private val ctx: NodeContext) : GameNode {
                         val fullY = slideCoord.second + slideMat.rows() * 3 / 4
                         this.ctx.click(Pair(slideCoord.first, fullY))
                         this.ctx.log("下滑")
-                        slideMissCount = 0
                     } else {
-                        slideMissCount++
+                        slideDetected = true
                     }
                 } finally {
                     crop.release()
@@ -83,7 +80,6 @@ class FightNode(private val ctx: NodeContext) : GameNode {
                 slideMat?.release()
                 screen.recycle()
             }
-            this.ctx.delay(SLIDE_INTERVAL_MS)
         }
 
         if (!currentCoroutineContext().isActive) return null
