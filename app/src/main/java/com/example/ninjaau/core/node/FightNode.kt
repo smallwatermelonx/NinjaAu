@@ -13,8 +13,8 @@ import kotlinx.coroutines.isActive
  * 战斗节点 — 下滑 → 上翻 → Boss战 → 结算。
  *
  * 流程：
- * ① 下滑阶段（无间隔）：左下1/4识别下滑按钮并点击，
- *    左1/2×下1/4识别血咒并点击（仅首次），无匹配 → 下滑结束
+ * ① 下滑阶段：主动等待下滑按钮出现（最长10s）→ 无间隔点击 → 消失即结束
+ *    左1/2×下1/4识别血咒并点击（仅首次）
  * ② 下滑结束后立即检测一次上翻（右下1/4），有则点击
  * ③ Boss检测+战斗（统一循环）：
  *    - Lv未出现时：100ms快速扫描左上1/8 Lv图标
@@ -38,13 +38,14 @@ class FightNode(private val ctx: NodeContext) : GameNode {
 
         // ═════════════════════════════════════
         //  ① 下滑阶段（左下1/4）
+        //  主动等待下滑按钮出现 → 无间隔点击 → 消失即结束
         // ═════════════════════════════════════
-        this.ctx.delay(5000) // 等待下滑按钮出现（加载结束后约5-6秒）
-        var slideDetected = false
+        var slideAppeared = false
         var bloodCurseClicked = false
-        while (currentCoroutineContext().isActive && !slideDetected) {
+        val slideWaitStart = System.currentTimeMillis()
+        while (currentCoroutineContext().isActive) {
             val screen = this.ctx.captureBitmap()
-            if (screen == null) { this.ctx.delay(1000L); continue }
+            if (screen == null) { this.ctx.delay(500L); continue }
             var slideMat: org.opencv.core.Mat? = null
             try {
                 slideMat = this.ctx.detector.screenToMat(screen)
@@ -52,11 +53,17 @@ class FightNode(private val ctx: NodeContext) : GameNode {
                 try {
                     val slideCoord = this.ctx.detector.matchTemplateMat(crop, ScreenState.SLIDE_BUTTON)
                     if (slideCoord != null) {
+                        slideAppeared = true
                         val fullY = slideCoord.second + slideMat.rows() * 3 / 4
                         this.ctx.click(Pair(slideCoord.first, fullY))
                         this.ctx.log("下滑")
-                    } else {
-                        slideDetected = true
+                    } else if (slideAppeared) {
+                        // 下滑按钮曾出现但现在消失 → 下滑阶段结束
+                        break
+                    } else if (System.currentTimeMillis() - slideWaitStart > 10_000) {
+                        // 10s 仍未出现 → 异常，退出
+                        this.ctx.log("下滑按钮 10s 未出现，跳过下滑阶段")
+                        break
                     }
                 } finally {
                     crop.release()
