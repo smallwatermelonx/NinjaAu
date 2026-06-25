@@ -27,6 +27,7 @@ class BountyListNode(private val ctx: NodeContext) : GameNode {
 
     companion object {
         private const val FAST_INTERVAL_MS = 1L
+        private const val RAPID_CLICK_COUNT = 3
     }
 
     /**
@@ -41,7 +42,15 @@ class BountyListNode(private val ctx: NodeContext) : GameNode {
         val remaining = remainingGrades(ctx)
         if (remaining.isEmpty()) return GamePhase.DONE
 
+        // ═══ 抢悬赏快速点击模式 ═══
+        val fastClick = ScriptConfigRepository.fastClickEnabled.value
+        this.ctx.log("快速点击模式: $fastClick, XY=(${ScriptConfigRepository.fastClickX.value}, ${ScriptConfigRepository.fastClickY.value})")
+        if (fastClick) {
+            return fastClickLoop(ctx)
+        }
+
         this.ctx.log("待完成等级: ${remaining.joinToString { it.displayName }}")
+        this.ctx.delay(500)
         this.ctx.log("招募列表 — 进入扫描循环")
 
         var lastMatchMs = System.currentTimeMillis()
@@ -100,7 +109,9 @@ class BountyListNode(private val ctx: NodeContext) : GameNode {
 
                 // ═══ ② 等级匹配 → 偏移点击（左侧第3个1/10 ROI，x=20%~30%） ═══
                 gradeMat = this.ctx.detector.cropLeftMidTenth(screenMat)
+                val tGradeCrop = System.currentTimeMillis()
                 val match = this.ctx.detector.matchAnyGradeMat(gradeMat, remaining)
+                val tGradeMatch = System.currentTimeMillis()
                 if (match != null) {
                     val (grade, coord) = match
                     ctx.currentBounty = grade
@@ -113,27 +124,46 @@ class BountyListNode(private val ctx: NodeContext) : GameNode {
                     continue
                 }
 
-                val tGrade = System.currentTimeMillis()
-
-                // ═══ ③ 页面切换检测 ═══
+                // ═══ ③ 页面切换检测（右下角 700x300） ═══
                 if (ctx.currentBounty != null) {
-                    val readyCoord =
-                        this.ctx.detector.matchTemplateMat(screenMat, ScreenState.READY_BUTTON)
-                    if (readyCoord != null) {
-                        this.ctx.log("检测到准备按钮，切换至悬赏详情")
-                        return GamePhase.BOUNTY_DETAIL
+                    val cols = screenMat.cols()
+                    val rows = screenMat.rows()
+                    val cropW = (cols * 0.273).toInt()
+                    val cropH = (rows * 0.208).toInt()
+                    val cropX = cols - cropW
+                    val cropY = rows - cropH
+                    val readyCrop = org.opencv.core.Mat(screenMat, org.opencv.core.Rect(cropX, cropY, cropW, cropH))
+                    try {
+                        val readyCoord =
+                            this.ctx.detector.matchTemplateMat(readyCrop, ScreenState.READY_BUTTON)
+                        if (readyCoord != null) {
+                            this.ctx.log("检测到准备按钮，切换至悬赏详情")
+                            return GamePhase.BOUNTY_DETAIL
+                        }
+                    } finally {
+                        readyCrop.release()
                     }
                 }
 
                 val tReady = System.currentTimeMillis()
 
-                // ═══ ④ 无匹配 → 超时检测 ═══
-                checkNodeTimeout(lastMatchMs)
+                // ═══ ④ 无匹配 → 超时检测（在组队招募页签内不抛超时，持续等待） ═══
+                val tabCrop = this.ctx.detector.cropTopCenterQuarter(screenMat)
+                try {
+                    val onRecruitTab = this.ctx.detector.matchTemplateMat(tabCrop, ScreenState.RECRUIT_LIST_SCREEN) != null
+                    if (onRecruitTab) {
+                        lastMatchMs = System.currentTimeMillis()
+                    } else {
+                        checkNodeTimeout(lastMatchMs)
+                    }
+                } finally {
+                    tabCrop.release()
+                }
 
                 // 每 10 轮输出一次耗时统计
                 if (loopCount % 10 == 0) {
                     val total = tReady - loopStart
-                    this.ctx.log("[性能] 第${loopCount}轮 | 截图${tCapture - loopStart}ms | 转Mat${tMat - tCapture}ms | 邀请${tInvite - tMat}ms | 刷新${tRange - tInvite}ms | 等级${tGrade - tRange}ms | 合计${total}ms")
+                    this.ctx.log("[性能] 第${loopCount}轮 | 截图${tCapture - loopStart}ms | 转Mat${tMat - tCapture}ms | 邀请${tInvite - tMat}ms | 刷新${tRange - tInvite}ms | 等级裁剪${tGradeCrop - tRange}ms | 等级匹配${tGradeMatch - tGradeCrop}ms | 准备${tReady - tGradeMatch}ms | 合计${total}ms")
                 }
             } finally {
                 gradeMat?.release()
@@ -142,6 +172,88 @@ class BountyListNode(private val ctx: NodeContext) : GameNode {
                 screen.recycle()
             }
             this.ctx.delay(FAST_INTERVAL_MS)
+        }
+        return GamePhase.DONE
+    }
+
+    /**
+     * 抢悬赏快速点击模式 — 跳过等级匹配，直接高速点击加入队伍按钮。
+     * 进入详情后由 BountyDetailNode 进行 LV 级别校验。
+     */
+    private suspend fun fastClickLoop(ctx: GameContext): GamePhase? {
+        val clickX = ScriptConfigRepository.fastClickX.value.toFloat()
+        val clickY = ScriptConfigRepository.fastClickY.value.toFloat()
+        this.ctx.log("抢悬赏模式 — 直接点击 ($clickX, $clickY)")
+        this.ctx.delay(500)
+
+        var lastMatchMs = System.currentTimeMillis()
+        var loopCount = 0
+
+        while (coroutineContext.isActive) {
+            loopCount++
+
+            val screen = this.ctx.captureBitmap()
+            if (screen == null) {
+                this.ctx.delay(10L)
+                continue
+            }
+            var screenMat: org.opencv.core.Mat? = null
+            try {
+                screenMat = this.ctx.detector.screenToMat(screen)
+
+                // ═══ 组队邀请拦截 ═══
+                if (ScriptConfigRepository.inviteCheckEnabled.value) {
+                    val inviteCoord = this.ctx.detector.matchTemplateMat(screenMat, ScreenState.TEAM_INVITATION)
+                    if (inviteCoord != null) {
+                        this.ctx.log("检测到组队邀请弹窗，拒绝")
+                        val rejectCoord = this.ctx.detector.matchTemplateMat(screenMat, ScreenState.INVITE_REJECT)
+                        if (rejectCoord != null) {
+                            this.ctx.click(rejectCoord)
+                            this.ctx.delay(500)
+                        }
+                        lastMatchMs = System.currentTimeMillis()
+                        continue
+                    }
+                }
+
+                // ═══ 页面切换检测（进入详情） ═══
+                val cols = screenMat.cols()
+                val rows = screenMat.rows()
+                val cropW = (cols * 0.273).toInt()
+                val cropH = (rows * 0.208).toInt()
+                val readyCrop = org.opencv.core.Mat(screenMat, org.opencv.core.Rect(cols - cropW, rows - cropH, cropW, cropH))
+                try {
+                    val readyCoord = this.ctx.detector.matchTemplateMat(readyCrop, ScreenState.READY_BUTTON)
+                    if (readyCoord != null) {
+                        this.ctx.log("检测到准备按钮，切换至悬赏详情")
+                        return GamePhase.BOUNTY_DETAIL
+                    }
+                } finally {
+                    readyCrop.release()
+                }
+
+                // ═══ 高速连点加入队伍 ═══
+                repeat(RAPID_CLICK_COUNT) { this.ctx.click(Pair(clickX, clickY)) }
+                lastMatchMs = System.currentTimeMillis()
+
+                if (loopCount % 50 == 0) {
+                    this.ctx.log("[抢悬赏] 已点击 ${loopCount * RAPID_CLICK_COUNT} 次")
+                }
+
+                // ═══ 页签校验（不在招募列表则异常） ═══
+                val tabCrop = this.ctx.detector.cropTopCenterQuarter(screenMat)
+                try {
+                    val onRecruitTab = this.ctx.detector.matchTemplateMat(tabCrop, ScreenState.RECRUIT_LIST_SCREEN) != null
+                    if (!onRecruitTab) {
+                        checkNodeTimeout(lastMatchMs)
+                    }
+                } finally {
+                    tabCrop.release()
+                }
+            } finally {
+                screenMat?.release()
+                screen.recycle()
+            }
         }
         return GamePhase.DONE
     }

@@ -149,7 +149,6 @@ class FightNode(private val ctx: NodeContext) : GameNode {
         //  出口：连续3次无跳跃+上翻 → 结算
         // ═════════════════════════════════════
         var bossAppeared = false
-        var ultimateActive = false
         var jumpMissCount = 0
         var lastMatchMs = System.currentTimeMillis()
 
@@ -185,7 +184,15 @@ class FightNode(private val ctx: NodeContext) : GameNode {
                     continue
                 }
 
+                // ── 失败检测（"失败"字样出现 → 角色死亡） ──
+                val defeatCoord = this.ctx.detector.matchTemplateMat(screenMat, ScreenState.DEFEAT_SCREEN)
+                if (defeatCoord != null) {
+                    this.ctx.log("检测到战斗失败，进入失败节点")
+                    return GamePhase.DEFEAT
+                }
+
                 // ── Boss已出现：大招优先（左1/6） ──
+                var skillHit = false
                 val ultCrop = this.ctx.detector.cropLeftSixth(screenMat)
                 try {
                     val ultCoord = this.ctx.detector.matchTemplateMat(ultCrop, ScreenState.ULTIMATE_SKILL)
@@ -194,42 +201,40 @@ class FightNode(private val ctx: NodeContext) : GameNode {
                         this.ctx.click(Pair(ultCoord.first, fullY))
                         this.ctx.log("大招")
                         lastMatchMs = System.currentTimeMillis()
-                        ultimateActive = true
+                        skillHit = true
                         checkNodeTimeout(lastMatchMs)
-                        this.ctx.delay(BOSS_LOOP_INTERVAL_MS)
-                        continue
                     }
                 } finally {
                     ultCrop.release()
                 }
 
-                // 大招曾出现但现在未检测到 → 大招放完，跳过本轮再检测跳跃
-                if (ultimateActive) {
-                    ultimateActive = false
-                    this.ctx.delay(BOSS_LOOP_INTERVAL_MS)
-                    continue
+                // ── 跳跃检测（右下1/4） ──
+                if (!skillHit) {
+                    val jumpCrop = this.ctx.detector.cropBottomRightFourth(screenMat)
+                    try {
+                        val jumpCoord = this.ctx.detector.matchTemplateMat(jumpCrop, ScreenState.JUMP_BUTTON)
+                        if (jumpCoord != null) {
+                            val fullX = jumpCoord.first + screenMat.cols() * 3 / 4
+                            val fullY = jumpCoord.second + screenMat.rows() * 3 / 4
+                            this.ctx.click(Pair(fullX, fullY))
+                            this.ctx.log("跳跃")
+                            lastMatchMs = System.currentTimeMillis()
+                            skillHit = true
+                        }
+                    } finally {
+                        jumpCrop.release()
+                    }
                 }
 
-                // ── 跳跃检测（右下1/4） ──
-                val jumpCrop = this.ctx.detector.cropBottomRightFourth(screenMat)
-                try {
-                    val jumpCoord = this.ctx.detector.matchTemplateMat(jumpCrop, ScreenState.JUMP_BUTTON)
-                    if (jumpCoord != null) {
-                        val fullX = jumpCoord.first + screenMat.cols() * 3 / 4
-                        val fullY = jumpCoord.second + screenMat.rows() * 3 / 4
-                        this.ctx.click(Pair(fullX, fullY))
-                        this.ctx.log("跳跃")
-                        jumpMissCount = 0
-                        lastMatchMs = System.currentTimeMillis()
-                    } else {
-                        jumpMissCount++
-                        if (jumpMissCount >= MAX_JUMP_MISS) {
-                            this.ctx.log("连续3次未识别跳跃，进入结算")
-                            return GamePhase.SETTLEMENT
-                        }
+                // ── 大招和跳跃都未检测到 → 累计miss，3次进入结算 ──
+                if (!skillHit) {
+                    jumpMissCount++
+                    if (jumpMissCount >= MAX_JUMP_MISS) {
+                        this.ctx.log("连续${MAX_JUMP_MISS}次未识别跳跃/大招，进入结算")
+                        return GamePhase.SETTLEMENT
                     }
-                } finally {
-                    jumpCrop.release()
+                } else {
+                    jumpMissCount = 0
                 }
 
                 // ── 武器（下方1/4，识别后连续点击 10 次） ──

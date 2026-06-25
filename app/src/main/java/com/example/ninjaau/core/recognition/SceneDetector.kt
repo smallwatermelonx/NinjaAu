@@ -84,7 +84,7 @@ class SceneDetector(private val context: Context) {
         SETTLEMENT("结算领奖", listOf(
             ScreenState.SETTLEMENT_POPUP, ScreenState.CONFIRM_BUTTON, ScreenState.CHAT_ICON
         ), false, false),
-        DEFEAT("战斗失败", listOf(ScreenState.DEFEAT_POPUP), false, false),
+        DEFEAT("战斗失败", listOf(ScreenState.DEFEAT_POPUP, ScreenState.DEFEAT_SCREEN, ScreenState.DEFEAT_BACK_BUTTON), false, false),
         RECRUIT_INVITE("招募邀请弹窗", listOf(ScreenState.RECRUIT_INVITE), false, false),
         INVITATION("组队邀请弹窗", listOf(
             ScreenState.TEAM_INVITATION, ScreenState.INVITE_REJECT
@@ -254,6 +254,8 @@ class SceneDetector(private val context: Context) {
         ScreenState.WEAPON_SKILL to TemplateEntry("templates/fight/wopen/shedao.png", 0.6f),
         ScreenState.BLOOD_CURSE to TemplateEntry("templates/fight/role/shihara/blood_curse.png", 0.85f),
         ScreenState.DEFEAT_POPUP to TemplateEntry("templates/fight/defeat_popup.png", 0.6f),
+        ScreenState.DEFEAT_SCREEN to TemplateEntry("templates/defeat/defeat.png", 0.8f),
+        ScreenState.DEFEAT_BACK_BUTTON to TemplateEntry("templates/defeat/back_button.png", 0.8f),
         // ── 结算 ──
         ScreenState.SETTLEMENT_POPUP to TemplateEntry("templates/settlement/black.png", 0.7f),
         ScreenState.CONFIRM_BUTTON to TemplateEntry("templates/settlement/confirm.png"),
@@ -281,6 +283,8 @@ class SceneDetector(private val context: Context) {
     private val gradeIconMatCache = java.util.concurrent.ConcurrentHashMap<BountyGrade, Mat>()
     private val personalGradeIconCache = java.util.concurrent.ConcurrentHashMap<BountyGrade, Bitmap>()
     private val levelIconCache = java.util.concurrent.ConcurrentHashMap<String, Bitmap>()
+
+    private data class GradeResult(val grade: BountyGrade, val similarity: Float, val centerX: Float, val centerY: Float)
 
     fun getTemplate(state: ScreenState): Bitmap? {
         val entry = templates[state] ?: return null
@@ -433,6 +437,32 @@ class SceneDetector(private val context: Context) {
         return Mat(mat, org.opencv.core.Rect(0, y, w, h))
     }
 
+    /** 裁剪 Mat 下方中心 1/9 区域（失败界面返回按钮所在区域），调用方用完需 release */
+    fun cropBottomCenterNinth(mat: Mat): Mat {
+        val w = mat.cols() / 3
+        val x = mat.cols() / 3
+        val h = mat.rows() / 9
+        val y = mat.rows() - h
+        return Mat(mat, org.opencv.core.Rect(x, y, w, h))
+    }
+
+    /** 裁剪 Mat 中心 1/2 宽度、中间 1/3 高度（失败界面确定按钮所在区域），调用方用完需 release */
+    fun cropCenterHalf(mat: Mat): Mat {
+        val w = mat.cols() / 2
+        val x = mat.cols() / 4
+        val h = mat.rows() / 3
+        val y = mat.rows() / 3
+        return Mat(mat, org.opencv.core.Rect(x, y, w, h))
+    }
+
+    /** 裁剪 Mat 顶部中间 1/2 宽度、1/8 高度（组队招募页签所在区域），调用方用完需 release */
+    fun cropTopCenterQuarter(mat: Mat): Mat {
+        val w = mat.cols() / 2
+        val x = mat.cols() / 4
+        val h = mat.rows() / 8
+        return Mat(mat, org.opencv.core.Rect(x, 0, w, h))
+    }
+
     /** 裁剪 Mat 左半边上 1/8 区域（Boss Lv图标所在区域），调用方用完需 release */
     fun cropTopLeftEighth(mat: Mat): Mat {
         val w = mat.cols() / 2
@@ -541,36 +571,32 @@ class SceneDetector(private val context: Context) {
     /** 使用预转换的 screen Mat 并行搜索等级图标 — 选最佳匹配（相似度最高） */
     suspend fun matchAnyGradeMat(screenMat: Mat, grades: List<BountyGrade>): Pair<BountyGrade, Pair<Float, Float>>? {
         data class GradeTemplate(val grade: BountyGrade, val templateMat: Mat, val w: Int, val h: Int)
-        data class GradeResult(val grade: BountyGrade, val similarity: Float, val centerX: Float, val centerY: Float)
 
         val templates = grades.mapNotNull { grade ->
             val cachedMat = gradeIconMatCache[grade]
-            if (cachedMat != null && !cachedMat.empty()) {
-                GradeTemplate(grade, cachedMat, cachedMat.cols(), cachedMat.rows())
-            } else {
+            val mat = if (cachedMat != null && !cachedMat.empty()) cachedMat else {
                 val cachedBmp = gradeIconCache[grade]
                 val bitmap = if (cachedBmp != null && !cachedBmp.isRecycled) cachedBmp else {
                     val loaded = AssetUtil.loadBitmapFromAssets(context, grade.gradeIconPath()) ?: return@mapNotNull null
                     gradeIconCache[grade] = loaded
                     loaded
                 }
-                val mat = OpenCVUtil.bitmapToMat(bitmap)
-                gradeIconMatCache[grade] = mat
-                GradeTemplate(grade, mat, bitmap.width, bitmap.height)
+                val m = OpenCVUtil.bitmapToMat(bitmap)
+                gradeIconMatCache[grade] = m
+                m
             }
+            GradeTemplate(grade, mat, mat.cols(), mat.rows())
         }
 
         return coroutineScope {
             val results = templates.map { t ->
                 async {
-                    val result = TemplateMatcher.matchMatWithMat(screenMat, t.templateMat, 0.85f, t.w, t.h)
+                    val threshold = if (t.grade == BountyGrade.NS || t.grade == BountyGrade.NA) 0.90f else 0.85f
+                    val result = TemplateMatcher.matchMatWithMatGrayscale(screenMat, t.templateMat, threshold, t.w, t.h)
                     if (result.isMatched) {
                         LogUtil.i(TAG, "matchAnyGradeMat: ${t.grade.displayName} 相似度=${String.format("%.3f", result.similarity)} ✓")
                         GradeResult(t.grade, result.similarity, result.centerX, result.centerY)
-                    } else {
-                        LogUtil.d(TAG, "matchAnyGradeMat: ${t.grade.displayName} 相似度=${String.format("%.3f", result.similarity)} < 0.850 ✗")
-                        null
-                    }
+                    } else null
                 }
             }.awaitAll().filterNotNull()
 
@@ -667,10 +693,11 @@ class SceneDetector(private val context: Context) {
             LogUtil.d(TAG, "$tag: 无匹配")
             return null
         }
-        matches.sortByDescending { it.similarity }
+        // 相似度优先，相近时取屏幕下方（Y更大）的 — 新悬赏从下方出现
+        matches.sortWith(compareByDescending<GradeMatch> { it.similarity }.thenByDescending { it.centerY })
         val best = matches.first()
         if (matches.size > 1) {
-            val summary = matches.joinToString { "${it.grade.displayName}=${String.format("%.2f", it.similarity)}" }
+            val summary = matches.joinToString { "${it.grade.displayName}=${String.format("%.2f", it.similarity)}(y=${String.format("%.0f", it.centerY)})" }
             val gap = best.similarity - matches[1].similarity
             LogUtil.w(TAG, "$tag: 多个等级匹配 - $summary，最佳=${best.grade.displayName}，差距=${String.format("%.3f", gap)}")
             if (gap < 0.02f) {

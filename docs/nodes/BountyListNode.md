@@ -13,8 +13,9 @@
 |---|------|----------|----------|----------|------|------|
 | 1 | 扫描等级图标 | 左侧第3个1/10区域（x=20%~30%） | 各等级图标（S/A/B/C/D等） | 匹配坐标 + cropOffsetX + 固定偏移(+430px, +300px) | 1ms | 循环扫描 |
 | 2 | 检测列表过期 | 左半边下方1/5 | OUT_OF_RANGE_RECRUIT | - | - | 列表过期标识出现 |
-| 3 | 检测进入详情页 | 全屏 | READY_BUTTON | - | - | 页面切换到详情 |
+| 3 | 检测进入详情页 | 右下角700x300 | READY_BUTTON | - | - | 页面切换到详情 |
 | 4 | 组队邀请拦截 | 全屏 | TEAM_INVITATION → INVITE_REJECT | 匹配坐标点击 | 500ms | 弹窗出现 |
+| 5 | 页签存在性校验 | 顶部中间1/4宽x1/10高 | RECRUIT_LIST_SCREEN | - | - | 超时前校验是否在组队招募页签 |
 
 ## 裁剪区域说明
 
@@ -22,6 +23,7 @@
 |--------|---------|-----------|------|
 | 等级图标 | `detector.cropLeftMidTenth(mat)` | 宽10% x 高100%（x=20%~30%） | 等级图标扫描 |
 | 过期标识 | `detector.cropBottomLeftFifth(mat)` | 宽50% x 高20%（左下） | 列表过期检测 |
+| 组队招募页签 | `detector.cropTopCenterQuarter(mat)` | 宽25% x 高10%（顶部中间） | 超时前校验当前页面 |
 
 ## 偏移点击说明
 
@@ -33,24 +35,43 @@
 
 ## 决策逻辑
 
+### 常规模式（等级匹配）
+
 ```
 循环扫描（1ms间隔，极快）:
   → 检测 OUT_OF_RANGE_RECRUIT → 列表过期，触发刷新
   → 匹配已勾选等级图标 → 固定偏移点击加入
   → 检测 READY_BUTTON → 页面已切换，返回 BOUNTY_DETAIL
-  → 无匹配 → 检查超时（30s）→ 抛 NodeTimeoutException
+  → 无匹配 → 页签校验:
+      在组队招募页签 → 正常，重置超时计时器，继续等待
+      不在组队招募页签 → 界面异常，检查超时（30s）→ 抛 NodeTimeoutException
 ```
+
+### 抢悬赏模式（快速点击，跳过等级匹配）
+
+```
+启用条件：ScriptConfigRepository.fastClickEnabled == true
+循环（100ms间隔，约10次/秒）:
+  → 组队邀请拦截
+  → 检测 READY_BUTTON → 页面已切换，返回 BOUNTY_DETAIL
+  → 直接点击固定像素位置（fastClickX, fastClickY）
+  → 页签校验（不在组队招募页签 → 超时恢复）
+```
+
+进入 BountyDetailNode 后仍做 LV 级别校验，不匹配则退出队伍回大厅。
 
 ## 等级匹配优先级
 
 扫描时按配置的 `activeGrades` 列表匹配，只匹配用户勾选的等级。
+多个等级同时匹配时，相似度相近时优先选择屏幕下方（Y更大）的结果——新悬赏从下方出现。
 
 ## 异常处理
 
 | 异常 | 处理 |
 |------|------|
 | 截图返回 null | 等待 1ms 后重试 |
-| 30s 无匹配 | 抛 NodeTimeoutException |
+| 30s 无匹配且不在组队招募页签 | 抛 NodeTimeoutException |
+| 无匹配但在组队招募页签内 | 正常情况，重置超时计时器继续等待 |
 | 列表过期 | 检测到 OUT_OF_RANGE_RECRUIT 后触发列表刷新 |
 
 ## 性能要求
@@ -61,3 +82,11 @@
 | 等级匹配 | ≤ 100ms | 多等级并行匹配（`SceneDetector.matchAnyGradeMat`） |
 
 等级匹配使用协程并行化：所有等级模板同时匹配，取第一个命中的结果。
+
+## 配置项
+
+| 配置 | SharedPreferences key | 类型 | 说明 |
+|------|----------------------|------|------|
+| 抢悬赏模式开关 | `fast_click_enabled` | Boolean | 启用后跳过等级匹配，直接高速点击 |
+| 点击 X 像素 | `fast_click_x` | Int | 加入队伍按钮的 X 坐标 |
+| 点击 Y 像素 | `fast_click_y` | Int | 加入队伍按钮的 Y 坐标 |

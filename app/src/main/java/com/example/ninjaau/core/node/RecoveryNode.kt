@@ -108,6 +108,19 @@ class RecoveryNode(private val ctx: NodeContext? = null) : GameNode {
             return GamePhase.SETTLEMENT
         }
 
+        // 1.5 失败界面（"失败"字样或返回按钮）
+        if (nodeCtx.detector.matchTemplateMat(screenMat, ScreenState.DEFEAT_SCREEN) != null) {
+            nodeCtx.log("恢复: 检测到失败界面 → DEFEAT")
+            return GamePhase.DEFEAT
+        }
+        val defeatBackCrop = nodeCtx.detector.cropBottomCenterNinth(screenMat)
+        try {
+            if (nodeCtx.detector.matchTemplateMat(defeatBackCrop, ScreenState.DEFEAT_BACK_BUTTON) != null) {
+                nodeCtx.log("恢复: 检测到失败等待界面 → DEFEAT")
+                return GamePhase.DEFEAT
+            }
+        } finally { defeatBackCrop.release() }
+
         // 2. 确认按钮（底部中间区域，参考 BountyDetailNode cropBottomMiddleFifth）
         val confirmCrop = nodeCtx.detector.cropBottomMiddleFifth(screenMat)
         try {

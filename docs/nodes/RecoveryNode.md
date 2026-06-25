@@ -14,6 +14,8 @@
 | 识别到的页面 | 目标 Phase | 裁剪区域 | 说明 |
 |-------------|-----------|---------|------|
 | SETTLEMENT_POPUP | SETTLEMENT | 全屏 | 在结算中，继续领奖 |
+| DEFEAT_SCREEN | DEFEAT | 全屏 | 战斗失败界面，转失败节点处理 |
+| DEFEAT_BACK_BUTTON | DEFEAT | 底部中心 1/9（cropBottomCenterNinth） | 等待队友界面的返回按钮 |
 | CONFIRM_BUTTON | SETTLEMENT | 底部中间 1/5（cropBottomMiddleFifth） | 在结算中，继续领奖 |
 | BATTLE_LOADING | BATTLE_LOADING | 上方 1/4（cropTopQuarter） | 在加载中，等待 |
 | READY_BUTTON | BOUNTY_DETAIL | 上方 1/8 | 在详情页，继续组队 |
@@ -49,6 +51,7 @@
 
 | 区域名 | 裁剪方法 | 占全屏比例 | 参考节点 |
 |--------|---------|-----------|---------|
+| 失败返回按钮 | `detector.cropBottomCenterNinth(mat)` | 宽33% x 高11%（底部中心） | DefeatNode |
 | 确认按钮 | `detector.cropBottomMiddleFifth(mat)` | 宽33% x 高20%（底部中间） | BountyDetailNode |
 | 战斗加载 | `detector.cropTopQuarter(mat)` | 宽100% x 高25%（上方） | BattleLoadingNode |
 | 准备按钮 | `Mat(mat, Rect(0, 0, w, h/8))` | 宽100% x 高12.5%（上方） | BountyDetailNode |
@@ -67,7 +70,8 @@ if recoveryAttempt > MAX_RECOVERY_ATTEMPTS (5):
   → 强制重置，返回 IDLE（重新导航）
 
 截图 → 识别当前页面（使用裁剪匹配）:
-  → SETTLEMENT_POPUP / CONFIRM_BUTTON → SETTLEMENT
+  → SETTLEMENT_POPUP → SETTLEMENT
+  → DEFEAT_SCREEN / DEFEAT_BACK_BUTTON → DEFEAT
   → BATTLE_LOADING（上方1/4裁剪）→ BATTLE_LOADING
   → READY_BUTTON（上方1/8裁剪）→ BOUNTY_DETAIL
   → SLIDE_BUTTON / JUMP_BUTTON（下方裁剪）→ FIGHT

@@ -349,6 +349,7 @@ class WorkflowEngine(
             GamePhase.BOUNTY_DETAIL -> bountyDetailNode.execute(ctx)
             GamePhase.BATTLE_LOADING -> battleLoadingNode.execute(ctx)
             GamePhase.FIGHT -> battleNode.execute(ctx)
+            GamePhase.DEFEAT -> defeatNode.execute(ctx)
             GamePhase.SETTLEMENT -> settlementNode.execute(ctx)
             GamePhase.RECOVERY -> recoveryNode.execute(ctx)
             GamePhase.PERSONAL_BOUNTY_CENTER -> personalBountyCenterNode.execute(ctx)
@@ -364,6 +365,7 @@ class WorkflowEngine(
             GamePhase.BOUNTY_DETAIL -> "悬赏详情"
             GamePhase.BATTLE_LOADING -> "战斗加载"
             GamePhase.FIGHT -> "⚔ 战斗开始"
+            GamePhase.DEFEAT -> "战斗失败"
             GamePhase.SETTLEMENT -> "结算领奖"
             GamePhase.DONE -> "🎉 全部悬赏完成"
             GamePhase.PERSONAL_BOUNTY_CENTER -> "进入个人悬赏中心"

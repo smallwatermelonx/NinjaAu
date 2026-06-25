@@ -62,6 +62,8 @@ enum class GamePhase {
     FIGHT,
     /** 结算领奖 — templates/settlement/ */
     SETTLEMENT,
+    /** 战斗失败 — templates/defeat/ */
+    DEFEAT,
     /** 异常恢复 */
     RECOVERY,
     DONE,

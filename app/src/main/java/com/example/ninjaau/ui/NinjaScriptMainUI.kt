@@ -22,6 +22,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import com.example.ninjaau.core.config.ScriptConfigRepository
 import com.example.ninjaau.core.GameManager
 import com.example.ninjaau.core.ScriptState
@@ -130,6 +132,9 @@ fun NinjaScriptMainUI() {
     var nsEnabled by remember { mutableStateOf(ScriptConfigRepository.nsEnabled.value) }
     var treasureEnabled by remember { mutableStateOf(ScriptConfigRepository.treasureEnabled.value) }
     var inviteCheckEnabled by remember { mutableStateOf(ScriptConfigRepository.inviteCheckEnabled.value) }
+    var fastClickEnabled by remember { mutableStateOf(ScriptConfigRepository.fastClickEnabled.value) }
+    var fastClickX by remember { mutableStateOf(ScriptConfigRepository.fastClickX.value.toString()) }
+    var fastClickY by remember { mutableStateOf(ScriptConfigRepository.fastClickY.value.toString()) }
 
     fun saveAll() {
         ScriptConfigRepository.setDailyEnabled(dailyEnabled)
@@ -182,6 +187,9 @@ fun NinjaScriptMainUI() {
                 ScriptConfigRepository.setPersonalEnabled(personalEnabled)
                 ScriptConfigRepository.setNsEnabled(nsEnabled)
                 ScriptConfigRepository.setInviteCheckEnabled(inviteCheckEnabled)
+                ScriptConfigRepository.setFastClickEnabled(fastClickEnabled)
+                ScriptConfigRepository.setFastClickX(fastClickX.toIntOrNull() ?: 0)
+                ScriptConfigRepository.setFastClickY(fastClickY.toIntOrNull() ?: 0)
                 if (personalEnabled) ScriptConfigRepository.setPersonalConfigs(personalConfigs)
                 addLog("🚀 启动脚本...")
                 val intent = Intent(context, FloatingWindowService::class.java)
@@ -419,7 +427,22 @@ fun NinjaScriptMainUI() {
                 MainTab.SETTINGS -> SettingsContent(
                     modifier = Modifier.padding(padding).padding(horizontal = 16.dp, vertical = 12.dp),
                     inviteCheckEnabled = inviteCheckEnabled,
-                    onInviteCheckChanged = { inviteCheckEnabled = it }
+                    onInviteCheckChanged = { inviteCheckEnabled = it },
+                    fastClickEnabled = fastClickEnabled,
+                    onFastClickEnabledChanged = {
+                        fastClickEnabled = it
+                        ScriptConfigRepository.setFastClickEnabled(it)
+                    },
+                    fastClickX = fastClickX,
+                    onFastClickXChanged = {
+                        fastClickX = it
+                        ScriptConfigRepository.setFastClickX(it.toIntOrNull() ?: 0)
+                    },
+                    fastClickY = fastClickY,
+                    onFastClickYChanged = {
+                        fastClickY = it
+                        ScriptConfigRepository.setFastClickY(it.toIntOrNull() ?: 0)
+                    }
                 )
             }
         }
@@ -703,7 +726,13 @@ private fun TreasureMapPanel(
 private fun SettingsContent(
     modifier: Modifier = Modifier,
     inviteCheckEnabled: Boolean,
-    onInviteCheckChanged: (Boolean) -> Unit
+    onInviteCheckChanged: (Boolean) -> Unit,
+    fastClickEnabled: Boolean,
+    onFastClickEnabledChanged: (Boolean) -> Unit,
+    fastClickX: String,
+    onFastClickXChanged: (String) -> Unit,
+    fastClickY: String,
+    onFastClickYChanged: (String) -> Unit
 ) {
     Column(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()),
@@ -724,6 +753,63 @@ private fun SettingsContent(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("检测组队邀请并自动拒绝", fontSize = 12.sp, color = Theme.TextMid)
+                }
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(8.dp),
+            colors = CardDefaults.cardColors(containerColor = Theme.Surface)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("抢悬赏设置", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Theme.TextMid)
+                Spacer(Modifier.height(8.dp))
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = fastClickEnabled, onCheckedChange = onFastClickEnabledChanged,
+                        colors = CheckboxDefaults.colors(checkedColor = Theme.Accent, uncheckedColor = Theme.TextLow)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("启用抢悬赏（跳过等级匹配，直接点击加入队伍）", fontSize = 12.sp, color = Theme.TextMid)
+                }
+                if (fastClickEnabled) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("加入队伍按钮像素位置", fontSize = 11.sp, color = Theme.TextLow)
+                    Spacer(Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = fastClickX,
+                            onValueChange = { v -> if (v.all { it.isDigit() }) onFastClickXChanged(v) },
+                            label = { Text("X", fontSize = 11.sp) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Theme.Accent,
+                                unfocusedBorderColor = Theme.TextLow,
+                                focusedLabelColor = Theme.Accent,
+                                unfocusedLabelColor = Theme.TextLow
+                            )
+                        )
+                        OutlinedTextField(
+                            value = fastClickY,
+                            onValueChange = { v -> if (v.all { it.isDigit() }) onFastClickYChanged(v) },
+                            label = { Text("Y", fontSize = 11.sp) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Theme.Accent,
+                                unfocusedBorderColor = Theme.TextLow,
+                                focusedLabelColor = Theme.Accent,
+                                unfocusedLabelColor = Theme.TextLow
+                            )
+                        )
+                    }
                 }
             }
         }

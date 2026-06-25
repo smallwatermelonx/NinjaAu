@@ -39,8 +39,8 @@ enum class BountyGrade(
     val levelVariants: List<Int> = emptyList()
 ) {
     NSS_PLUS("nss_plus", "NSS+", 1, "nss_plus.png", 12, 125, GradeGroup.NSS_PLUS),
-    NS("ns", "NS", 5, "ns.png", 13, 125, GradeGroup.NS),
-    NA("na", "NA", 2, "na.png", 14, 125, GradeGroup.NA),
+    NS("ns", "NS", 5, "ns.png", 13, 90, GradeGroup.NS),
+    NA("na", "NA", 2, "na.png", 14, 80, GradeGroup.NA),
     SS_PLUS("ss_plus", "SS+", 1, "ss_plus.png", 0, 125, GradeGroup.SS_PLUS,
         levelVariants = listOf(105, 110, 115, 120, 125, 130)),
     SS("ss", "SS", 1, "ss.png", 1, 100, GradeGroup.SS),

@@ -50,6 +50,21 @@ object ScriptConfigRepository {
 
     fun setInviteCheckEnabled(v: Boolean) { _inviteCheckEnabled.value = v; save("invite_check", v) }
 
+    // ═══ 抢悬赏快速点击 ═══
+
+    private val _fastClickEnabled = MutableStateFlow(false)
+    val fastClickEnabled: StateFlow<Boolean> = _fastClickEnabled
+
+    private val _fastClickX = MutableStateFlow(0)
+    val fastClickX: StateFlow<Int> = _fastClickX
+
+    private val _fastClickY = MutableStateFlow(0)
+    val fastClickY: StateFlow<Int> = _fastClickY
+
+    fun setFastClickEnabled(v: Boolean) { _fastClickEnabled.value = v; save("fast_click_enabled", v) }
+    fun setFastClickX(v: Int) { _fastClickX.value = v; saveInt("fast_click_x", v) }
+    fun setFastClickY(v: Int) { _fastClickY.value = v; saveInt("fast_click_y", v) }
+
     // ═══ 悬赏等级配置 ═══
 
     private val _bountyConfigs = MutableStateFlow(BountyGrade.sorted().map {
@@ -104,6 +119,9 @@ object ScriptConfigRepository {
         _nsEnabled.value = prefs.getBoolean("ns_enabled", false)
         _treasureEnabled.value = prefs.getBoolean("treasure_enabled", false)
         _inviteCheckEnabled.value = prefs.getBoolean("invite_check", false)
+        _fastClickEnabled.value = prefs.getBoolean("fast_click_enabled", false)
+        _fastClickX.value = prefs.getInt("fast_click_x", 0)
+        _fastClickY.value = prefs.getInt("fast_click_y", 0)
         _bountyConfigs.value = loadGradeConfigs("cfg_bounty_enabled", "cfg_bounty_chase_dream")
         _personalConfigs.value = loadGradeConfigs("cfg_personal_enabled", null)
         // NS 只加载事件等级（NSS+, NS, NA），过滤掉非事件等级
@@ -127,6 +145,10 @@ object ScriptConfigRepository {
 
     private fun save(key: String, value: Boolean) {
         prefs.edit().putBoolean(key, value).apply()
+    }
+
+    private fun saveInt(key: String, value: Int) {
+        prefs.edit().putInt(key, value).apply()
     }
 
     private fun saveGradeKeys(key: String, configs: List<BountyConfig>) {

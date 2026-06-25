@@ -29,6 +29,10 @@ enum class ScreenState(val description: String) {
     WEAPON_SKILL("武器图标"),
     BLOOD_CURSE("血咒技能"),
     DEFEAT_POPUP("失败弹窗"),
+    /** 失败最终界面（full.png — "失败"字样 + 确定按钮） */
+    DEFEAT_SCREEN("失败界面"),
+    /** 失败等待队友界面的返回按钮（full_two.png 底部返回） */
+    DEFEAT_BACK_BUTTON("失败返回按钮"),
 
     // === 结算 ===
     SETTLEMENT_POPUP("结算弹窗"),
