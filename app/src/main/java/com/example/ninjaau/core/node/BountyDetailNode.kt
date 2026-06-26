@@ -99,10 +99,9 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                             topMiddleTenth.release()
                             screenMat?.release()
                             screen.recycle()
-                            exitTeam()
                             ctx.currentBounty = null
                             ctx.actualGrade = null
-                            return GamePhase.LOBBY
+                            return exitTeam()
                         }
                         actualGrade = levelMatch.grade
                         ctx.actualGrade = actualGrade
@@ -114,10 +113,9 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                     // ═══════════════════════════════════════════════════
                     if (actualGrade !in ctx.activeGrades) {
                         this.ctx.log("⚠ LV ${actualGrade.displayName}(lv${actualGrade.level}) 不在勾选范围 ${ctx.activeGrades.joinToString { it.displayName }}，退出队伍")
-                        exitTeam()
                         ctx.currentBounty = null
                         ctx.actualGrade = null
-                        return GamePhase.LOBBY
+                        return exitTeam()
                     }
 
                     // ═══════════════════════════════════════════════════
@@ -143,10 +141,9 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                                 }
                                 ctx.activeGrades = ctx.activeGrades.filter { it.group != group || it in ctx.chaseDreamGrades }
                                 this.ctx.log("${actualGrade.displayName} ${group.name} 标记为完成")
-                                exitTeam()
                                 ctx.currentBounty = null
                                 ctx.actualGrade = null
-                                return GamePhase.LOBBY
+                                return exitTeam()
                             }
                         } finally {
                             topFifth.release()
@@ -173,7 +170,6 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                                 val halfW = screen.width / 2f
                                 val offsetH = screen.height * 3f / 4f
                                 this.ctx.click(Pair(readyCoord.first + halfW, readyCoord.second + offsetH))
-                                this.ctx.delay(POST_CLICK_DELAY)
                                 battleWaitStart = System.currentTimeMillis()
                                 this.ctx.log("战斗等待计时启动")
                                 lastMatchMs = System.currentTimeMillis()
@@ -209,13 +205,11 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
 
                         val elapsed = System.currentTimeMillis() - battleWaitStart
                         if (elapsed >= WAIT_BATTLE_TIMEOUT_MS) {
-                            this.ctx.log("等待战斗超时 ${WAIT_BATTLE_TIMEOUT_MS}ms")
-                            exitTeam()
+                            this.ctx.log("等待战斗超时 ${WAIT_BATTLE_TIMEOUT_MS}ms，尝试退出队伍")
                             ctx.currentBounty = null
                             ctx.actualGrade = null
-                            val totalMs = System.currentTimeMillis() - iterationStart
-                            this.ctx.log("[详情耗时] 截图${captureMs}ms | 转Mat${matMs}ms | crop${cropMidMs}+${cropBlMs}ms | 战斗匹配${battleMatchMs}ms | 合计${totalMs}ms")
-                            return GamePhase.LOBBY
+                            val exitResult = exitTeam()
+                            return exitResult
                         }
                     }
 
@@ -255,12 +249,14 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
 
     /**
      * 退出队伍 — 顺序执行：① 点返回 → 等待 → ② 点确认弹窗
+     * 退出后检测实际到达的节点（可能队长在退出期间开始了战斗）。
+     * @return LOBBY 或 BATTLE_LOADING
      */
-    private suspend fun exitTeam() {
+    private suspend fun exitTeam(): GamePhase {
         this.ctx.log("退出队伍...")
 
         // ═══ 阶段①：点击返回按钮 ═══
-        val screen1 = this.ctx.captureBitmap() ?: return
+        val screen1 = this.ctx.captureBitmap() ?: return GamePhase.LOBBY
         var screenMat1: Mat? = null
         try {
             screenMat1 = this.ctx.detector.screenToMat(screen1)
@@ -281,7 +277,7 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
         this.ctx.delay(1000)
 
         // ═══ 阶段②：点击确认退出弹窗（右半+下半） ═══
-        val screen2 = this.ctx.captureBitmap() ?: return
+        val screen2 = this.ctx.captureBitmap() ?: return GamePhase.LOBBY
         var screenMat2: Mat? = null
         try {
             screenMat2 = this.ctx.detector.screenToMat(screen2)
@@ -298,6 +294,41 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
         } finally {
             screenMat2?.release()
             screen2.recycle()
+        }
+
+        // ═══ 阶段③：退出后检测实际到达的节点 ═══
+        this.ctx.delay(500)
+        val screen3 = this.ctx.captureBitmap() ?: return GamePhase.LOBBY
+        var screenMat3: Mat? = null
+        try {
+            screenMat3 = this.ctx.detector.screenToMat(screen3)
+            // 检测大厅标识（左侧1/10）
+            val chatCrop = this.ctx.detector.cropLeftTenth(screenMat3)
+            try {
+                val chatTemplate = this.ctx.detector.getTemplate(ScreenState.CHAT_ICON)
+                if (chatTemplate != null && com.example.ninjaau.core.recognition.TemplateMatcher.matchWithMat(chatCrop, chatTemplate, 0.75f).isMatched) {
+                    this.ctx.log("退出成功，已回到大厅")
+                    return GamePhase.LOBBY
+                }
+            } finally {
+                chatCrop.release()
+            }
+            // 检测战斗加载标识（上方1/4）
+            val loadingCrop = this.ctx.detector.cropTopQuarter(screenMat3)
+            try {
+                val loadingTemplate = this.ctx.detector.getTemplate(ScreenState.BATTLE_LOADING)
+                if (loadingTemplate != null && com.example.ninjaau.core.recognition.TemplateMatcher.matchWithMat(loadingCrop, loadingTemplate, 0.8f).isMatched) {
+                    this.ctx.log("退出期间战斗已开始，进入战斗加载")
+                    return GamePhase.BATTLE_LOADING
+                }
+            } finally {
+                loadingCrop.release()
+            }
+            this.ctx.log("退出后未识别页面，默认返回大厅")
+            return GamePhase.LOBBY
+        } finally {
+            screenMat3?.release()
+            screen3.recycle()
         }
     }
 }

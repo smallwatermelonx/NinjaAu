@@ -34,6 +34,7 @@ class LobbyNode(private val ctx: NodeContext) : GameNode {
             ctx.roundStartTime = System.currentTimeMillis()
         }
         var lastMatchMs = System.currentTimeMillis()
+        var chatClicked = false
 
         while (currentCoroutineContext().isActive) {
             val screen = this.ctx.captureBitmap()
@@ -47,13 +48,14 @@ class LobbyNode(private val ctx: NodeContext) : GameNode {
 
                 // ═══ 日常悬赏导航（仅在启用日常时才走聊天→招募流程） ═══
                 if (ctx.dailyEnabled) {
-                    // 位于大厅（左侧 1/10 区域匹配聊天按钮）
+                    // 聊天按钮（左侧 1/10）→ 点击打开聊天面板
                     val leftTenth = this.ctx.detector.cropLeftTenth(screenMat)
                     try {
                         val chatIcon = this.ctx.detector.matchTemplateMat(leftTenth, ScreenState.CHAT_ICON)
                         if (chatIcon != null) {
                             this.ctx.log("导航: 聊天按钮，点击进入招募")
                             this.ctx.click(chatIcon)
+                            chatClicked = true
                             this.ctx.delay(NORMAL_INTERVAL_MS)
                             lastMatchMs = System.currentTimeMillis(); continue
                         }
@@ -61,17 +63,24 @@ class LobbyNode(private val ctx: NodeContext) : GameNode {
                         leftTenth.release()
                     }
 
-                    // 招募页签（上方 1/10 区域匹配）
-                    val topTenth = this.ctx.detector.cropTopTenth(screenMat)
-                    try {
-                        val recruitTab = this.ctx.detector.matchTemplateMat(topTenth, ScreenState.RECRUIT_TAB)
-                        if (recruitTab != null) {
-                            this.ctx.log("导航: 招募页签，点击")
-                            this.ctx.click(recruitTab)
-                            return GamePhase.RECRUIT_LIST
+                    // 招募页签（上方 1/10）→ 仅在点击过聊天图标后才检测
+                    if (chatClicked) {
+                        val topTenth = this.ctx.detector.cropTopTenth(screenMat)
+                        try {
+                            val recruitTab = this.ctx.detector.matchTemplateMat(topTenth, ScreenState.RECRUIT_TAB)
+                            if (recruitTab != null) {
+                                this.ctx.log("导航: 招募页签，点击")
+                                this.ctx.click(recruitTab)
+                                this.ctx.delay(NORMAL_INTERVAL_MS)
+                                lastMatchMs = System.currentTimeMillis(); continue
+                            }
+                        } finally {
+                            topTenth.release()
                         }
-                    } finally {
-                        topTenth.release()
+
+                        // 聊天图标消失 + 招募页签消失 → 已进入组队招募列表
+                        this.ctx.log("导航: 进入组队招募列表")
+                        return GamePhase.RECRUIT_LIST
                     }
                 }
 

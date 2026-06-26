@@ -256,6 +256,8 @@ class SceneDetector(private val context: Context) {
         ScreenState.DEFEAT_POPUP to TemplateEntry("templates/fight/defeat_popup.png", 0.6f),
         ScreenState.DEFEAT_SCREEN to TemplateEntry("templates/defeat/defeat.png", 0.8f),
         ScreenState.DEFEAT_BACK_BUTTON to TemplateEntry("templates/defeat/back_button.png", 0.8f),
+        ScreenState.DEFEAT_CONFIRM to TemplateEntry("templates/defeat/confirm.png", 0.8f),
+        ScreenState.DEFEAT_SKIP to TemplateEntry("templates/defeat/img_1.png", 0.8f),
         // ── 结算 ──
         ScreenState.SETTLEMENT_POPUP to TemplateEntry("templates/settlement/black.png", 0.7f),
         ScreenState.CONFIRM_BUTTON to TemplateEntry("templates/settlement/confirm.png"),

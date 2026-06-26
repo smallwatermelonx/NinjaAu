@@ -215,4 +215,52 @@ object PermissionManager {
         return isEnabled
     }
 
+    /**
+     * 通过 root 权限自动启用无障碍服务（模拟器/已root设备）
+     * @return 是否成功启用
+     */
+    fun tryEnableAccessibilityViaRoot(context: Context): Boolean {
+        return try {
+            val serviceName = "${context.packageName}/${NinjaAccessibilityService::class.java.name}"
+            // 检测 root 权限
+            val checkProcess = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
+            val checkOutput = checkProcess.inputStream.bufferedReader().readText()
+            checkProcess.waitFor()
+            if (!checkOutput.contains("uid=0")) {
+                LogUtil.w("PermissionManager", "无 root 权限，跳过自动启用")
+                return false
+            }
+
+            // 获取当前已启用的服务列表
+            val getProcess = Runtime.getRuntime().exec(arrayOf("su", "-c", "settings get secure enabled_accessibility_services"))
+            val currentServices = getProcess.inputStream.bufferedReader().readText().trim()
+            getProcess.waitFor()
+
+            // 如果已启用则跳过
+            if (currentServices.contains(serviceName)) {
+                LogUtil.i("PermissionManager", "无障碍服务已通过 root 确认开启")
+                return true
+            }
+
+            // 拼接新服务列表
+            val newServices = if (currentServices.isNullOrEmpty() || currentServices == "null") {
+                serviceName
+            } else {
+                "$currentServices:$serviceName"
+            }
+
+            // 写入 + 启用总开关
+            val setResult = Runtime.getRuntime().exec(arrayOf("su", "-c", "settings put secure enabled_accessibility_services $newServices"))
+            setResult.waitFor()
+            val setEnabled = Runtime.getRuntime().exec(arrayOf("su", "-c", "settings put secure accessibility_enabled 1"))
+            setEnabled.waitFor()
+
+            LogUtil.i("PermissionManager", "已通过 root 自动启用无障碍服务: $serviceName")
+            true
+        } catch (e: Exception) {
+            LogUtil.e("PermissionManager", "root 启用无障碍服务失败", e)
+            false
+        }
+    }
+
 }

@@ -160,10 +160,15 @@ fun NinjaScriptMainUI() {
         LogUtil.i("MainUI", "===== 点击启动 =====")
         when {
             !PermissionManager.isAccessibilityServiceEnabled(context) -> {
-                addLog("❌ 需要开启无障碍服务")
-                context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                })
+                // 尝试通过 root 自动启用
+                if (PermissionManager.tryEnableAccessibilityViaRoot(context)) {
+                    addLog("✅ 已通过 root 自动启用无障碍服务")
+                } else {
+                    addLog("❌ 需要开启无障碍服务")
+                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    })
+                }
             }
             !Settings.canDrawOverlays(context) -> {
                 addLog("❌ 需要悬浮窗权限")
