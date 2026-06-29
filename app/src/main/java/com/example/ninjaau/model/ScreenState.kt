@@ -35,6 +35,8 @@ enum class ScreenState(val description: String) {
     DEFEAT_BACK_BUTTON("失败返回按钮"),
     DEFEAT_CONFIRM("失败确定按钮"),
     DEFEAT_SKIP("失败跳过按钮"),
+    /** 死亡观战面板 — 助战按钮（img_2.png） */
+    ASSIST_BUTTON("助战按钮"),
 
     // === 结算 ===
     SETTLEMENT_POPUP("结算弹窗"),

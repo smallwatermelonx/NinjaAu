@@ -84,7 +84,7 @@ class SceneDetector(private val context: Context) {
         SETTLEMENT("结算领奖", listOf(
             ScreenState.SETTLEMENT_POPUP, ScreenState.CONFIRM_BUTTON, ScreenState.CHAT_ICON
         ), false, false),
-        DEFEAT("战斗失败", listOf(ScreenState.DEFEAT_POPUP, ScreenState.DEFEAT_SCREEN, ScreenState.DEFEAT_BACK_BUTTON), false, false),
+        DEFEAT("战斗失败", listOf(ScreenState.DEFEAT_POPUP, ScreenState.DEFEAT_SCREEN, ScreenState.DEFEAT_BACK_BUTTON, ScreenState.ASSIST_BUTTON), false, false),
         RECRUIT_INVITE("招募邀请弹窗", listOf(ScreenState.RECRUIT_INVITE), false, false),
         INVITATION("组队邀请弹窗", listOf(
             ScreenState.TEAM_INVITATION, ScreenState.INVITE_REJECT
@@ -257,7 +257,8 @@ class SceneDetector(private val context: Context) {
         ScreenState.DEFEAT_SCREEN to TemplateEntry("templates/defeat/defeat.png", 0.8f),
         ScreenState.DEFEAT_BACK_BUTTON to TemplateEntry("templates/defeat/back_button.png", 0.8f),
         ScreenState.DEFEAT_CONFIRM to TemplateEntry("templates/defeat/confirm.png", 0.8f),
-        ScreenState.DEFEAT_SKIP to TemplateEntry("templates/defeat/img_1.png", 0.8f),
+        ScreenState.DEFEAT_SKIP to TemplateEntry("templates/defeat/defeat_skip.png", 0.8f),
+        ScreenState.ASSIST_BUTTON to TemplateEntry("templates/defeat/assist_button.png", 0.8f),
         // ── 结算 ──
         ScreenState.SETTLEMENT_POPUP to TemplateEntry("templates/settlement/black.png", 0.7f),
         ScreenState.CONFIRM_BUTTON to TemplateEntry("templates/settlement/confirm.png"),
@@ -361,6 +362,14 @@ class SceneDetector(private val context: Context) {
     fun cropLeftThird(mat: Mat): Mat {
         val w = mat.cols() / 3
         return Mat(mat, org.opencv.core.Rect(0, 0, w, mat.rows()))
+    }
+
+    /** 裁剪 Mat 左下 1/3 区域（左侧1/3 × 下方1/3），调用方用完需 release */
+    fun cropBottomLeftThird(mat: Mat): Mat {
+        val w = mat.cols() / 3
+        val h = mat.rows() / 3
+        val y = mat.rows() - h
+        return Mat(mat, org.opencv.core.Rect(0, y, w, h))
     }
 
     /** 裁剪 Mat 下方 1/5 中间 1/3 区域（确认按钮所在区域），调用方用完需 release */

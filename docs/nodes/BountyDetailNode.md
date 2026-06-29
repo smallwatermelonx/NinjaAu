@@ -51,7 +51,8 @@
 
   ⑥ 匹配 CHAT_ICON（全屏）→ 已回到大厅 → LOBBY
 
-  ⑦ 无匹配 → checkNodeTimeout 超时检测（严重错误，进入恢复）
+  ⑦ 人机队长检测：在队伍中超过30s且未点击准备 → exitTeam → LOBBY
+  ⑧ 无匹配 → checkNodeTimeout 超时检测（严重错误，进入恢复）
 ```
 
 > TEAM_INVITATION 由 WorkflowEngine 的全局邀请拦截处理，不在本节点内。
@@ -104,6 +105,14 @@
 
 **所有 exitTeam 调用点（LV不匹配、上限、战斗超时）统一返回实际检测到的 GamePhase**，不再无脑返回 LOBBY。
 
+## 常量定义
+
+| 常量 | 值 | 说明 |
+|------|-----|------|
+| POST_CLICK_DELAY | 500ms | 截图失败后等待间隔 |
+| WAIT_BATTLE_TIMEOUT_MS | 30000ms | 点击准备后等待战斗超时 |
+| AI_CAPTAIN_TIMEOUT_MS | 30000ms | 在队伍中无操作超时（人机队长检测） |
+
 ## 异常处理
 
 | 异常 | 处理 |
@@ -113,6 +122,7 @@
 | LV 不在 activeGrades | exitTeam → LOBBY / BATTLE_LOADING |
 | 30s 无匹配 | checkNodeTimeout 超时检测（严重错误） |
 | 战斗等待超时 30s | exitTeam → LOBBY / BATTLE_LOADING |
+| 人机队长超时 30s | exitTeam → LOBBY / BATTLE_LOADING |
 | SS+ 悬赏 (lv105-130) | 播放提醒铃声 |
 
 ## 性能要求

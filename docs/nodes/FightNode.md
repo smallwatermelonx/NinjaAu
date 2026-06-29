@@ -5,8 +5,9 @@
 | 方向 | ScreenState | 说明 |
 | ---- | ----------- | ---- |
 | 进入 | FIGHT | 从 BattleLoadingNode 加载完成后进入 |
-| 退出1 | SETTLEMENT | Lv消失 → 500ms → 未检测到失败跳过按钮 |
-| 退出2 | DEFEAT | Lv消失 → 500ms → 检测到失败跳过按钮（接力界面） |
+| 退出1 | SETTLEMENT | Lv消失 → 轮询检测到 SETTLEMENT_POPUP 或 CONFIRM_BUTTON |
+| 退出2 | DEFEAT | Lv消失 → 轮询检测到 DEFEAT_SCREEN / DEFEAT_BACK_BUTTON / ASSIST_BUTTON |
+| 退出3 | RECOVERY | Lv消失 → 60s 超时无结果 |
 
 ## 交互动作
 
@@ -14,7 +15,7 @@
 
 | # | 动作         | 裁剪区域       | 匹配模板     | 坐标/偏移             | 延迟   | 条件                    |
 | - | ------------ | -------------- | ------------ | --------------------- | ------ | ----------------------- |
-| 1 | 等待下滑按钮 | 左下 1/4       | SLIDE_BUTTON | -                     | 300ms  | 进入节点后等待出现（最长10s） |
+| 1 | 等待下滑按钮 | 左下 1/4       | SLIDE_BUTTON | -                     | 无间隔  | 进入节点后等待出现（最长10s） |
 | 2 | 点击下滑按钮 | 左下 1/4       | SLIDE_BUTTON | X不变，Y偏移 rows*3/4 | 无间隔  | 下滑阶段循环            |
 | 3 | 点击血咒技能 | 左1/2 × 下1/4  | BLOOD_CURSE  | X不变，Y偏移 rows*3/4 | -      | 血咒出现时（仅点击1次） |
 
@@ -31,14 +32,19 @@
 | 5 | 检测Lv图标   | 左上 1/8 | LV_ICON        | -                                             | 100ms/300ms    | 未出现时100ms高频，出现后300ms |
 | 6 | 点击大招     | 左侧 1/6 | ULTIMATE_SKILL | 识别则点击                                    | 无额外延迟     | 大招出现时（优先检测） |
 | 7 | 点击跳跃     | 右下 1/4 | JUMP_BUTTON    | X偏移 cols*3/4，Y偏移 rows*3/4               | -              | 大招未识别时检测       |
-| 8 | 点击武器技能 | 下方 1/4 | WEAPON_SKILL   | X不变，Y偏移 rows*3/4，记住坐标，连点3次     | 240ms/次       | 武器技能出现时（大招命中时不检测） |
+| 8 | 点击武器技能 | 固定坐标 | -            | 固定坐标(765,1265)，每轮循环点击（约300ms） | -              | Lv出现24秒后（大招命中时不检测） |
 
-### 阶段四：战斗结束判定
+### 阶段四：战斗结束判定（轮询检测）
 
 | # | 动作         | 裁剪区域 | 匹配模板       | 坐标/偏移 | 延迟    | 条件                   |
 | - | ------------ | -------- | -------------- | -------- | ------- | ---------------------- |
 | 9 | Lv消失等待  | -        | -              | -        | 500ms   | Lv图标不再出现         |
-| 10 | 检测跳过按钮 | 中间1/5 × 下方1/5 | DEFEAT_SKIP | crop偏移 | -    | 500ms后检测接力界面    |
+| 10 | 检测结算弹窗 | 全屏 | SETTLEMENT_POPUP | - | - | 队友通关 |
+| 11 | 检测结算确认 | 全屏 | CONFIRM_BUTTON | - | - | 追梦场景直接出现确认按钮 |
+| 12 | 检测失败界面 | 全屏 | DEFEAT_SCREEN | - | - | 最终失败 |
+| 13 | 检测观战返回 | 中间1/3上半侧 | DEFEAT_BACK_BUTTON | crop偏移 | - | 观战面板 |
+| 14 | 检测助战按钮 | 左下1/3 | ASSIST_BUTTON | crop偏移 | - | 观战面板标识 |
+| 15 | 检测跳过按钮 | 中间1/5×下方1/5 | DEFEAT_SKIP | crop偏移 | - | 接力界面，继续等待 |
 
 ## 裁剪区域说明
 
@@ -49,8 +55,9 @@
 | 左上 1/8     | `detector.cropTopLeftEighth(mat)`     | 宽50% x 高12.5%（左上）     | Lv图标检测     |
 | 右下 1/4     | `detector.cropBottomRightFourth(mat)` | 宽25% x 高25%（右下角）     | 跳跃按钮、上翻(仅下滑后) |
 | 左侧 1/6    | `detector.cropLeftSixth(mat)`         | 宽16.7% x 高33%（左侧中央） | 大招图标       |
-| 下方 1/4     | `detector.cropBottomQuarter(mat)`     | 宽100% x 高25%（底部）      | 武器技能       |
-| 中间1/5 × 下方1/5 | `Mat(mat, Rect(cols*2/5, rows*4/5, cols/5, rows/5))` | 宽20% x 高20%（中下） | 跳过按钮 |
+| 中间1/3上半侧 | `Mat(mat, Rect(cols/3, 0, cols/3, rows/2))` | 宽33% x 高50%（中上） | 观战面板返回按钮 |
+| 左下1/3      | `detector.cropBottomLeftThird(mat)`   | 宽33% x 高33%（左下）       | 助战按钮       |
+| 中间1/5×下方1/5 | `Mat(mat, Rect(cols*2/5, rows*4/5, cols/5, rows/5))` | 宽20% x 高20%（中下） | 跳过按钮 |
 
 ## 常量定义
 
@@ -58,18 +65,19 @@
 | ----------------------- | ------ | ------------------------------------------- |
 | BOSS_SCAN_INTERVAL_MS   | 100ms  | Boss未出现时高频扫描间隔（抢输出）          |
 | BOSS_LOOP_INTERVAL_MS   | 300ms  | Boss出现后常规循环间隔                      |
-| MAX_SKILL_CLICKS        | 3      | 武器技能最大连点次数（大招无限制）           |
-| SKILL_CLICK_INTERVAL_MS | 240ms  | 武器技能连点间隔                           |
 | POST_BATTLE_DELAY_MS    | 500ms  | Lv消失后等待时间，用于判断失败/结算         |
-| LV_SETTLE_DELAY_MS      | 3000ms  | Boss出现后跳过Lv消失检测的保护期           |
+| LV_SETTLE_DELAY_MS      | 3000ms  | Boss出现后跳过Lv消失检测的保护期（3秒）    |
+| WEAPON_DELAY_MS         | 24000ms | Lv出现后等待24秒再开始武器点击             |
+| WEAPON_X                | 765    | 武器X坐标（2560x1440分辨率）               |
+| WEAPON_Y                | 1265   | 武器Y坐标（2560x1440分辨率）               |
 
 ## 决策逻辑
 
 ```
 进入 → 下滑阶段:
 
-阶段A（等待下滑按钮，最长10s）:
-  → 每300ms截图匹配 SLIDE_BUTTON（左下1/4）
+阶段A（等待下滑按钮，最长10s，无间隔扫描）:
+  → 截图匹配 SLIDE_BUTTON（左下1/4）
   → 出现 → 进入阶段B
   → 10s未出现 → 跳过下滑阶段
 
@@ -84,8 +92,8 @@
 Boss阶段（双频率循环）:
   → 匹配 LV_ICON（左上1/8）
     → Lv未出现:
-      → bossAppeared=false → checkNodeTimeout → 等待100ms → 下一轮（高频扫描）
-      → bossAppeared=true + 3秒内 → 大招动画保护期，跳过Lv检测 → 等待300ms → 下一轮
+      → bossAppeared=false → checkNodeTimeout → 下一轮（100ms高频扫描）
+      → bossAppeared=true + 3秒内 → 大招动画保护期，跳过Lv检测 → 300ms → 下一轮
       → bossAppeared=true + 超过3秒 → Lv消失（战斗结束），跳出循环
     → Lv出现:
       → 首次出现 → log "Boss出现"
@@ -93,21 +101,27 @@ Boss阶段（双频率循环）:
         → 大招命中 → 跳过跳跃和武器
       → 大招未识别:
         → 匹配 JUMP_BUTTON（右下1/4）→ X+Y偏移点击
-        → 匹配 WEAPON_SKILL（下方1/4）→ Y偏移记住坐标，连点3次
+        → Lv出现24秒后 → 固定坐标(765,1265)每轮点击（约300ms间隔）
           → **大招命中时不检测武器**
-      → checkNodeTimeout → 等待300ms → 下一轮
+      → checkNodeTimeout → 300ms → 下一轮
 
-战斗结束（Lv消失后）:
+战斗结束（Lv消失后，轮询检测）:
   → 等待 500ms（POST_BATTLE_DELAY_MS）
-  → 截图检测 DEFEAT_SKIP（中间1/5×下方1/5）
-    → 检测到 → 返回 DEFEAT（失败节点）
-    → 未检测到 → 返回 SETTLEMENT（结算节点）
+  → 循环检测（每轮约1-2秒）:
+    → SETTLEMENT_POPUP（全屏）→ 队友通关 → 返回 SETTLEMENT
+    → CONFIRM_BUTTON（全屏）→ 追梦场景结算 → 返回 SETTLEMENT
+    → DEFEAT_SCREEN（全屏）→ 最终失败 → 返回 DEFEAT
+    → DEFEAT_BACK_BUTTON（中间1/3上半侧）→ 观战面板 → 返回 DEFEAT
+    → ASSIST_BUTTON（左下1/3）→ 观战面板标识 → 返回 DEFEAT
+    → DEFEAT_SKIP（中间1/5×下方1/5）→ 接力界面，队友还在打 → 继续等待
+    → 都未检测到 → 继续等待
+    → 60s 超时 → 返回 RECOVERY
 ```
 
 ## 技能机制
 
 **大招**：每轮都做模板匹配，识别到则点击，无额外延迟。大招出现期间不检测跳跃和武器。无连点次数限制。
-**武器技能**：记住坐标连点，第一次匹配后在记住的坐标上连续点击3次，每次间隔240ms，连点期间不做模板匹配。**大招命中时不检测武器。**
+**武器技能**：Lv出现24秒后，固定坐标(765,1265)每轮循环点击（约300ms间隔），不做模板匹配。**大招命中时不检测武器。**
 **上翻**：仅在下滑结束后立即检测一次，Boss阶段不再检测。
 
 ## 坐标偏移说明
@@ -121,7 +135,8 @@ Boss阶段（双频率循环）:
 | 上翻      | 右下1/4 (cols*3/4, rows*3/4)   | cols*3/4 | rows*3/4 |
 | 跳跃      | 右下1/4 (cols*3/4, rows*3/4)   | cols*3/4 | rows*3/4 |
 | 大招      | 左侧1/6 (0, rows/3)            | 0        | rows/3   |
-| 武器技能  | 下方1/4 (0, rows*3/4)          | 0        | rows*3/4 |
+| 观战返回  | 中间1/3 (cols/3, 0)            | cols/3   | 0        |
+| 助战按钮  | 左下1/3 (0, rows*2/3)          | 0        | rows*2/3 |
 | 跳过按钮  | 中间(cols*2/5, rows*4/5)       | cols*2/5 | rows*4/5 |
 
 ## 异常处理
@@ -130,5 +145,5 @@ Boss阶段（双频率循环）:
 | ---------------------- | ------------------------- |
 | 截图返回 null          | 等待当前间隔后重试        |
 | 30s 无匹配             | checkNodeTimeout 超时检测 |
-| Lv消失                 | 等待500ms → DEFEAT_SKIP检测 → DEFEAT 或 SETTLEMENT |
-| 检测到接力跳过按钮     | 返回 DEFEAT               |
+| Lv消失                 | 500ms等待 → 轮询检测结算/失败（60s超时→RECOVERY） |
+| 检测到接力跳过按钮     | 继续等待（队友还在战斗）  |

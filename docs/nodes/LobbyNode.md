@@ -16,8 +16,8 @@
 
 | # | 动作 | 裁剪区域 | 匹配模板 | 坐标/偏移 | 延迟 | 条件 |
 |---|------|----------|----------|----------|------|------|
-| 1 | 点击聊天图标进入招募 | 左侧 1/10 区域 | CHAT_ICON | 匹配坐标点击 | 500ms | dailyEnabled=true |
-| 2 | 点击招募页签 | 上方 1/10 区域 | RECRUIT_TAB | 匹配坐标点击 | 500ms | dailyEnabled=true |
+| 1 | 点击聊天图标进入招募 | 左侧 1/10 区域 | CHAT_ICON | 匹配坐标点击 | 500ms | dailyEnabled=true，设置chatClicked=true |
+| 2 | 点击招募页签 | 上方 1/10 区域 | RECRUIT_TAB | 匹配坐标点击 | 500ms | dailyEnabled=true且chatClicked=true |
 | 3 | 点击个人悬赏入口 | 右侧 50%~82% 宽度、中间 40%~75% 高度 | PERSONAL_BOUNTY_ENTRY | 裁剪区域匹配+坐标补偿 | 1500ms | personalBountyEnabled=true |
 
 ## 裁剪区域说明
@@ -34,8 +34,11 @@
 进入时记录 roundStartTime（首次进入时）
 循环扫描（500ms间隔）:
   → dailyEnabled=true 时:
-    → 匹配 CHAT_ICON（左侧1/10）→ 点击 → 继续循环
-    → 匹配 RECRUIT_TAB（上方1/10）→ 点击 → 返回 RECRUIT_LIST
+    → 匹配 CHAT_ICON（左侧1/10）→ 点击 → chatClicked=true → 继续循环
+    → chatClicked=true 时:
+      → 匹配 RECRUIT_TAB（上方1/10）→ 点击 → 继续循环
+      → 两者都不匹配 → 已进入组队招募列表 → 返回 RECRUIT_LIST
+    → chatClicked=false 时: 跳过招募检测
   → personalBountyEnabled=true 时:
     → 匹配 PERSONAL_BOUNTY_ENTRY（全屏）→ 点击 → 返回 PERSONAL_BOUNTY_CENTER
   → 无匹配 → 检查超时（30s）→ 抛 NodeTimeoutException

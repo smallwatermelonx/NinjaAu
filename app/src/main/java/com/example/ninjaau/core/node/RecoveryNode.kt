@@ -120,6 +120,14 @@ class RecoveryNode(private val ctx: NodeContext? = null) : GameNode {
                 return GamePhase.DEFEAT
             }
         } finally { defeatBackCrop.release() }
+        // 助战按钮 → 观战面板（左下1/3裁剪）
+        val assistCrop = nodeCtx.detector.cropBottomLeftThird(screenMat)
+        try {
+            if (nodeCtx.detector.matchTemplateMat(assistCrop, ScreenState.ASSIST_BUTTON) != null) {
+                nodeCtx.log("恢复: 检测到助战按钮（观战面板） → DEFEAT")
+                return GamePhase.DEFEAT
+            }
+        } finally { assistCrop.release() }
 
         // 2. 确认按钮（底部中间区域，参考 BountyDetailNode cropBottomMiddleFifth）
         val confirmCrop = nodeCtx.detector.cropBottomMiddleFifth(screenMat)

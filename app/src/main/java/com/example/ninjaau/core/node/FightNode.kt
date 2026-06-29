@@ -72,7 +72,6 @@ class FightNode(private val ctx: NodeContext) : GameNode {
                 slideMat?.release()
                 screen.recycle()
             }
-            if (!slideAppeared) this.ctx.delay(300)
         }
 
         // ── 阶段B: 无间隔点击下滑按钮，消失即结束 ──
@@ -248,35 +247,86 @@ class FightNode(private val ctx: NodeContext) : GameNode {
             this.ctx.delay(if (bossAppeared) BOSS_LOOP_INTERVAL_MS else BOSS_SCAN_INTERVAL_MS)
         }
 
-        // ═══ Lv消失 → 战斗结束 ═══
-        this.ctx.log("Lv消失，战斗结束，等待${POST_BATTLE_DELAY_MS}ms判断结果")
+        // ═══ Lv消失 → 战斗结束，轮询检测结算/失败 ═══
+        this.ctx.log("Lv消失，等待战斗结果")
         this.ctx.delay(POST_BATTLE_DELAY_MS)
 
-        // 检测失败跳过按钮（接力界面）
-        val resultScreen = this.ctx.captureBitmap()
-        if (resultScreen != null) {
+        var lastResultMs = System.currentTimeMillis()
+        while (currentCoroutineContext().isActive) {
+            val resultScreen = this.ctx.captureBitmap()
+            if (resultScreen == null) { this.ctx.delay(500L); continue }
             var resultMat: org.opencv.core.Mat? = null
             try {
                 resultMat = this.ctx.detector.screenToMat(resultScreen)
+
+                // ── 结算弹窗或确认按钮（队友通关） → 结算节点 ──
+                val settlementCoord = this.ctx.detector.matchTemplateMat(resultMat, ScreenState.SETTLEMENT_POPUP)
+                if (settlementCoord != null) {
+                    this.ctx.log("检测到结算弹窗，进入结算节点")
+                    return GamePhase.SETTLEMENT
+                }
+                val confirmCoord = this.ctx.detector.matchTemplateMat(resultMat, ScreenState.CONFIRM_BUTTON)
+                if (confirmCoord != null) {
+                    this.ctx.log("检测到结算确认按钮，进入结算节点")
+                    return GamePhase.SETTLEMENT
+                }
+
+                // ── 最终失败界面（"失败"字样） → 失败节点 ──
+                val defeatCoord = this.ctx.detector.matchTemplateMat(resultMat, ScreenState.DEFEAT_SCREEN)
+                if (defeatCoord != null) {
+                    this.ctx.log("检测到失败界面，进入失败节点")
+                    return GamePhase.DEFEAT
+                }
+
+                // ── 观战面板返回按钮 → 失败节点 ──
+                val backCrop = org.opencv.core.Mat(resultMat, org.opencv.core.Rect(resultMat.cols() / 3, 0, resultMat.cols() / 3, resultMat.rows() / 2))
+                try {
+                    val backCoord = this.ctx.detector.matchTemplateMat(backCrop, ScreenState.DEFEAT_BACK_BUTTON)
+                    if (backCoord != null) {
+                        this.ctx.log("检测到观战面板返回按钮，进入失败节点")
+                        return GamePhase.DEFEAT
+                    }
+                } finally {
+                    backCrop.release()
+                }
+
+                // ── 助战按钮（观战面板标识，左下1/3裁剪） → 失败节点 ──
+                val assistCrop = this.ctx.detector.cropBottomLeftThird(resultMat)
+                try {
+                    val assistCoord = this.ctx.detector.matchTemplateMat(assistCrop, ScreenState.ASSIST_BUTTON)
+                    if (assistCoord != null) {
+                        this.ctx.log("检测到助战按钮（观战面板），进入失败节点")
+                        return GamePhase.DEFEAT
+                    }
+                } finally {
+                    assistCrop.release()
+                }
+
+                // ── 失败跳过（接力界面） → 继续等待，不判定 ──
                 val skipW = resultMat.cols() / 5
                 val skipH = resultMat.rows() / 5
                 val skipCrop = org.opencv.core.Mat(resultMat, org.opencv.core.Rect(resultMat.cols() * 2 / 5, resultMat.rows() * 4 / 5, skipW, skipH))
                 try {
                     val skipCoord = this.ctx.detector.matchTemplateMat(skipCrop, ScreenState.DEFEAT_SKIP)
                     if (skipCoord != null) {
-                        this.ctx.log("检测到接力跳过按钮，进入失败节点")
-                        return GamePhase.DEFEAT
+                        this.ctx.log("接力界面，等待队友战斗结果")
+                        lastResultMs = System.currentTimeMillis()
                     }
                 } finally {
                     skipCrop.release()
+                }
+
+                // ── 超时保护 ──
+                if (System.currentTimeMillis() - lastResultMs > 60_000) {
+                    this.ctx.log("战斗结果等待超时60s，进入恢复节点")
+                    return GamePhase.RECOVERY
                 }
             } finally {
                 resultMat?.release()
                 resultScreen.recycle()
             }
+            this.ctx.delay(1000L)
         }
-
-        this.ctx.log("未检测到失败，进入结算节点")
-        return GamePhase.SETTLEMENT
+        return null
     }
 }

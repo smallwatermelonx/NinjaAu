@@ -86,7 +86,7 @@ object GameManager {
             )
             try {
                 engine.runLoop(
-                    snapshot.enabledBountyConfigs,
+                    snapshot.allEnabledConfigs,
                     dailyEnabled = snapshot.dailyEnabled,
                     personalBountyEnabled = snapshot.personalEnabled,
                     personalConfigs = snapshot.enabledPersonalConfigs,

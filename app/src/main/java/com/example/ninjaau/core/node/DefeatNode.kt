@@ -12,12 +12,14 @@ import kotlin.coroutines.coroutineContext
 /**
  * 失败节点 — 处理战斗失败后的流程。
  *
- * 两种屏幕：
- * - full_two：角色死亡，等待队友战斗（底部有"返回"按钮）
- *   - 队友成功 → SettlementNode
- *   - 队友也失败 / 最后一个死亡 → full（最终失败界面）
- * - full：最终失败界面（"失败"字样 + "确定"按钮）
- *   - 点击确定 → LOBBY
+ * 循环检测三种屏幕：
+ * 1. DEFEAT_SCREEN（最终失败界面）→ 点击 DEFEAT_CONFIRM → 检测落点（大厅/悬赏详情）
+ * 2. DEFEAT_BACK_BUTTON（观战面板返回按钮）→ 点击返回 → 检测落点（大厅/悬赏详情）
+ * 3. SETTLEMENT_POPUP（结算弹窗）→ 队友通关 → 返回 SETTLEMENT
+ *
+ * 落点检测（detectPostDefeat）：
+ * - CHAT_ICON 存在 → 队长已解散 → 返回 LOBBY
+ * - 否则 → 仍在悬赏详情 → 返回 BOUNTY_DETAIL（继续准备）
  */
 class DefeatNode(private val ctx: NodeContext) : GameNode {
 
@@ -63,7 +65,7 @@ class DefeatNode(private val ctx: NodeContext) : GameNode {
                     }
                 }
 
-                // ═══ 2. 等待队友界面（full_two — 三分之一中间区域上半侧返回按钮） ═══
+                // ═══ 2. 等待队友界面 — 返回按钮（中间1/3上半侧）/ 助战按钮（观战面板标识） ═══
                 val backCrop = org.opencv.core.Mat(screenMat, org.opencv.core.Rect(screenMat.cols() / 3, 0, screenMat.cols() / 3, screenMat.rows() / 2))
                 try {
                     val backCoord = this.ctx.detector.matchTemplateMat(backCrop, ScreenState.DEFEAT_BACK_BUTTON)
@@ -72,18 +74,41 @@ class DefeatNode(private val ctx: NodeContext) : GameNode {
                         val fullY = backCoord.second.toFloat()
                         this.ctx.click(Pair(fullX, fullY))
                         this.ctx.log("点击返回，退出失败等待界面")
-                        lastMatchMs = System.currentTimeMillis()
-                        this.ctx.delay(500)
-                        return GamePhase.LOBBY
+                        this.ctx.delay(800)
+                        return detectPostDefeat()
                     }
                 } finally {
                     backCrop.release()
                 }
+                // 助战按钮 → 观战面板标识（左下1/3裁剪），搜索返回按钮
+                val assistCrop = this.ctx.detector.cropBottomLeftThird(screenMat)
+                try {
+                    val assistCoord = this.ctx.detector.matchTemplateMat(assistCrop, ScreenState.ASSIST_BUTTON)
+                    if (assistCoord != null) {
+                        val fullX = assistCoord.first.toFloat()
+                        val fullY = assistCoord.second + screenMat.rows() * 2 / 3f
+                        this.ctx.log("检测到助战按钮（观战面板），搜索返回按钮")
+                        val backCoordFull = this.ctx.detector.matchTemplateMat(screenMat, ScreenState.DEFEAT_BACK_BUTTON)
+                        if (backCoordFull != null) {
+                            this.ctx.click(Pair(backCoordFull.first, backCoordFull.second))
+                            this.ctx.log("点击返回，退出观战面板")
+                            this.ctx.delay(800)
+                            return detectPostDefeat()
+                        }
+                    }
+                } finally {
+                    assistCrop.release()
+                }
 
-                // ═══ 3. 结算弹窗（队友战斗成功 → 进入结算） ═══
+                // ═══ 3. 结算弹窗或确认按钮（队友战斗成功 → 进入结算） ═══
                 val settlementCoord = this.ctx.detector.matchTemplateMat(screenMat, ScreenState.SETTLEMENT_POPUP)
                 if (settlementCoord != null) {
                     this.ctx.log("队友战斗成功，进入结算")
+                    return GamePhase.SETTLEMENT
+                }
+                val confirmCoord = this.ctx.detector.matchTemplateMat(screenMat, ScreenState.CONFIRM_BUTTON)
+                if (confirmCoord != null) {
+                    this.ctx.log("检测到结算确认按钮，进入结算")
                     return GamePhase.SETTLEMENT
                 }
 

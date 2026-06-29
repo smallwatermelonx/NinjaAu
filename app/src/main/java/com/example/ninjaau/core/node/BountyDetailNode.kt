@@ -28,6 +28,8 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
     companion object {
         private const val POST_CLICK_DELAY = 500L
         private const val WAIT_BATTLE_TIMEOUT_MS = 30_000L
+        /** 在队伍中无操作超时（人机队长检测） */
+        private const val AI_CAPTAIN_TIMEOUT_MS = 30_000L
     }
 
     /**
@@ -65,6 +67,7 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
 
         var battleWaitStart = 0L
         var lastMatchMs = System.currentTimeMillis()
+        var teamEnterTime = 0L
 
         while (currentCoroutineContext().isActive) {
             val iterationStart = System.currentTimeMillis()
@@ -107,6 +110,9 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                         ctx.actualGrade = actualGrade
                         this.ctx.log("LV检测确认: ${actualGrade.displayName} (lv${actualGrade.level})，相似度=${String.format("%.3f", levelMatch.similarity)}")
                     }
+                    // LV 存在 → 刷新超时计时器（只要 LV 在就持续续期）
+                    lastMatchMs = System.currentTimeMillis()
+                    if (teamEnterTime == 0L) teamEnterTime = System.currentTimeMillis()
 
                     // ═══════════════════════════════════════════════════
                     //  ② LV 不在 activeGrades → 列表点错，退出队伍
@@ -233,6 +239,14 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
                     // ═══════════════════════════════════════════════════
                     //  ⑦ 无匹配 → 超时检测
                     // ═══════════════════════════════════════════════════
+                    // 人机队长检测：在队伍中超过30s且未点击准备 → 退出
+                    if (teamEnterTime > 0 && battleWaitStart == 0L
+                        && System.currentTimeMillis() - teamEnterTime > AI_CAPTAIN_TIMEOUT_MS) {
+                        this.ctx.log("队伍中等待超时${AI_CAPTAIN_TIMEOUT_MS}ms，疑似人机队长，退出队伍")
+                        ctx.currentBounty = null
+                        ctx.actualGrade = null
+                        return exitTeam()
+                    }
                     checkNodeTimeout(lastMatchMs)
                     val totalMs = System.currentTimeMillis() - iterationStart
                     this.ctx.log("[详情耗时] 截图${captureMs}ms | 转Mat${matMs}ms | crop${cropMidMs}ms | 合计${totalMs}ms")

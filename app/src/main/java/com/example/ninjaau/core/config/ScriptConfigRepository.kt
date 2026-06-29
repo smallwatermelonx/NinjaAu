@@ -105,6 +105,7 @@ object ScriptConfigRepository {
         return ScriptSnapshot(
             bountyConfigs = _bountyConfigs.value,
             personalConfigs = _personalConfigs.value,
+            nsConfigs = _nsConfigs.value,
             dailyEnabled = _dailyEnabled.value,
             personalEnabled = _personalEnabled.value,
             nsEnabled = _nsEnabled.value
@@ -165,10 +166,14 @@ object ScriptConfigRepository {
 data class ScriptSnapshot(
     val bountyConfigs: List<BountyConfig>,
     val personalConfigs: List<BountyConfig>,
+    val nsConfigs: List<BountyConfig>,
     val dailyEnabled: Boolean,
     val personalEnabled: Boolean,
     val nsEnabled: Boolean
 ) {
     val enabledBountyConfigs get() = bountyConfigs.filter { it.enabled }
+    val enabledNsConfigs get() = nsConfigs.filter { it.enabled }
     val enabledPersonalConfigs get() = personalConfigs.filter { it.enabled }
+    /** 合并日常+NS的启用配置，供WorkflowEngine使用 */
+    val allEnabledConfigs get() = enabledBountyConfigs + enabledNsConfigs
 }
