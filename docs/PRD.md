@@ -87,24 +87,27 @@ HALL → RECRUIT_LIST → BOUNTY_DETAIL → BATTLE_LOADING → FIGHT → SETTLEM
 | BountyDetailNode | BOUNTY_DETAIL | BATTLE_LOADING | 已实现 |
 | BattleLoadingNode | BATTLE_LOADING | FIGHT | 已实现 |
 | FightNode | FIGHT | SETTLEMENT | 已实现 |
-| DefeatNode | DEFEAT | LOBBY | TODO 桩 |
+| DefeatNode | DEFEAT | LOBBY / BOUNTY_DETAIL | 已实现 |
 | SettlementNode | SETTLEMENT | LOBBY / DONE | 已实现 |
-| RecoveryNode | RECOVERY | 各正常阶段 | 已实现 |
 | PersonalBountyCenterNode | PERSONAL_BOUNTY_CENTER | PERSONAL_BOUNTY_DETAIL / DONE | 已实现 |
 | PersonalBountyDetailNode | PERSONAL_BOUNTY_DETAIL | BATTLE_LOADING / PERSONAL_BOUNTY_CENTER | 已实现 |
 
 ### 3.4 异常恢复
 
-入口哨兵失败 → `return null` → WorkflowEngine 触发 RecoveryNode → 全局页面匹配 → 路由到正确节点
+节点超时或异常 → WorkflowEngine 调用 `RecoveryHandler.tryRecover()` → 全局页面匹配 → 路由到正确阶段
 
-RecoveryNode 匹配优先级：
-1. 组队邀请弹窗 → 拒绝
-2. 结算弹窗 → SETTLEMENT
+RecoveryHandler 匹配优先级：
+1. 结算弹窗 → SETTLEMENT
+2. 失败界面 → DEFEAT
 3. 确认按钮 → SETTLEMENT
-4. 准备按钮 → BOUNTY_DETAIL
-5. 战斗加载 → BATTLE_LOADING
+4. 战斗加载 → BATTLE_LOADING
+5. 准备按钮 → BOUNTY_DETAIL
 6. 滑铲/跳跃按钮 → FIGHT
-7. 招募列表 → RECRUIT_LIST
+7. 个人悬赏列表 → PERSONAL_BOUNTY_CENTER
+8. 个人悬赏详情 → PERSONAL_BOUNTY_DETAIL
+9. 招募列表 → RECRUIT_LIST
+10. 大厅 → LOBBY
+11. 无法识别 → IDLE
 8. 聊天图标 → LOBBY
 9. 全部不匹配 → globalFailCount++ (3次停止)
 

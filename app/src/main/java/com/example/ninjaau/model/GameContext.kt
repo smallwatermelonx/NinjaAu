@@ -10,8 +10,6 @@ data class GameContext(
     var currentPhase: GamePhase = GamePhase.IDLE,
     /** 用户勾选且未完成次数的等级列表（按优先级排序） */
     var activeGrades: List<BountyGrade> = emptyList(),
-    /** 用户勾选的全部等级（含已完成，用于进度展示） */
-    val totalGrades: List<BountyGrade> = emptyList(),
     /** 各等级已完成的次数 */
     val runCounts: MutableMap<BountyGrade, Int> = mutableMapOf(),
     /** 各等级用户设定的目标次数（来自 BountyConfig.targetRuns） */
@@ -38,12 +36,8 @@ data class GameContext(
     var personalBountyCompleted: Boolean = false,
     /** 个人悬赏用户勾选的等级列表 */
     var personalActiveGrades: List<BountyGrade> = emptyList(),
-    /** 个人悬赏各等级目标次数 */
-    val personalTargetRuns: Map<BountyGrade, Int> = emptyMap(),
     /** 逆袭悬赏用户勾选的等级列表（从 dailyEnabled configs 中筛选 isEvent） */
     var nsActiveGrades: List<BountyGrade> = emptyList(),
-    /** 恢复节点连续尝试次数（进入 RECOVERY 时递增，正常前进时重置） */
-    var recoveryAttempt: Int = 0,
     /** 当前轮次开始时间（LobbyNode 进入时记录，SettlementNode 领奖后输出耗时） */
     var roundStartTime: Long = 0L
 )
@@ -64,8 +58,6 @@ enum class GamePhase {
     SETTLEMENT,
     /** 战斗失败 — templates/defeat/ */
     DEFEAT,
-    /** 异常恢复 */
-    RECOVERY,
     DONE,
     // ═══ 个人悬赏 ═══
     /** 个人悬赏中心/列表 */

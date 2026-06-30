@@ -7,7 +7,7 @@
 | 进入 | FIGHT | 从 BattleLoadingNode 加载完成后进入 |
 | 退出1 | SETTLEMENT | Lv消失 → 轮询检测到 SETTLEMENT_POPUP 或 CONFIRM_BUTTON |
 | 退出2 | DEFEAT | Lv消失 → 轮询检测到 DEFEAT_SCREEN / DEFEAT_BACK_BUTTON / ASSIST_BUTTON |
-| 退出3 | RECOVERY | Lv消失 → 60s 超时无结果 |
+| 退出3 | NodeTimeoutException | Lv消失 → 60s 超时无结果 → WorkflowEngine 调用 RecoveryHandler |
 
 ## 交互动作
 
@@ -115,7 +115,7 @@ Boss阶段（双频率循环）:
     → ASSIST_BUTTON（左下1/3）→ 观战面板标识 → 返回 DEFEAT
     → DEFEAT_SKIP（中间1/5×下方1/5）→ 接力界面，队友还在打 → 继续等待
     → 都未检测到 → 继续等待
-    → 60s 超时 → 返回 RECOVERY
+    → 60s 超时 → checkNodeTimeout → WorkflowEngine 调用 RecoveryHandler
 ```
 
 ## 技能机制
@@ -145,5 +145,5 @@ Boss阶段（双频率循环）:
 | ---------------------- | ------------------------- |
 | 截图返回 null          | 等待当前间隔后重试        |
 | 30s 无匹配             | checkNodeTimeout 超时检测 |
-| Lv消失                 | 500ms等待 → 轮询检测结算/失败（60s超时→RECOVERY） |
+| Lv消失                 | 500ms等待 → 轮询检测结算/失败（60s超时→RecoveryHandler） |
 | 检测到接力跳过按钮     | 继续等待（队友还在战斗）  |

@@ -26,9 +26,7 @@ enum class ScreenState(val description: String) {
     JUMP_BUTTON("跳跃按钮"),
     SCROLL_UP("上翻按钮"),
     ULTIMATE_SKILL("大招图标"),
-    WEAPON_SKILL("武器图标"),
     BLOOD_CURSE("血咒技能"),
-    DEFEAT_POPUP("失败弹窗"),
     /** 失败最终界面（full.png — "失败"字样 + 确定按钮） */
     DEFEAT_SCREEN("失败界面"),
     /** 失败等待队友界面的返回按钮（full_two.png 底部返回） */

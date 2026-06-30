@@ -52,10 +52,9 @@ app/src/main/java/com/example/ninjaau/
 │   │   ├── BattleLoadingNode.kt # 战斗加载
 │   │   ├── FightNode.kt         # 战斗逻辑
 │   │   ├── SettlementNode.kt    # 结算
-│   │   ├── RecoveryNode.kt      # 异常恢复
 │   │   ├── PersonalBountyCenterNode.kt  # 个人悬赏中心
 │   │   ├── PersonalBountyDetailNode.kt  # 个人悬赏详情
-│   │   ├── DefeatNode.kt        # TODO 桩
+│   │   ├── DefeatNode.kt        # 战斗失败
 │   │   └── RecruitInviteNode.kt # TODO 桩
 │   ├── recognition/
 │   │   ├── SceneDetector.kt     # 场景检测（模板匹配入口）
@@ -104,8 +103,7 @@ docs/
 │   ├── BountyDetailNode.md
 │   ├── BattleLoadingNode.md
 │   ├── FightNode.md
-│   ├── SettlementNode.md
-│   └── RecoveryNode.md
+│   └── SettlementNode.md
 ├── ui.md               # 悬浮窗/HUD/配置面板 Spec
 └── Config.md           # 配置系统 Spec
 ```

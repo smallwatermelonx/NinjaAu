@@ -66,9 +66,9 @@ class WorkflowEngine(
     private val settlementNode: SettlementNode
     private val recruitInviteNode: RecruitInviteNode
     private val defeatNode: DefeatNode
-    private val recoveryNode: RecoveryNode
     private val personalBountyCenterNode: PersonalBountyCenterNode
     private val personalBountyDetailNode: PersonalBountyDetailNode
+    private val recoveryHandler: RecoveryHandler
 
     init {
         val nodeCtx = NodeContext(
@@ -96,9 +96,9 @@ class WorkflowEngine(
         settlementNode = SettlementNode(nodeCtx)
         recruitInviteNode = RecruitInviteNode(nodeCtx)
         defeatNode = DefeatNode(nodeCtx)
-        recoveryNode = RecoveryNode(nodeCtx)
         personalBountyCenterNode = PersonalBountyCenterNode(nodeCtx)
         personalBountyDetailNode = PersonalBountyDetailNode(nodeCtx)
+        recoveryHandler = RecoveryHandler(detector, { captureBitmap() }, { log(it) })
     }
 
     companion object {
@@ -150,10 +150,11 @@ class WorkflowEngine(
                     if (nextPhase == ctx.currentPhase) {
                         phaseStuckCount++
                         if (phaseStuckCount >= MAX_PHASE_STUCK) {
-                            log("⚠ 阶段卡死: ${ctx.currentPhase.name} 连续 $phaseStuckCount 次未转换，强制恢复")
+                            log("⚠ 阶段卡死: ${ctx.currentPhase.name} 连续 $phaseStuckCount 次未转换，尝试恢复")
                             globalFailCount++
                             log("整体判定失败 ($globalFailCount/$MAX_GLOBAL_FAIL)")
-                            ctx.currentPhase = GamePhase.RECOVERY
+                            val recovered = recoveryHandler.tryRecover()
+                            ctx.currentPhase = recovered
                             phaseStuckCount = 0
                             continue
                         }
@@ -167,10 +168,8 @@ class WorkflowEngine(
                     log("[耗时] ${nextPhase.name} 阶段耗时 ${phaseElapsed}ms")
                     phaseStartTime = System.currentTimeMillis()
 
-                    // ═══ 只在真正前进时重置失败计数（恢复节点路由到非恢复阶段不算前进） ═══
-                    if (nextPhase != GamePhase.RECOVERY && nextPhase != GamePhase.IDLE) {
+                    if (nextPhase != GamePhase.IDLE) {
                         globalFailCount = 0
-                        ctx.recoveryAttempt = 0
                     }
 
                     emitProgress(ctx, onProgress)
@@ -193,7 +192,8 @@ class WorkflowEngine(
                 LogUtil.e(TAG, "Pipeline 异常", e)
                 globalFailCount++
                 log("整体判定失败 ($globalFailCount/$MAX_GLOBAL_FAIL)")
-                ctx.currentPhase = GamePhase.RECOVERY
+                val recovered = recoveryHandler.tryRecover()
+                ctx.currentPhase = recovered
                 phaseStuckCount = 0
             }
         }
@@ -245,10 +245,11 @@ class WorkflowEngine(
                     if (nextPhase == ctx.currentPhase) {
                         phaseStuckCount++
                         if (phaseStuckCount >= MAX_PHASE_STUCK) {
-                            log("⚠ 阶段卡死: ${ctx.currentPhase.name} 连续 $phaseStuckCount 次未转换，强制恢复")
+                            log("⚠ 阶段卡死: ${ctx.currentPhase.name} 连续 $phaseStuckCount 次未转换，尝试恢复")
                             globalFailCount++
                             log("整体判定失败 ($globalFailCount/$MAX_GLOBAL_FAIL)")
-                            ctx.currentPhase = GamePhase.RECOVERY
+                            val recovered = recoveryHandler.tryRecover()
+                            ctx.currentPhase = recovered
                             phaseStuckCount = 0
                             continue
                         }
@@ -262,9 +263,8 @@ class WorkflowEngine(
                     log("[耗时] ${nextPhase.name} 阶段耗时 ${phaseElapsed}ms")
                     phaseStartTime = System.currentTimeMillis()
 
-                    if (nextPhase != GamePhase.RECOVERY && nextPhase != GamePhase.IDLE) {
+                    if (nextPhase != GamePhase.IDLE) {
                         globalFailCount = 0
-                        ctx.recoveryAttempt = 0
                     }
 
                     emitProgress(ctx, onProgress)
@@ -286,7 +286,8 @@ class WorkflowEngine(
                 LogUtil.e(TAG, "Pipeline 异常", e)
                 globalFailCount++
                 log("整体判定失败 ($globalFailCount/$MAX_GLOBAL_FAIL)")
-                ctx.currentPhase = GamePhase.RECOVERY
+                val recovered = recoveryHandler.tryRecover()
+                ctx.currentPhase = recovered
                 phaseStuckCount = 0
             }
         }
@@ -351,7 +352,6 @@ class WorkflowEngine(
             GamePhase.FIGHT -> battleNode.execute(ctx)
             GamePhase.DEFEAT -> defeatNode.execute(ctx)
             GamePhase.SETTLEMENT -> settlementNode.execute(ctx)
-            GamePhase.RECOVERY -> recoveryNode.execute(ctx)
             GamePhase.PERSONAL_BOUNTY_CENTER -> personalBountyCenterNode.execute(ctx)
             GamePhase.PERSONAL_BOUNTY_DETAIL -> personalBountyDetailNode.execute(ctx)
             GamePhase.DONE -> GamePhase.DONE
@@ -421,13 +421,11 @@ class WorkflowEngine(
         return GameContext(
             currentPhase = startPhase,
             activeGrades = startGrades,
-            totalGrades = allDailyGrades + personalGrades,
             runCounts = allDailyGrades.associateWith { 0 }.toMutableMap(),
             targetRuns = enabled.associate { it.grade to it.targetRuns },
             chaseDreamGrades = chaseDreamGrades,
             personalBountyEnabled = personalBountyEnabled,
             personalActiveGrades = personalGrades,
-            personalTargetRuns = personalEnabled.associate { it.grade to it.targetRuns },
             businessLine = startBusinessLine,
             dailyEnabled = allDailyGrades.isNotEmpty(),
             nsEnabled = nsGrades.isNotEmpty(),

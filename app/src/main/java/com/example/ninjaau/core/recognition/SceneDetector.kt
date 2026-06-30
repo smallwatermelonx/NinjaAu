@@ -77,14 +77,14 @@ class SceneDetector(private val context: Context) {
         BATTLE_LOADING("战斗加载", listOf(ScreenState.BATTLE_LOADING), false, false),
         FIGHT("战斗", listOf(
             ScreenState.SLIDE_BUTTON, ScreenState.ULTIMATE_SKILL, ScreenState.LV_ICON,
-            ScreenState.SETTLEMENT_POPUP, ScreenState.CONFIRM_BUTTON, ScreenState.DEFEAT_POPUP,
-            ScreenState.JUMP_BUTTON, ScreenState.SCROLL_UP, ScreenState.WEAPON_SKILL,
+            ScreenState.SETTLEMENT_POPUP, ScreenState.CONFIRM_BUTTON,
+            ScreenState.JUMP_BUTTON, ScreenState.SCROLL_UP,
             ScreenState.BLOOD_CURSE
         ), false, false),
         SETTLEMENT("结算领奖", listOf(
             ScreenState.SETTLEMENT_POPUP, ScreenState.CONFIRM_BUTTON, ScreenState.CHAT_ICON
         ), false, false),
-        DEFEAT("战斗失败", listOf(ScreenState.DEFEAT_POPUP, ScreenState.DEFEAT_SCREEN, ScreenState.DEFEAT_BACK_BUTTON, ScreenState.ASSIST_BUTTON), false, false),
+        DEFEAT("战斗失败", listOf(ScreenState.DEFEAT_SCREEN, ScreenState.DEFEAT_BACK_BUTTON, ScreenState.ASSIST_BUTTON), false, false),
         RECRUIT_INVITE("招募邀请弹窗", listOf(ScreenState.RECRUIT_INVITE), false, false),
         INVITATION("组队邀请弹窗", listOf(
             ScreenState.TEAM_INVITATION, ScreenState.INVITE_REJECT
@@ -251,9 +251,7 @@ class SceneDetector(private val context: Context) {
         ScreenState.JUMP_BUTTON to TemplateEntry("templates/fight/jump.png"),
         ScreenState.SCROLL_UP to TemplateEntry("templates/fight/scroll_up.png"),
         ScreenState.ULTIMATE_SKILL to TemplateEntry("templates/fight/role/shihara/r_shihara.png", 0.6f),
-        ScreenState.WEAPON_SKILL to TemplateEntry("templates/fight/wopen/shedao.png", 0.6f),
         ScreenState.BLOOD_CURSE to TemplateEntry("templates/fight/role/shihara/blood_curse.png", 0.85f),
-        ScreenState.DEFEAT_POPUP to TemplateEntry("templates/fight/defeat_popup.png", 0.6f),
         ScreenState.DEFEAT_SCREEN to TemplateEntry("templates/defeat/defeat.png", 0.8f),
         ScreenState.DEFEAT_BACK_BUTTON to TemplateEntry("templates/defeat/back_button.png", 0.8f),
         ScreenState.DEFEAT_CONFIRM to TemplateEntry("templates/defeat/confirm.png", 0.8f),
@@ -454,15 +452,6 @@ class SceneDetector(private val context: Context) {
         val x = mat.cols() / 3
         val h = mat.rows() / 9
         val y = mat.rows() - h
-        return Mat(mat, org.opencv.core.Rect(x, y, w, h))
-    }
-
-    /** 裁剪 Mat 中心 1/2 宽度、中间 1/3 高度（失败界面确定按钮所在区域），调用方用完需 release */
-    fun cropCenterHalf(mat: Mat): Mat {
-        val w = mat.cols() / 2
-        val x = mat.cols() / 4
-        val h = mat.rows() / 3
-        val y = mat.rows() / 3
         return Mat(mat, org.opencv.core.Rect(x, y, w, h))
     }
 

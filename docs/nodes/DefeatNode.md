@@ -66,13 +66,13 @@
 
 FightNode Lv消失后 → 500ms等待 → 检测 DEFEAT_SCREEN → 返回 DEFEAT 阶段。
 
-RecoveryNode 也会检测 DEFEAT_SCREEN 和 DEFEAT_BACK_BUTTON，路由至 `GamePhase.DEFEAT`。
+RecoveryHandler 也会检测 DEFEAT_SCREEN 和 DEFEAT_BACK_BUTTON，路由至 `GamePhase.DEFEAT`。
 
 ## 异常处理
 
 | 异常 | 处理 |
 |------|------|
 | 截图返回 null | 等待 100ms 后重试 |
-| 30s 无匹配 | checkNodeTimeout → NodeTimeoutException → RECOVERY |
+| 30s 无匹配 | checkNodeTimeout → NodeTimeoutException → WorkflowEngine 调用 RecoveryHandler |
 | 确定/返回按钮未找到 | 继续扫描（可能还在动画中） |
 | 退出后无法识别页面 | 默认返回 LOBBY |

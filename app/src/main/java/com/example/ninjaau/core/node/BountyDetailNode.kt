@@ -269,7 +269,7 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
     private suspend fun exitTeam(): GamePhase {
         this.ctx.log("退出队伍...")
 
-        // ═══ 阶段①：点击返回按钮 ═══
+        // ═══ 阶段①：点击返回按钮（左上1/8裁剪） ═══
         val screen1 = this.ctx.captureBitmap() ?: return GamePhase.LOBBY
         var screenMat1: Mat? = null
         try {
@@ -278,7 +278,9 @@ class BountyDetailNode(private val ctx: NodeContext) : GameNode {
             try {
                 val backCoord = this.ctx.detector.matchTemplateMat(topLeft, ScreenState.BACK_BUTTON)
                 if (backCoord != null) {
-                    this.ctx.click(backCoord)
+                    val fullX = backCoord.first.toFloat()
+                    val fullY = backCoord.second.toFloat()
+                    this.ctx.click(Pair(fullX, fullY))
                     this.ctx.log("点击返回")
                 }
             } finally {

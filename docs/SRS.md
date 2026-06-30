@@ -16,7 +16,6 @@
 | 默认扫描间隔 | 100ms | 快速扫描循环的间隔 |
 | 默认截图匹配阈值 | 0.8 | SceneDetector 模板匹配阈值 |
 | 节点超时 | 30s | 无匹配超过30s抛 NodeTimeoutException |
-| 最大恢复次数 | 5 | RecoveryNode 连续失败上限 |
 | 异步方式 | Kotlin 协程 | 禁止 Thread/Handler |
 | 截图方式 | MediaProjection + ScreenCapture | 必须从前台 Service context 创建 |
 
@@ -25,9 +24,9 @@
 ### GamePhase（阶段流转）
 
 ```
-IDLE → LOBBY → CHAT → RECRUIT_LIST → RECRUIT_INVITE → BOUNTY_DETAIL
+IDLE → LOBBY → RECRUIT_LIST → BOUNTY_DETAIL
       → BATTLE_LOADING → FIGHT → DEFEAT → SETTLEMENT
-      → RECOVERY → DONE
+      → DONE
       → PERSONAL_BOUNTY_CENTER → PERSONAL_BOUNTY_DETAIL
 ```
 
@@ -35,15 +34,12 @@ IDLE → LOBBY → CHAT → RECRUIT_LIST → RECRUIT_INVITE → BOUNTY_DETAIL
 |-------|---------|------|
 | IDLE | - | 初始状态，等待启动 |
 | LOBBY | LobbyNode | 大厅导航 |
-| CHAT | LobbyNode | 大厅聊天页面 |
 | RECRUIT_LIST | BountyListNode | 招募列表扫描 |
-| RECRUIT_INVITE | RecruitInviteNode | 招募邀请处理（TODO 桩） |
 | BOUNTY_DETAIL | BountyDetailNode | 悬赏详情/组队 |
 | BATTLE_LOADING | BattleLoadingNode | 等待战斗加载 |
 | FIGHT | FightNode | 战斗逻辑 |
-| DEFEAT | DefeatNode | 战斗失败处理（TODO 桩） |
+| DEFEAT | DefeatNode | 战斗失败处理 |
 | SETTLEMENT | SettlementNode | 结算领奖 |
-| RECOVERY | RecoveryNode | 异常恢复 |
 | DONE | - | 所有等级完成，脚本结束 |
 | PERSONAL_BOUNTY_CENTER | PersonalBountyCenterNode | 个人悬赏中心列表 |
 | PERSONAL_BOUNTY_DETAIL | PersonalBountyDetailNode | 个人悬赏详情/出发 |
@@ -62,9 +58,9 @@ IDLE → LOBBY → CHAT → RECRUIT_LIST → RECRUIT_INVITE → BOUNTY_DETAIL
 | BattleLoadingNode | [nodes/BattleLoadingNode.md](nodes/BattleLoadingNode.md) | 等待战斗加载完成 |
 | FightNode | [nodes/FightNode.md](nodes/FightNode.md) | 战斗逻辑（下滑+Boss战） |
 | SettlementNode | [nodes/SettlementNode.md](nodes/SettlementNode.md) | 结算领奖，更新计数 |
-| RecoveryNode | [nodes/RecoveryNode.md](nodes/RecoveryNode.md) | 异常恢复策略 |
+| RecoveryHandler | - | 异常恢复工具（WorkflowEngine 内联调用） |
 | RecruitInviteNode | [nodes/RecruitInviteNode.md](nodes/RecruitInviteNode.md) | 招募邀请处理（TODO 桩） |
-| DefeatNode | [nodes/DefeatNode.md](nodes/DefeatNode.md) | 战斗失败处理（TODO 桩） |
+| DefeatNode | [nodes/DefeatNode.md](nodes/DefeatNode.md) | 战斗失败处理 |
 | PersonalBountyCenterNode | [nodes/PersonalBountyCenterNode.md](nodes/PersonalBountyCenterNode.md) | 个人悬赏中心列表 |
 | PersonalBountyDetailNode | [nodes/PersonalBountyDetailNode.md](nodes/PersonalBountyDetailNode.md) | 个人悬赏详情/出发 |
 | UI | [ui.md](ui.md) | 悬浮窗/HUD/配置面板 |

@@ -49,5 +49,5 @@
 | 异常 | 处理 |
 |------|------|
 | 截图返回 null | 等待 500ms 后重试 |
-| 30s 无匹配 | 抛 NodeTimeoutException，由 WorkflowEngine 进入 RECOVERY |
+| 30s 无匹配 | 抛 NodeTimeoutException，WorkflowEngine 调用 RecoveryHandler |
 | Mat 未释放 | finally 块中 release()，防止内存泄漏 |

@@ -31,7 +31,6 @@ class FightNode(private val ctx: NodeContext) : GameNode {
         private const val POST_BATTLE_DELAY_MS = 500L
         private const val LV_SETTLE_DELAY_MS = 3000L
         private const val WEAPON_DELAY_MS = 24_000L
-        private const val WEAPON_CLICK_INTERVAL_MS = 1000L
         // 2560x1440 分辨率下武器坐标
         private const val WEAPON_X = 765f
         private const val WEAPON_Y = 1265f
@@ -318,8 +317,8 @@ class FightNode(private val ctx: NodeContext) : GameNode {
 
                 // ── 超时保护 ──
                 if (System.currentTimeMillis() - lastResultMs > 60_000) {
-                    this.ctx.log("战斗结果等待超时60s，进入恢复节点")
-                    return GamePhase.RECOVERY
+                    this.ctx.log("战斗结果等待超时60s")
+                    checkNodeTimeout(lastResultMs, 60_000L)
                 }
             } finally {
                 resultMat?.release()

@@ -100,8 +100,7 @@ com.example.ninjaau/
 │   │   ├── FightNode.kt                  # 战斗
 │   │   ├── SettlementNode.kt             # 结算领奖
 │   │   ├── RecruitInviteNode.kt          # 招募邀请（TODO 桩）
-│   │   ├── DefeatNode.kt                 # 战斗失败（TODO 桩）
-│   │   ├── RecoveryNode.kt               # 异常恢复
+│   │   ├── DefeatNode.kt                 # 战斗失败
 │   │   ├── PersonalBountyCenterNode.kt   # 个人悬赏中心
 │   │   └── PersonalBountyDetailNode.kt   # 个人悬赏详情
 │   ├── recognition/
@@ -215,12 +214,12 @@ data class BountyConfig(
 
 ### 4.4 GameContext + GamePhase — 运行时上下文
 
-**GamePhase** 枚举（14 个阶段）:
+**GamePhase** 枚举（12 个阶段）:
 
 ```
-IDLE → LOBBY → CHAT → RECRUIT_LIST → RECRUIT_INVITE → BOUNTY_DETAIL
+IDLE → LOBBY → RECRUIT_LIST → BOUNTY_DETAIL
       → BATTLE_LOADING → FIGHT → DEFEAT → SETTLEMENT
-      → RECOVERY → DONE
+      → DONE
       → PERSONAL_BOUNTY_CENTER → PERSONAL_BOUNTY_DETAIL
 ```
 
@@ -230,7 +229,6 @@ IDLE → LOBBY → CHAT → RECRUIT_LIST → RECRUIT_INVITE → BOUNTY_DETAIL
 |------|------|------|
 | `currentPhase` | GamePhase | 当前状态机阶段 |
 | `activeGrades` | List<BountyGrade> | 仍需完成的等级（动态缩小） |
-| `totalGrades` | List<BountyGrade> | 所有勾选等级 |
 | `runCounts` | MutableMap<BountyGrade, Int> | 各等级已完成次数 |
 | `targetRuns` | Map<BountyGrade, Int> | 各等级目标次数 |
 | `currentBounty` | BountyGrade? | 当前正在加入的悬赏 |
@@ -328,7 +326,7 @@ resumeScript():
 | 常量 | 值 | 说明 |
 |------|-----|------|
 | `MAX_GLOBAL_FAIL` | 3 | 连续异常上限，达到后停止脚本 |
-| `MAX_PHASE_STUCK` | 5 | 同一阶段连续返回次数上限，触发 RECOVERY |
+| `MAX_PHASE_STUCK` | 5 | 同一阶段连续返回次数上限，触发 RecoveryHandler |
 
 #### 核心循环
 
@@ -347,15 +345,13 @@ runLoop():
 
 ```kotlin
 when (phase) {
-    IDLE, LOBBY, CHAT -> hallNode.execute(ctx)
+    IDLE, LOBBY -> lobbyNode.execute(ctx)
     RECRUIT_LIST -> bountyListNode.execute(ctx)
-    RECRUIT_INVITE -> recruitInviteNode.execute(ctx)
     BOUNTY_DETAIL -> bountyDetailNode.execute(ctx)
     BATTLE_LOADING -> battleLoadingNode.execute(ctx)
     FIGHT -> battleNode.execute(ctx)
     DEFEAT -> defeatNode.execute(ctx)
     SETTLEMENT -> settlementNode.execute(ctx)
-    RECOVERY -> recoveryNode.execute(ctx)
     PERSONAL_BOUNTY_CENTER -> personalBountyCenterNode.execute(ctx)
     PERSONAL_BOUNTY_DETAIL -> personalBountyDetailNode.execute(ctx)
     DONE -> null
@@ -370,7 +366,7 @@ when (phase) {
 
 #### 阶段卡死检测
 
-同一 `GamePhase` 连续返回 5 次（`MAX_PHASE_STUCK`）→ 强制切换到 `RECOVERY`。
+同一 `GamePhase` 连续返回 5 次（`MAX_PHASE_STUCK`）→ 调用 `RecoveryHandler.tryRecover()` 识别页面并路由。
 
 #### 业务线切换 (switchToNextBusinessLine)
 
@@ -383,7 +379,7 @@ when (phase) {
 #### 异常处理
 
 - 每个节点执行包裹在 try-catch 中
-- 异常 → `globalFailCount++` → 强制 RECOVERY
+- 异常 → `globalFailCount++` → `RecoveryHandler.tryRecover()` 识别页面并路由
 - `globalFailCount >= 3` → 写崩溃日志到 `filesDir/crash_logs/` → 停止脚本
 
 ---
@@ -610,10 +606,10 @@ B    0/4
                     │                                  │
                     ▼                                  ▼
             ┌──────────────┐                   ┌──────────────┐
-            │  RECOVERY    │                   │  DONE        │
+            │ RecoveryHandler│                  │  DONE        │
             │  异常恢复     │                   │  全部完成     │
-            │  路由到正确   │                   │  退出循环     │
-            │  节点         │                   │              │
+            │  识别页面路由  │                   │  退出循环     │
+            │              │                   │              │
             └──────────────┘                   └──────────────┘
 ```
 
@@ -627,9 +623,8 @@ dispatchPhase(currentPhase):
   BOUNTY_DETAIL → BountyDetailNode → 等级校验/准备
   BATTLE_LOADING → BattleLoadingNode → 等待加载完成
   FIGHT → FightNode → 释放技能/检测结算
-  DEFEAT → DefeatNode → 失败处理（TODO）
+  DEFEAT → DefeatNode → 失败处理
   SETTLEMENT → SettlementNode → 领奖/更新计数
-  RECOVERY → RecoveryNode → 识别页面/路由
   PERSONAL_BOUNTY_CENTER → PersonalBountyCenterNode → 个人悬赏列表
   PERSONAL_BOUNTY_DETAIL → PersonalBountyDetailNode → 个人悬赏详情
 ```
