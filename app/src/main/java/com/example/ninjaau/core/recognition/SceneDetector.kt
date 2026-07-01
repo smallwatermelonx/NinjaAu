@@ -256,7 +256,7 @@ class SceneDetector(private val context: Context) {
         ScreenState.DEFEAT_BACK_BUTTON to TemplateEntry("templates/defeat/back_button.png", 0.8f),
         ScreenState.DEFEAT_CONFIRM to TemplateEntry("templates/defeat/confirm.png", 0.8f),
         ScreenState.DEFEAT_SKIP to TemplateEntry("templates/defeat/defeat_skip.png", 0.8f),
-        ScreenState.ASSIST_BUTTON to TemplateEntry("templates/defeat/assist_button.png", 0.8f),
+        ScreenState.ASSIST_BUTTON to TemplateEntry("templates/defeat/assist_button.png", 0.7f),
         // ── 结算 ──
         ScreenState.SETTLEMENT_POPUP to TemplateEntry("templates/settlement/black.png", 0.7f),
         ScreenState.CONFIRM_BUTTON to TemplateEntry("templates/settlement/confirm.png"),
@@ -591,7 +591,11 @@ class SceneDetector(private val context: Context) {
         return coroutineScope {
             val results = templates.map { t ->
                 async {
-                    val threshold = if (t.grade == BountyGrade.NS || t.grade == BountyGrade.NA) 0.90f else 0.85f
+                    val threshold = when {
+                        t.grade == BountyGrade.NS || t.grade == BountyGrade.NA -> 0.90f
+                        t.grade == BountyGrade.S || t.grade == BountyGrade.S_PLUS || t.grade == BountyGrade.SS_PLUS -> 0.92f
+                        else -> 0.85f
+                    }
                     val result = TemplateMatcher.matchMatWithMatGrayscale(screenMat, t.templateMat, threshold, t.w, t.h)
                     if (result.isMatched) {
                         LogUtil.i(TAG, "matchAnyGradeMat: ${t.grade.displayName} 相似度=${String.format("%.3f", result.similarity)} ✓")

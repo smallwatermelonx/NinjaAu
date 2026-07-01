@@ -23,8 +23,8 @@ import kotlin.coroutines.coroutineContext
 class SettlementNode(private val ctx: NodeContext) : GameNode {
 
     companion object {
-        private const val NORMAL_INTERVAL_MS = 500L
-        private const val POST_CLICK_DELAY = 500L
+        private const val NORMAL_INTERVAL_MS = 300L
+        private const val POST_CLICK_DELAY = 300L
     }
 
     /**
@@ -57,18 +57,18 @@ class SettlementNode(private val ctx: NodeContext) : GameNode {
                     // 先检测结算弹窗（点空白处关闭）
                     val settlementCoord = this.ctx.detector.matchTemplateMat(bottomMiddle, ScreenState.SETTLEMENT_POPUP)
                     if (settlementCoord != null) {
-                        this.ctx.delay(500)
+                        this.ctx.delay(300)
                         this.ctx.click(Pair(settlementCoord.first + x, settlementCoord.second + y))
                         this.ctx.log("点击空白处关闭结算弹窗")
                         lastMatchMs = System.currentTimeMillis()
-                        this.ctx.delay(500)
+                        this.ctx.delay(300)
                         continue
                     }
 
                     // 再检测确认按钮（点击领奖）
                     val confirmCoord = this.ctx.detector.matchTemplateMat(bottomMiddle, ScreenState.CONFIRM_BUTTON)
                     if (confirmCoord != null) {
-                        this.ctx.delay(500)
+                        this.ctx.delay(300)
                         this.ctx.click(Pair(confirmCoord.first + x, confirmCoord.second + y))
                         this.ctx.log("点击确认领奖")
                         confirmClicked = true
@@ -80,15 +80,25 @@ class SettlementNode(private val ctx: NodeContext) : GameNode {
                     bottomMiddle.release()
                 }
 
-                // 确认按钮点击后不再检测到 → 回到大厅
+                // 确认按钮点击后 → 日常悬赏需等大厅图标，个人悬赏直接退出
                 if (confirmClicked) {
-                    this.ctx.log("确认按钮消失，回到大厅")
-                    if (ctx.roundStartTime > 0) {
-                        val roundElapsed = System.currentTimeMillis() - ctx.roundStartTime
-                        this.ctx.log("[耗时] 本轮总耗时 ${roundElapsed}ms (${String.format("%.1f", roundElapsed / 1000.0)}s)")
-                        ctx.roundStartTime = 0L
+                    if (ctx.businessLine == BusinessLine.PERSONAL) {
+                        this.ctx.log("确认按钮消失，个人悬赏结算完成")
+                        break
                     }
-                    break
+                    val lobbyCoord = this.ctx.detector.matchTemplateMat(screenMat, ScreenState.CHAT_ICON)
+                    if (lobbyCoord != null) {
+                        this.ctx.log("确认按钮消失，已回到大厅")
+                        if (ctx.roundStartTime > 0) {
+                            val roundElapsed = System.currentTimeMillis() - ctx.roundStartTime
+                            this.ctx.log("[耗时] 本轮总耗时 ${roundElapsed}ms (${String.format("%.1f", roundElapsed / 1000.0)}s)")
+                            ctx.roundStartTime = 0L
+                        }
+                        break
+                    }
+                    checkNodeTimeout(lastMatchMs)
+                    this.ctx.delay(NORMAL_INTERVAL_MS)
+                    continue
                 }
 
                 checkNodeTimeout(lastMatchMs)
@@ -107,7 +117,8 @@ class SettlementNode(private val ctx: NodeContext) : GameNode {
 
             val group = grade.group
             val groupTotal = group.totalRuns(ctx.runCounts)
-            this.ctx.log("${grade.displayName} 完成 ${groupTotal}/${group.defaultRuns}")
+            this.ctx.log("[计数] ${grade.displayName} +1 → ${count + 1}/${ctx.targetRuns[grade] ?: grade.defaultRuns}，组 ${group.name} 合计 ${groupTotal}/${group.defaultRuns}")
+            this.ctx.log("[计数] 组内明细: ${group.members().joinToString { "${it.displayName}=${ctx.runCounts[it] ?: 0}" }}")
 
             if (group.isComplete(ctx.runCounts)) {
                 ctx.activeGrades = ctx.activeGrades.filter { it.group != group || it in ctx.chaseDreamGrades }

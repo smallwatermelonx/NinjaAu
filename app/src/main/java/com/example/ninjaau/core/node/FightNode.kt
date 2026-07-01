@@ -80,24 +80,19 @@ class FightNode(private val ctx: NodeContext) : GameNode {
             var slideMat: org.opencv.core.Mat? = null
             try {
                 slideMat = this.ctx.detector.screenToMat(screen)
-                val crop = this.ctx.detector.cropBottomLeftFourth(slideMat)
+                // 一次截图，裁剪两个区域：下滑按钮(左下1/4) + 血咒(左下1/2)
+                val slideCrop = this.ctx.detector.cropBottomLeftFourth(slideMat)
+                val curseCrop = if (!bloodCurseClicked) this.ctx.detector.cropBottomLeftHalf(slideMat) else null
                 try {
-                    val slideCoord = this.ctx.detector.matchTemplateMat(crop, ScreenState.SLIDE_BUTTON)
+                    val slideCoord = this.ctx.detector.matchTemplateMat(slideCrop, ScreenState.SLIDE_BUTTON)
                     if (slideCoord != null) {
                         val fullY = slideCoord.second + slideMat.rows() * 3 / 4
                         this.ctx.click(Pair(slideCoord.first, fullY))
                         this.ctx.log("下滑")
                     } else {
-                        // 下滑按钮消失 → 下滑阶段结束
                         slideAppeared = false
                     }
-                } finally {
-                    crop.release()
-                }
-                // 血咒检测（点击期间顺便检测）
-                if (!bloodCurseClicked) {
-                    val curseCrop = this.ctx.detector.cropBottomLeftHalf(slideMat)
-                    try {
+                    if (curseCrop != null) {
                         val curseCoord = this.ctx.detector.matchTemplateMat(curseCrop, ScreenState.BLOOD_CURSE)
                         if (curseCoord != null) {
                             val fullY = curseCoord.second + slideMat.rows() * 3 / 4
@@ -105,9 +100,10 @@ class FightNode(private val ctx: NodeContext) : GameNode {
                             this.ctx.log("血咒")
                             bloodCurseClicked = true
                         }
-                    } finally {
-                        curseCrop.release()
                     }
+                } finally {
+                    slideCrop.release()
+                    curseCrop?.release()
                 }
             } finally {
                 slideMat?.release()

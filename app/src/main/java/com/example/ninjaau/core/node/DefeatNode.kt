@@ -14,8 +14,8 @@ import kotlin.coroutines.coroutineContext
  *
  * 循环检测三种屏幕：
  * 1. DEFEAT_SCREEN（最终失败界面）→ 点击 DEFEAT_CONFIRM → 检测落点（大厅/悬赏详情）
- * 2. DEFEAT_BACK_BUTTON（观战面板返回按钮）→ 点击返回 → 检测落点（大厅/悬赏详情）
- * 3. SETTLEMENT_POPUP（结算弹窗）→ 队友通关 → 返回 SETTLEMENT
+ * 2. ASSIST_BUTTON（观战面板）→ 不点击，持续等待直到面板消失
+ * 3. SETTLEMENT_POPUP / CONFIRM_BUTTON（结算弹窗）→ 队友通关 → 返回 SETTLEMENT
  *
  * 落点检测（detectPostDefeat）：
  * - CHAT_ICON 存在 → 队长已解散 → 返回 LOBBY
@@ -65,36 +65,15 @@ class DefeatNode(private val ctx: NodeContext) : GameNode {
                     }
                 }
 
-                // ═══ 2. 等待队友界面 — 返回按钮（中间1/3上半侧）/ 助战按钮（观战面板标识） ═══
-                val backCrop = org.opencv.core.Mat(screenMat, org.opencv.core.Rect(screenMat.cols() / 3, 0, screenMat.cols() / 3, screenMat.rows() / 2))
-                try {
-                    val backCoord = this.ctx.detector.matchTemplateMat(backCrop, ScreenState.DEFEAT_BACK_BUTTON)
-                    if (backCoord != null) {
-                        val fullX = backCoord.first + screenMat.cols() / 3f
-                        val fullY = backCoord.second.toFloat()
-                        this.ctx.click(Pair(fullX, fullY))
-                        this.ctx.log("点击返回，退出失败等待界面")
-                        this.ctx.delay(800)
-                        return detectPostDefeat()
-                    }
-                } finally {
-                    backCrop.release()
-                }
-                // 助战按钮 → 观战面板标识（左下1/3裁剪），搜索返回按钮
+                // ═══ 2. 助战按钮 → 观战面板（不点击，等待队友结果） ═══
                 val assistCrop = this.ctx.detector.cropBottomLeftThird(screenMat)
                 try {
                     val assistCoord = this.ctx.detector.matchTemplateMat(assistCrop, ScreenState.ASSIST_BUTTON)
                     if (assistCoord != null) {
-                        val fullX = assistCoord.first.toFloat()
-                        val fullY = assistCoord.second + screenMat.rows() * 2 / 3f
-                        this.ctx.log("检测到助战按钮（观战面板），搜索返回按钮")
-                        val backCoordFull = this.ctx.detector.matchTemplateMat(screenMat, ScreenState.DEFEAT_BACK_BUTTON)
-                        if (backCoordFull != null) {
-                            this.ctx.click(Pair(backCoordFull.first, backCoordFull.second))
-                            this.ctx.log("点击返回，退出观战面板")
-                            this.ctx.delay(800)
-                            return detectPostDefeat()
-                        }
+                        lastMatchMs = System.currentTimeMillis()
+                        this.ctx.log("观战面板，等待队友战斗结果...")
+                        this.ctx.delay(1000)
+                        continue
                     }
                 } finally {
                     assistCrop.release()
