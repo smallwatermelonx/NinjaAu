@@ -54,8 +54,7 @@ app/src/main/java/com/example/ninjaau/
 │   │   ├── SettlementNode.kt    # 结算
 │   │   ├── PersonalBountyCenterNode.kt  # 个人悬赏中心
 │   │   ├── PersonalBountyDetailNode.kt  # 个人悬赏详情
-│   │   ├── DefeatNode.kt        # 战斗失败
-│   │   └── RecruitInviteNode.kt # TODO 桩
+│   │   ├── DefeatNode.kt        # 战斗失败（含观战面板等待）
 │   ├── recognition/
 │   │   ├── SceneDetector.kt     # 场景检测（模板匹配入口）
 │   │   └── TemplateMatcher.kt   # OpenCV 模板匹配实现
@@ -79,7 +78,7 @@ app/src/main/java/com/example/ninjaau/
 ├── model/
 │   ├── GameContext.kt           # 运行时状态上下文
 │   ├── GamePhase.kt            # 游戏阶段枚举
-│   ├── ScreenState.kt          # 屏幕状态枚举（29种）
+│   ├── ScreenState.kt          # 屏幕状态枚举（28种）
 │   ├── BountyGrade.kt          # 悬赏等级定义
 │   └── BountyConfig.kt         # 悬赏配置
 └── ui/
@@ -124,7 +123,6 @@ docs/
 ## 已知问题
 
 1. `globalFailCount` 永不重置 — 3次分散的瞬态异常就会永久停止脚本
-2. `DefeatNode` 和 `RecruitInviteNode` 是 TODO 桩（直接返回上一阶段）
-3. `PermissionManager.resumeMediaProjection()` 在 Android 12+ 需要 Service context
-4. 藏宝图自动化未实现（只有 UI）
-5. 个人悬赏中心/详情节点是框架桩
+2. `PermissionManager.resumeMediaProjection()` 在 Android 12+ 需要 Service context
+3. 藏宝图自动化未实现（只有 UI）
+4. 个人悬赏中心/详情节点是框架桩

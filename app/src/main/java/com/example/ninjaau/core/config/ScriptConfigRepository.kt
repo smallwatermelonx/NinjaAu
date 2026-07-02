@@ -43,6 +43,21 @@ object ScriptConfigRepository {
     fun setNsEnabled(v: Boolean) { _nsEnabled.value = v; save("ns_enabled", v) }
     fun setTreasureEnabled(v: Boolean) { _treasureEnabled.value = v; save("treasure_enabled", v) }
 
+    // ═══ 藏宝图筛选配置 ═══
+
+    private val _treasureElements = MutableStateFlow(setOf<String>())
+    val treasureElements: StateFlow<Set<String>> = _treasureElements
+
+    private val _treasureGrades = MutableStateFlow(setOf<String>())
+    val treasureGrades: StateFlow<Set<String>> = _treasureGrades
+
+    private val _treasureChaseDreamGrades = MutableStateFlow(setOf<String>())
+    val treasureChaseDreamGrades: StateFlow<Set<String>> = _treasureChaseDreamGrades
+
+    fun setTreasureElements(v: Set<String>) { _treasureElements.value = v; saveStringSet("treasure_elements", v) }
+    fun setTreasureGrades(v: Set<String>) { _treasureGrades.value = v; saveStringSet("treasure_grades", v) }
+    fun setTreasureChaseDreamGrades(v: Set<String>) { _treasureChaseDreamGrades.value = v; saveStringSet("treasure_chase_dream", v) }
+
     // ═══ 组队邀请检测 ═══
 
     private val _inviteCheckEnabled = MutableStateFlow(false)
@@ -128,6 +143,10 @@ object ScriptConfigRepository {
         // NS 只加载事件等级（NSS+, NS, NA），过滤掉非事件等级
         val rawNs = loadGradeConfigs("cfg_ns_enabled", "cfg_ns_chase_dream")
         _nsConfigs.value = rawNs.filter { it.grade.isEvent }
+        // 藏宝图筛选
+        _treasureElements.value = loadStringSet("treasure_elements")
+        _treasureGrades.value = loadStringSet("treasure_grades")
+        _treasureChaseDreamGrades.value = loadStringSet("treasure_chase_dream")
     }
 
     private fun loadGradeConfigs(enabledKey: String, chaseDreamKey: String?): List<BountyConfig> {
@@ -150,6 +169,14 @@ object ScriptConfigRepository {
 
     private fun saveInt(key: String, value: Int) {
         prefs.edit().putInt(key, value).apply()
+    }
+
+    private fun saveStringSet(key: String, value: Set<String>) {
+        prefs.edit().putStringSet(key, value).apply()
+    }
+
+    private fun loadStringSet(key: String): Set<String> {
+        return prefs.getStringSet(key, emptySet()) ?: emptySet()
     }
 
     private fun saveGradeKeys(key: String, configs: List<BountyConfig>) {

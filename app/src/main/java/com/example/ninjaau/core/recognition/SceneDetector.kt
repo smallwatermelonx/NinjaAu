@@ -85,7 +85,6 @@ class SceneDetector(private val context: Context) {
             ScreenState.SETTLEMENT_POPUP, ScreenState.CONFIRM_BUTTON, ScreenState.CHAT_ICON
         ), false, false),
         DEFEAT("战斗失败", listOf(ScreenState.DEFEAT_SCREEN, ScreenState.DEFEAT_BACK_BUTTON, ScreenState.ASSIST_BUTTON), false, false),
-        RECRUIT_INVITE("招募邀请弹窗", listOf(ScreenState.RECRUIT_INVITE), false, false),
         INVITATION("组队邀请弹窗", listOf(
             ScreenState.TEAM_INVITATION, ScreenState.INVITE_REJECT
         ), false, false),
@@ -239,7 +238,6 @@ class SceneDetector(private val context: Context) {
         ScreenState.RECRUIT_TAB to TemplateEntry("templates/chat/team_recruit.png"),
         ScreenState.OUT_OF_RANGE_RECRUIT to TemplateEntry("templates/bounty_list/out_of_range.png", 0.7f),
         ScreenState.RECRUIT_LIST_SCREEN to TemplateEntry("templates/bounty_list/team_recruit_black.png", 0.75f),
-        ScreenState.RECRUIT_INVITE to TemplateEntry("templates/bounty_list/recruit_invite.png"),
         // ── 入队 ──
         ScreenState.READY_BUTTON to TemplateEntry("templates/team_room/prepare.png"),
         ScreenState.EXIT_CONFIRM to TemplateEntry("templates/team_room/confirm.png", 0.65f),
@@ -468,13 +466,6 @@ class SceneDetector(private val context: Context) {
         val w = mat.cols() / 2
         val h = mat.rows() / 8
         return Mat(mat, org.opencv.core.Rect(0, 0, w, h))
-    }
-
-    /** 裁剪 Mat 下方 1/4 区域（武器按钮所在区域），全宽，调用方用完需 release */
-    fun cropBottomQuarter(mat: Mat): Mat {
-        val h = mat.rows() / 4
-        val y = mat.rows() - h
-        return Mat(mat, org.opencv.core.Rect(0, y, mat.cols(), h))
     }
 
     /** 裁剪 Mat 左侧 1/10 区域（聊天按钮所在区域），高度不动，调用方用完需 release */

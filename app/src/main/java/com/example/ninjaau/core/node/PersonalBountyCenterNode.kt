@@ -22,14 +22,11 @@ class PersonalBountyCenterNode(private val ctx: NodeContext) : GameNode {
 
     companion object {
         private const val NORMAL_INTERVAL_MS = 300L
-        /** 连续无匹配超过此时长才触发 BACK 兜底 */
-        private const val BACK_BUTTON_TIMEOUT_MS = 15_000L
     }
 
     override suspend fun execute(ctx: GameContext): GamePhase? {
         this.ctx.log("个人悬赏中心 Phase")
         var lastMatchMs = System.currentTimeMillis()
-        var noMatchCount = 0
 
         while (currentCoroutineContext().isActive) {
             val screen = this.ctx.captureBitmap()
@@ -41,7 +38,6 @@ class PersonalBountyCenterNode(private val ctx: NodeContext) : GameNode {
                 val listScreen = this.ctx.detector.matchTemplate(screen, ScreenState.PERSONAL_BOUNTY_LIST_SCREEN)
                 if (listScreen != null) {
                     lastMatchMs = System.currentTimeMillis()
-                    noMatchCount = 0
                     matched = true
 
                     val gradesToFind = ctx.activeGrades
@@ -63,12 +59,7 @@ class PersonalBountyCenterNode(private val ctx: NodeContext) : GameNode {
                     this.ctx.log("未找到目标等级图标，等待刷新")
                 }
 
-                // ═══ 无匹配计数 ═══
-                if (!matched) {
-                    noMatchCount++
-                }
-
-                // ═══ 5. 超时检测 ═══
+                // ═══ 超时检测 ═══
                 checkNodeTimeout(lastMatchMs)
             } finally {
                 screen.recycle()

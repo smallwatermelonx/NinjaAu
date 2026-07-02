@@ -64,7 +64,6 @@ class WorkflowEngine(
     private val battleLoadingNode: BattleLoadingNode
     private val battleNode: FightNode
     private val settlementNode: SettlementNode
-    private val recruitInviteNode: RecruitInviteNode
     private val defeatNode: DefeatNode
     private val personalBountyCenterNode: PersonalBountyCenterNode
     private val personalBountyDetailNode: PersonalBountyDetailNode
@@ -94,7 +93,6 @@ class WorkflowEngine(
         battleLoadingNode = BattleLoadingNode(nodeCtx)
         battleNode = FightNode(nodeCtx)
         settlementNode = SettlementNode(nodeCtx)
-        recruitInviteNode = RecruitInviteNode(nodeCtx)
         defeatNode = DefeatNode(nodeCtx)
         personalBountyCenterNode = PersonalBountyCenterNode(nodeCtx)
         personalBountyDetailNode = PersonalBountyDetailNode(nodeCtx)

@@ -120,39 +120,6 @@ object TemplateMatcher {
         }
     }
 
-    /**
-     * Mat 对 Mat 匹配 — 完全避免 Bitmap→Mat 转换。
-     * 调用方负责 screenMat 和 templateMat 的生命周期。
-     */
-    fun matchMatWithMat(screenMat: Mat, templateMat: Mat, threshold: Float, templateWidth: Int, templateHeight: Int): MatchResult {
-        if (!OpenCVUtil.initOpenCV()) {
-            return MatchResult(false, 0f, 0f, 0f, 0f, 0f)
-        }
-        var resultMat: Mat? = null
-        try {
-            if (templateMat.cols() > screenMat.cols() || templateMat.rows() > screenMat.rows()) {
-                return MatchResult(false, 0f, 0f, 0f, 0f, 0f)
-            }
-            resultMat = Mat()
-            Imgproc.matchTemplate(screenMat, templateMat, resultMat, Imgproc.TM_CCOEFF_NORMED)
-            val minMaxLoc = Core.minMaxLoc(resultMat)
-            val similarity = minMaxLoc.maxVal.toFloat()
-            val isMatched = similarity >= threshold
-            val matchX = minMaxLoc.maxLoc.x.toFloat()
-            val matchY = minMaxLoc.maxLoc.y.toFloat()
-            return MatchResult(
-                isMatched, similarity, matchX, matchY,
-                matchX + templateWidth / 2f,
-                matchY + templateHeight / 2f
-            )
-        } catch (e: Exception) {
-            LogUtil.e(TAG, "模板匹配异常: ${e.message}", e)
-            return MatchResult(false, 0f, 0f, 0f, 0f, 0f)
-        } finally {
-            resultMat?.release()
-        }
-    }
-
     data class MatchResult(
         val isMatched: Boolean,
         val similarity: Float,
@@ -161,54 +128,4 @@ object TemplateMatcher {
         val centerX: Float,
         val centerY: Float
     )
-
-    /**
-     * 查找所有匹配点 — 扫描结果矩阵，返回所有局部极大值且超过阈值的点。
-     * 用于同一等级图标在屏幕多处出现时，取最下方的匹配。
-     */
-    fun findAllMatches(screenMat: Mat, templateMat: Mat, threshold: Float, templateWidth: Int, templateHeight: Int): List<MatchResult> {
-        if (!OpenCVUtil.initOpenCV()) return emptyList()
-        var screenGray: Mat? = null
-        var templateGray: Mat? = null
-        var resultMat: Mat? = null
-        try {
-            if (templateMat.cols() > screenMat.cols() || templateMat.rows() > screenMat.rows()) return emptyList()
-            screenGray = Mat()
-            templateGray = Mat()
-            Imgproc.cvtColor(screenMat, screenGray, Imgproc.COLOR_BGR2GRAY)
-            Imgproc.cvtColor(templateMat, templateGray, Imgproc.COLOR_BGR2GRAY)
-            resultMat = Mat()
-            Imgproc.matchTemplate(screenGray, templateGray, resultMat, Imgproc.TM_CCOEFF_NORMED)
-
-            val rows = resultMat.rows()
-            val cols = resultMat.cols()
-            val matches = mutableListOf<MatchResult>()
-
-            for (y in 1 until rows - 1) {
-                for (x in 1 until cols - 1) {
-                    val v = resultMat.get(y, x)[0].toFloat()
-                    if (v < threshold) continue
-                    // 局部极大值：比上下左右都大
-                    val top = resultMat.get(y - 1, x)[0].toFloat()
-                    val bot = resultMat.get(y + 1, x)[0].toFloat()
-                    val left = resultMat.get(y, x - 1)[0].toFloat()
-                    val right = resultMat.get(y, x + 1)[0].toFloat()
-                    if (v >= top && v >= bot && v >= left && v >= right) {
-                        matches.add(MatchResult(true, v, x.toFloat(), y.toFloat(),
-                            x + templateWidth / 2f, y + templateHeight / 2f))
-                    }
-                }
-            }
-            // 按 Y 降序排列（最下方优先）
-            matches.sortByDescending { it.centerY }
-            return matches
-        } catch (e: Exception) {
-            LogUtil.e(TAG, "findAllMatches 异常: ${e.message}", e)
-            return emptyList()
-        } finally {
-            screenGray?.release()
-            templateGray?.release()
-            resultMat?.release()
-        }
-    }
 }
